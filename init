@@ -1,0 +1,6 @@
+//npm install electron --save-dev
+
+//npm install --save-dev electronmon 这个需要改启动文件
+//或者 npm install electron-reload --save-dev 这个需要require包
+
+//ctrl + shift + i = f12 打开浏览器控制台
