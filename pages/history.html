@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <title>Browse History</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
+            padding: 25px;
+            border-radius: 12px;
+            text-align: center;
+            color: white;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+        }
+
+        .stat-card.visits {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .stat-card.time {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .stat-card.avg {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        .stat-card .icon {
+            font-size: 2.5em;
+            margin-bottom: 15px;
+            opacity: 0.9;
+        }
+
+        .stat-card h3 {
+            margin-bottom: 15px;
+            font-size: 1.1em;
+            font-weight: 500;
+            opacity: 0.9;
+        }
+
+        .stat-card .value {
+            font-size: 2.8em;
+            margin-bottom: 5px;
+            font-weight: bold;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .stat-card .unit {
+            font-size: 1em;
+            opacity: 0.8;
+        }
+
+        .history-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 30px;
+            margin-top: 20px;
+        }
+
+        .history-section h2 {
+            color: #333;
+            font-size: 1.8em;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .history-list {
+            max-height: 600px;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+
+        .history-item {
+            border-left: 4px solid;
+            background: white;
+            margin-bottom: 12px;
+            padding: 20px;
+            border-radius: 0 10px 10px 0;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .history-item:hover {
+            background: #f0f0f0;
+            transform: translateX(5px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .history-item-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 15px;
+        }
+
+        .history-item-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .history-item-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 1.05em;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            word-break: break-word;
+        }
+
+        .history-item-domain {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .history-item-time {
+            color: #999;
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .history-item-duration {
+            color: white;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .no-history {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .no-history .icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .no-history h3 {
+            margin-bottom: 15px;
+            font-size: 1.5em;
+            color: #555;
+        }
+
+        .no-history p {
+            color: #777;
+            font-size: 1.1em;
+        }
+
+        /* 滚动条样式 */
+        .history-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .history-list::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        .history-list::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 4px;
+        }
+
+        .history-list::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .loading .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                <span>📊</span>
+                Browse History
+            </h1>
+            <p>Your browsing statistics and recent activity</p>
+        </div>
+
+        <div class="content">
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p>Loading your browsing history...</p>
+            </div>
+
+            <div id="stats-container" style="display: none;">
+                <div class="stats-grid" id="stats">
+                    <!-- 统计卡片将通过 JavaScript 动态生成 -->
+                </div>
+
+                <div class="history-section">
+                    <h2>
+                        <span>📖</span>
+                        Recent History
+                        <span id="history-count" style="font-size: 0.8em; color: #666; font-weight: normal;"></span>
+                    </h2>
+                    <div class="history-list" id="history-list">
+                        <!-- 历史记录将通过 JavaScript 动态生成 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        console.log('🚀 History page script loaded');
+
+        // 工具函数：HTML转义
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 工具函数：格式化时间
+        function formatTime(seconds) {
+            if (seconds < 60) {
+                return `${seconds.toFixed(1)}s`;
+            } else if (seconds < 3600) {
+                return `${(seconds / 60).toFixed(1)}min`;
+            } else {
+                return `${(seconds / 3600).toFixed(1)}h`;
+            }
+        }
+
+        // 生成统计卡片
+        function generateStats(stats) {
+            console.log('📊 Generating stats with:', stats);
+            return `
+                <div class="stat-card visits">
+                    <div class="icon">🌐</div>
+                    <h3>Total Visits</h3>
+                    <div class="value">${stats.totalVisits || 0}</div>
+                    <div class="unit">pages</div>
+                </div>
+                <div class="stat-card time">
+                    <div class="icon">⏱</div>
+                    <h3>Total Time</h3>
+                    <div class="value">${formatTime(stats.totalTime || 0)}</div>
+                    <div class="unit">browsing</div>
+                </div>
+                <div class="stat-card avg">
+                    <div class="icon">📈</div>
+                    <h3>Average Stay</h3>
+                    <div class="value">${formatTime(stats.averageStayTime || 0)}</div>
+                    <div class="unit">per page</div>
+                </div>
+            `;
+        }
+
+        // 生成历史记录列表
+        function generateHistory(history) {
+            console.log('📝 Generating history with:', history.length, 'items');
+
+            if (!history || history.length === 0) {
+                return `
+                    <div class="no-history">
+                        <div class="icon">📭</div>
+                        <h3>No browsing history yet</h3>
+                        <p>Start browsing to see your history here.</p>
+                    </div>
+                `;
+            }
+
+            const historyItems = history.slice(-100).reverse().map((record, index) => {
+                const stayTime = record.stayDuration ? formatTime(record.stayDuration) : 'Active';
+                const time = new Date(record.timestamp).toLocaleString();
+                let domain = 'Unknown';
+
+                try {
+                    domain = new URL(record.url).hostname;
+                } catch (e) {
+                    domain = record.url ? record.url.substring(0, 50) + '...' : 'Unknown';
+                }
+
+                const stayColor = record.stayDuration ?
+                    (record.stayDuration > 60 ? '#4CAF50' : record.stayDuration > 10 ? '#FF9800' : '#757575') :
+                    '#2196F3';
+
+                return `
+                    <div class="history-item" style="border-left-color: ${stayColor};" data-index="${index}">
+                        <div class="history-item-content">
+                            <div class="history-item-info">
+                                <div class="history-item-title">
+                                    ${escapeHtml(record.title || 'Untitled Page')}
+                                </div>
+                                <div class="history-item-domain">
+                                    <span>🌐</span>
+                                    <span>${escapeHtml(domain)}</span>
+                                </div>
+                                <div class="history-item-time">
+                                    <span>🕒</span>
+                                    <span>${time}</span>
+                                </div>
+                            </div>
+                            <div class="history-item-duration" style="background: ${stayColor};">
+                                <span>⏱</span>
+                                <span>${stayTime}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            console.log('✅ Generated HTML for', history.length, 'items');
+            return historyItems;
+        }
+
+        // 更新页面内容
+        function updateContent(historyData, statsData) {
+            console.log('🔄 updateContent called with:', {
+                historyCount: historyData ? historyData.length : 'undefined',
+                statsData: statsData
+            });
+
+            try {
+                const loadingEl = document.getElementById('loading');
+                const statsContainer = document.getElementById('stats-container');
+                const statsEl = document.getElementById('stats');
+                const historyListEl = document.getElementById('history-list');
+                const historyCountEl = document.getElementById('history-count');
+
+                console.log('🔍 DOM elements found:', {
+                    loading: !!loadingEl,
+                    statsContainer: !!statsContainer,
+                    stats: !!statsEl,
+                    historyList: !!historyListEl,
+                    historyCount: !!historyCountEl
+                });
+
+                if (!loadingEl || !statsContainer || !statsEl || !historyListEl || !historyCountEl) {
+                    console.error('❌ Required DOM elements not found');
+                    return false;
+                }
+
+                // 隐藏加载动画
+                loadingEl.style.display = 'none';
+                statsContainer.style.display = 'block';
+
+                // 更新统计信息
+                const statsHTML = generateStats(statsData || {});
+                statsEl.innerHTML = statsHTML;
+                console.log('📊 Stats HTML updated');
+
+                // 更新历史记录
+                const historyHTML = generateHistory(historyData || []);
+                historyListEl.innerHTML = historyHTML;
+                console.log('📝 History HTML updated');
+
+                // 更新计数
+                const count = historyData ? Math.min(100, historyData.length) : 0;
+                historyCountEl.textContent = `(Last ${count} visits)`;
+                console.log('🔢 Count updated:', count);
+
+                console.log('✅ History page updated successfully');
+                return true;
+            } catch (error) {
+                console.error('❌ Error updating content:', error);
+                return false;
+            }
+        }
+
+        // 强制显示测试数据（调试用）
+        function showTestData() {
+            console.log('🧪 Showing test data');
+            const testStats = {
+                totalVisits: 10,
+                totalTime: 3600,
+                averageStayTime: 360,
+                topPages: {}
+            };
+            const testHistory = [{
+                title: 'Test Page',
+                url: 'https://example.com',
+                timestamp: new Date().toISOString(),
+                stayDuration: 120
+            }];
+            updateContent(testHistory, testStats);
+        }
+
+        // 页面初始化函数
+        async function initializePage() {
+            console.log('🎯 Initializing history page...');
+
+            try {
+                // 检查 API 是否可用
+                if (typeof window.electronAPI === 'undefined') {
+                    console.error('❌ electronAPI not available');
+                    showTestData();
+                    return;
+                }
+
+                console.log('📊 Fetching history data...');
+                const data = await window.electronAPI.getHistoryData();
+
+                console.log('✅ Received data:', {
+                    statsData: data.stats,
+                    historyCount: data.history.length
+                });
+
+                updateContent(data.history, data.stats);
+
+            } catch (error) {
+                console.error('❌ Error fetching history data:', error);
+                showTestData(); // 回退到测试数据
+            }
+        }
+
+        // DOM 准备就绪时初始化
+        if (document.readyState === 'loading') {
+            console.log('📄 DOM still loading, waiting...');
+            document.addEventListener('DOMContentLoaded', initializePage);
+        } else {
+            console.log('📄 DOM already ready, initializing immediately');
+            initializePage();
+        }
+
+        console.log('🎬 History page script initialization complete');
+    </script>
+</body>
+
+</html>

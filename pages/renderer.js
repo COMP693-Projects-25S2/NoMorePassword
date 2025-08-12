@@ -42,11 +42,52 @@ function createTab(url = 'https://www.google.com') {
     });
 }
 
+// 新增：创建历史记录标签页
+function createHistoryTab() {
+    window.electronAPI.createHistoryTab().then(({ id, title }) => {
+        const tabEl = document.createElement('div');
+        tabEl.className = 'tab history-tab'; // 添加特殊样式类
+        tabEl.dataset.id = id;
+
+        const titleNode = document.createElement('span');
+        titleNode.className = 'title';
+        titleNode.textContent = title;
+
+        const closeBtn = document.createElement('span');
+        closeBtn.className = 'close';
+        closeBtn.textContent = '×';
+        closeBtn.onclick = (e) => {
+            e.stopPropagation();
+            closeTab(id);
+        };
+
+        tabEl.appendChild(titleNode);
+        tabEl.appendChild(closeBtn);
+        tabsContainer.appendChild(tabEl);
+
+        tabEl.onclick = () => switchTab(id);
+
+        tabs[id] = { el: tabEl, title, titleNode, closeBtn, isHistory: true };
+
+        currentTabId = id;
+        activateTab(id);
+
+        // 历史标签页不需要地址栏更新
+        addressBar.value = 'browser://history';
+    });
+}
+
 function switchTab(id) {
     window.electronAPI.switchTab(id);
     activateTab(id);
     currentTabId = id;
-    updateAddressFromTab(id);
+
+    // 如果是历史标签页，显示特殊地址
+    if (tabs[id] && tabs[id].isHistory) {
+        addressBar.value = 'browser://history';
+    } else {
+        updateAddressFromTab(id);
+    }
 }
 
 function activateTab(id) {
@@ -62,7 +103,13 @@ function closeTab(id) {
         if (newActiveId) {
             activateTab(newActiveId);
             currentTabId = newActiveId;
-            updateAddressFromTab(newActiveId);
+
+            // 检查新活动标签页的类型
+            if (tabs[newActiveId] && tabs[newActiveId].isHistory) {
+                addressBar.value = 'browser://history';
+            } else {
+                updateAddressFromTab(newActiveId);
+            }
         } else {
             currentTabId = null;
             addressBar.value = '';
@@ -84,20 +131,42 @@ function updateAddressFromTab(id) {
     }, 100);
 }
 
+// 修改后的历史显示函数 - 现在创建新标签页而不是弹框
+async function showVisitHistory() {
+    try {
+        createHistoryTab();
+    } catch (error) {
+        console.error('Failed to create history tab:', error);
+        alert('Failed to create history tab');
+    }
+}
+
 window.addEventListener('DOMContentLoaded', () => {
+    // 绑定按钮事件
     document.getElementById('new-tab').onclick = () => createTab();
     document.getElementById('back').onclick = () => window.electronAPI.goBack();
     document.getElementById('forward').onclick = () => window.electronAPI.goForward();
     document.getElementById('refresh').onclick = () => window.electronAPI.refresh();
 
+    // 历史按钮事件 - 现在创建新标签页
+    document.getElementById('history').onclick = showVisitHistory;
+
     addressBar.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             const url = addressBar.value.trim();
+
+            // 检查是否是特殊的浏览器协议
+            if (url === 'browser://history' || url === 'history://') {
+                createHistoryTab();
+                return;
+            }
+
             const validUrl = url.startsWith('http') ? url : `https://${url}`;
-            createTab(validUrl); // ✅ 始终新建标签页
+            createTab(validUrl);
         }
     });
 
+    // IPC 事件监听
     const { ipcRenderer } = require('electron');
 
     ipcRenderer.on('tab-title-updated', (_, { id, title }) => {
@@ -119,3 +188,6 @@ window.addEventListener('DOMContentLoaded', () => {
         createTab();
     });
 });
+
+// 启动时创建第一个标签页
+createTab('https://www.google.com');

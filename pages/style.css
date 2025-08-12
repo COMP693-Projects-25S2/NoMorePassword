@@ -114,6 +114,50 @@ body {
     z-index: 1;
 }
 
+/* 历史标签页特殊样式 */
+.tab.history-tab {
+    background: linear-gradient(to bottom, #667eea, #764ba2);
+    color: white;
+    border-color: #667eea;
+}
+
+.tab.history-tab:hover {
+    background: linear-gradient(to bottom, #5a6fd8, #6a4190);
+}
+
+.tab.history-tab.active {
+    background: linear-gradient(to bottom, #667eea, #764ba2);
+    color: white;
+    border-color: #5a6fd8;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.tab.history-tab .title {
+    color: white;
+}
+
+.tab.history-tab .close {
+    color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+}
+
+.tab.history-tab .close:hover {
+    color: white;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-50%) scale(1.1);
+}
+
+.tab .title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 8px;
+    font-size: 12px;
+    color: inherit;
+}
+
 .tab .close {
     position: absolute;
     top: 50%;
@@ -208,10 +252,4 @@ body {
 
 #tabs::-webkit-scrollbar-thumb:hover {
     background: #a1a1a1;
-}
-
-#toolbar,
-#tabs,
-#webviews {
-    border: 1px solid limegreen;
 }
