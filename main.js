@@ -475,9 +475,34 @@ function createWindow() {
         mainWindow.webContents.send('init-tab');
     });
 
+    let resizeTimeout;
     mainWindow.on('resize', () => {
+        // 防抖处理，避免频繁调整
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            const bounds = getViewBounds();
+            console.log('Window resized, updating view bounds:', bounds);
+
+            // 更新当前活动的 BrowserView
+            if (currentViewId && views[currentViewId] && !views[currentViewId].webContents.isDestroyed()) {
+                try {
+                    views[currentViewId].setBounds(bounds);
+                    console.log(`Updated bounds for active view ${currentViewId}`);
+                } catch (error) {
+                    console.error('Error setting bounds for active view:', error);
+                }
+            }
+        }, 100); // 100ms 防抖
+    });
+
+    // 添加 moved 事件处理（可选）
+    mainWindow.on('moved', () => {
         const bounds = getViewBounds();
-        Object.values(views).forEach(view => view.setBounds(bounds));
+        Object.values(views).forEach(view => {
+            if (view && !view.webContents.isDestroyed()) {
+                view.setBounds(bounds);
+            }
+        });
     });
 
     // 添加窗口关闭事件监听
@@ -489,7 +514,18 @@ function createWindow() {
 
 function getViewBounds() {
     const [width, height] = mainWindow.getContentSize();
-    return { x: 0, y: 86, width, height: height - 86 };
+    // 根据CSS确定的实际高度：工具栏50px + 标签页36px = 86px
+    const topOffset = 86;
+
+    const bounds = {
+        x: 0,
+        y: topOffset,
+        width: width,
+        height: height - topOffset
+    };
+
+    console.log('Calculated view bounds:', bounds);
+    return bounds;
 }
 
 async function createBrowserView(url = 'https://www.google.com') {
@@ -506,8 +542,10 @@ async function createBrowserView(url = 'https://www.google.com') {
 
     const id = ++viewCounter;
     views[id] = view;
-    view.setBounds(getViewBounds());
-    view.setAutoResize({ width: true, height: true });
+
+    // 设置初始边界
+    const bounds = getViewBounds();
+    view.setBounds(bounds);
 
     // 切换到新创建的视图
     if (currentViewId && views[currentViewId]) {
@@ -593,8 +631,10 @@ async function createHistoryView() {
 
     const id = ++viewCounter;
     views[id] = view;
-    view.setBounds(getViewBounds());
-    view.setAutoResize({ width: true, height: true });
+
+    // 设置初始边界
+    const bounds = getViewBounds();
+    view.setBounds(bounds);
 
     // 切换到当前视图
     if (currentViewId && views[currentViewId]) {
@@ -626,12 +666,23 @@ ipcMain.handle('create-tab', (_, url) => createBrowserView(url));
 // 新增：创建历史记录标签页的 IPC handler
 ipcMain.handle('create-history-tab', () => createHistoryView());
 
+
 ipcMain.handle('switch-tab', (_, id) => {
-    if (views[id]) {
+    if (views[id] && !views[id].webContents.isDestroyed()) {
+        // 移除当前视图
         if (currentViewId && views[currentViewId]) {
             mainWindow.removeBrowserView(views[currentViewId]);
         }
+
+        // 设置新的当前视图
         currentViewId = id;
+
+        // 确保使用正确的边界
+        const bounds = getViewBounds();
+        views[id].setBounds(bounds);
+        console.log(`Switching to tab ${id} with bounds:`, bounds);
+
+        // 添加新视图
         mainWindow.addBrowserView(views[id]);
     }
 });
