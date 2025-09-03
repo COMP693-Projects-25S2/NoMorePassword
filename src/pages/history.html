@@ -137,6 +137,30 @@
             padding-right: 10px;
         }
 
+        /* Date separator styles */
+        .date-separator {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            margin: 20px 0 15px 0;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1.1em;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .date-separator.today {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+        }
+
+        .date-separator.yesterday {
+            background: linear-gradient(135deg, #FF9800 0%, #f57c00 100%);
+        }
+
         .history-item {
             border-left: 4px solid;
             background: white;
@@ -232,7 +256,6 @@
             font-size: 1.1em;
         }
 
-        /* 滚动条样式 */
         .history-list::-webkit-scrollbar {
             width: 8px;
         }
@@ -296,9 +319,7 @@
             </div>
 
             <div id="stats-container" style="display: none;">
-                <div class="stats-grid" id="stats">
-                    <!-- 统计卡片将通过 JavaScript 动态生成 -->
-                </div>
+                <div class="stats-grid" id="stats"></div>
 
                 <div class="history-section">
                     <h2>
@@ -306,25 +327,20 @@
                         Recent History
                         <span id="history-count" style="font-size: 0.8em; color: #666; font-weight: normal;"></span>
                     </h2>
-                    <div class="history-list" id="history-list">
-                        <!-- 历史记录将通过 JavaScript 动态生成 -->
-                    </div>
+                    <div class="history-list" id="history-list"></div>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        console.log('🚀 History page script loaded');
-
-        // 工具函数：HTML转义
+        // Utility functions
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         }
 
-        // 工具函数：格式化时间
         function formatTime(seconds) {
             if (seconds < 60) {
                 return `${seconds.toFixed(1)}s`;
@@ -335,9 +351,42 @@
             }
         }
 
-        // 生成统计卡片
+        // Format date for display
+        function formatDate(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diffTime = Math.abs(now - date);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            if (diffDays === 1) {
+                return 'Today';
+            } else if (diffDays === 2) {
+                return 'Yesterday';
+            } else if (diffDays <= 7) {
+                return date.toLocaleDateString('en-US', { weekday: 'long' });
+            } else {
+                return date.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+            }
+        }
+
+        // Get date class for styling
+        function getDateClass(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diffTime = Math.abs(now - date);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            if (diffDays === 1) return 'today';
+            if (diffDays === 2) return 'yesterday';
+            return '';
+        }
+
+        // Generate stats cards
         function generateStats(stats) {
-            console.log('📊 Generating stats with:', stats);
             return `
                 <div class="stat-card visits">
                     <div class="icon">🌐</div>
@@ -360,10 +409,8 @@
             `;
         }
 
-        // 生成历史记录列表
+        // Generate history list with date grouping
         function generateHistory(history) {
-            console.log('📝 Generating history with:', history.length, 'items');
-
             if (!history || history.length === 0) {
                 return `
                     <div class="no-history">
@@ -374,57 +421,82 @@
                 `;
             }
 
-            const historyItems = history.slice(-100).reverse().map((record, index) => {
-                const stayTime = record.stayDuration ? formatTime(record.stayDuration) : 'Active';
-                const time = new Date(record.timestamp).toLocaleString();
-                let domain = 'Unknown';
+            // Sort history by timestamp (newest first)
+            const sortedHistory = history.sort((a, b) => b.timestamp - a.timestamp);
 
-                try {
-                    domain = new URL(record.url).hostname;
-                } catch (e) {
-                    domain = record.url ? record.url.substring(0, 50) + '...' : 'Unknown';
+            // Group by date
+            const groupedHistory = {};
+            sortedHistory.forEach(record => {
+                const dateKey = new Date(record.timestamp).toDateString();
+                if (!groupedHistory[dateKey]) {
+                    groupedHistory[dateKey] = [];
                 }
-
-                const stayColor = record.stayDuration ?
-                    (record.stayDuration > 60 ? '#4CAF50' : record.stayDuration > 10 ? '#FF9800' : '#757575') :
-                    '#2196F3';
-
-                return `
-                    <div class="history-item" style="border-left-color: ${stayColor};" data-index="${index}">
-                        <div class="history-item-content">
-                            <div class="history-item-info">
-                                <div class="history-item-title">
-                                    ${escapeHtml(record.title || 'Untitled Page')}
-                                </div>
-                                <div class="history-item-domain">
-                                    <span>🌐</span>
-                                    <span>${escapeHtml(domain)}</span>
-                                </div>
-                                <div class="history-item-time">
-                                    <span>🕒</span>
-                                    <span>${time}</span>
-                                </div>
-                            </div>
-                            <div class="history-item-duration" style="background: ${stayColor};">
-                                <span>⏱</span>
-                                <span>${stayTime}</span>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
-            console.log('✅ Generated HTML for', history.length, 'items');
-            return historyItems;
-        }
-
-        // 更新页面内容
-        function updateContent(historyData, statsData) {
-            console.log('🔄 updateContent called with:', {
-                historyCount: historyData ? historyData.length : 'undefined',
-                statsData: statsData
+                groupedHistory[dateKey].push(record);
             });
 
+            // Generate HTML for each date group
+            let historyHTML = '';
+            Object.entries(groupedHistory).forEach(([dateKey, records]) => {
+                const firstRecord = records[0];
+                const dateClass = getDateClass(firstRecord.timestamp);
+
+                // Add date separator
+                historyHTML += `
+                    <div class="date-separator ${dateClass}">
+                        📅 ${formatDate(firstRecord.timestamp)}
+                    </div>
+                `;
+
+                // Add records for this date
+                records.forEach((record, index) => {
+                    const stayTime = record.stayDuration ? formatTime(record.stayDuration) : 'Active';
+                    const time = new Date(record.timestamp).toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                    let domain = 'Unknown';
+
+                    try {
+                        domain = new URL(record.url).hostname;
+                    } catch (e) {
+                        domain = record.url ? record.url.substring(0, 50) + '...' : 'Unknown';
+                    }
+
+                    const stayColor = record.stayDuration ?
+                        (record.stayDuration > 60 ? '#4CAF50' : record.stayDuration > 10 ? '#FF9800' : '#757575') :
+                        '#2196F3';
+
+                    historyHTML += `
+                        <div class="history-item" style="border-left-color: ${stayColor};" data-index="${index}">
+                            <div class="history-item-content">
+                                <div class="history-item-info">
+                                    <div class="history-item-title">
+                                        ${escapeHtml(record.title || 'Untitled Page')}
+                                    </div>
+                                    <div class="history-item-domain">
+                                        <span>🌐</span>
+                                        <span>${escapeHtml(domain)}</span>
+                                    </div>
+                                    <div class="history-item-time">
+                                        <span>🕒</span>
+                                        <span>${time}</span>
+                                    </div>
+                                </div>
+                                <div class="history-item-duration" style="background: ${stayColor};">
+                                    <span>⏱</span>
+                                    <span>${stayTime}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+            });
+
+            return historyHTML;
+        }
+
+        // Update page content
+        function updateContent(historyData, statsData) {
             try {
                 const loadingEl = document.getElementById('loading');
                 const statsContainer = document.getElementById('stats-container');
@@ -432,102 +504,50 @@
                 const historyListEl = document.getElementById('history-list');
                 const historyCountEl = document.getElementById('history-count');
 
-                console.log('🔍 DOM elements found:', {
-                    loading: !!loadingEl,
-                    statsContainer: !!statsContainer,
-                    stats: !!statsEl,
-                    historyList: !!historyListEl,
-                    historyCount: !!historyCountEl
-                });
-
                 if (!loadingEl || !statsContainer || !statsEl || !historyListEl || !historyCountEl) {
-                    console.error('❌ Required DOM elements not found');
                     return false;
                 }
 
-                // 隐藏加载动画
                 loadingEl.style.display = 'none';
                 statsContainer.style.display = 'block';
 
-                // 更新统计信息
                 const statsHTML = generateStats(statsData || {});
                 statsEl.innerHTML = statsHTML;
-                console.log('📊 Stats HTML updated');
 
-                // 更新历史记录
                 const historyHTML = generateHistory(historyData || []);
                 historyListEl.innerHTML = historyHTML;
-                console.log('📝 History HTML updated');
 
-                // 更新计数
-                const count = historyData ? Math.min(100, historyData.length) : 0;
-                historyCountEl.textContent = `(Last ${count} visits)`;
-                console.log('🔢 Count updated:', count);
+                const count = historyData ? historyData.length : 0;
+                historyCountEl.textContent = `(Total ${count} visits)`;
 
-                console.log('✅ History page updated successfully');
                 return true;
             } catch (error) {
-                console.error('❌ Error updating content:', error);
+                console.error('Error updating content:', error);
                 return false;
             }
         }
 
-        // 强制显示测试数据（调试用）
-        function showTestData() {
-            console.log('🧪 Showing test data');
-            const testStats = {
-                totalVisits: 10,
-                totalTime: 3600,
-                averageStayTime: 360,
-                topPages: {}
-            };
-            const testHistory = [{
-                title: 'Test Page',
-                url: 'https://example.com',
-                timestamp: new Date().toISOString(),
-                stayDuration: 120
-            }];
-            updateContent(testHistory, testStats);
-        }
-
-        // 页面初始化函数
+        // Page initialization
         async function initializePage() {
-            console.log('🎯 Initializing history page...');
-
             try {
-                // 检查 API 是否可用
                 if (typeof window.electronAPI === 'undefined') {
-                    console.error('❌ electronAPI not available');
-                    showTestData();
                     return;
                 }
 
-                console.log('📊 Fetching history data...');
                 const data = await window.electronAPI.getHistoryData();
-
-                console.log('✅ Received data:', {
-                    statsData: data.stats,
-                    historyCount: data.history.length
-                });
-
                 updateContent(data.history, data.stats);
 
             } catch (error) {
-                console.error('❌ Error fetching history data:', error);
-                showTestData(); // 回退到测试数据
+                console.error('Error fetching history data:', error);
             }
         }
 
-        // DOM 准备就绪时初始化
+        // Initialize when DOM is ready
         if (document.readyState === 'loading') {
-            console.log('📄 DOM still loading, waiting...');
             document.addEventListener('DOMContentLoaded', initializePage);
         } else {
-            console.log('📄 DOM already ready, initializing immediately');
             initializePage();
         }
-
-        console.log('🎬 History page script initialization complete');
     </script>
 </body>
 

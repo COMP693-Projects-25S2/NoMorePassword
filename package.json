@@ -1,18 +1,33 @@
 {
-  "name": "electron_test",
+  "name": "your-electron-app",
   "version": "1.0.0",
-  "description": "",
-  "license": "ISC",
-  "author": "Zhiqi Tao",
-  "type": "commonjs",
-  "main": "main.js",
+  "description": "Electron browser with visit tracking",
+  "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "dist": "npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "tree": "tree src /f /a > tree.txt"
   },
   "devDependencies": {
-    "electron": "^37.2.5",
-    "electron-reload": "^2.0.0-alpha.1",
-    "electronmon": "^2.0.3"
+    "electron": "^37.3.1",
+    "electron-builder": "latest",
+    "electron-rebuild": "^3.2.9",
+    "electron-reload": "^2.0.0-alpha.1"
+  },
+  "keywords": [
+    "electron",
+    "browser",
+    "history",
+    "tracking"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "sqlite3": "^5.1.7",
+    "uuid": "^10.0.0"
   }
 }

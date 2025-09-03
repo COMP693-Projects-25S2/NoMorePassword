@@ -5,6 +5,8 @@ let pendingTitles = {};
 const tabsContainer = document.getElementById('tabs');
 const addressBar = document.getElementById('address');
 
+
+
 function createTab(url = 'https://www.google.com') {
     window.electronAPI.createTab(url).then(({ id, title }) => {
         const tabEl = document.createElement('div');
@@ -141,6 +143,12 @@ async function showVisitHistory() {
     }
 }
 
+
+
+
+
+
+
 window.addEventListener('DOMContentLoaded', () => {
     // 绑定按钮事件
     document.getElementById('new-tab').onclick = () => createTab();
@@ -166,10 +174,8 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // IPC 事件监听
-    const { ipcRenderer } = require('electron');
-
-    ipcRenderer.on('tab-title-updated', (_, { id, title }) => {
+    // IPC 事件监听 - 使用预加载脚本暴露的API
+    window.electronAPI.onTabTitleUpdated((_, { id, title }) => {
         if (tabs[id]) {
             tabs[id].title = title;
             if (tabs[id].titleNode) {
@@ -184,9 +190,48 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    ipcRenderer.on('init-tab', () => {
+    // 监听自动创建的标签页
+    window.electronAPI.onAutoTabCreated((_, { id, title, url }) => {
+        console.log('检测到自动创建的标签页:', { id, title, url });
+
+        // 创建标签页元素
+        const tabEl = document.createElement('div');
+        tabEl.className = 'tab';
+        tabEl.dataset.id = id;
+
+        const titleNode = document.createElement('span');
+        titleNode.className = 'title';
+        titleNode.textContent = title;
+
+        const closeBtn = document.createElement('span');
+        closeBtn.className = 'close';
+        closeBtn.textContent = '×';
+        closeBtn.onclick = (e) => {
+            e.stopPropagation();
+            closeTab(id);
+        };
+
+        tabEl.appendChild(titleNode);
+        tabEl.appendChild(closeBtn);
+        tabsContainer.appendChild(tabEl);
+
+        tabEl.onclick = () => switchTab(id);
+
+        tabs[id] = { el: tabEl, title, titleNode, closeBtn };
+
+        // 激活新标签页
+        currentTabId = id;
+        activateTab(id);
+        updateAddressFromTab(id);
+
+        console.log('✅ 自动创建的标签页已添加到界面');
+    });
+
+    window.electronAPI.onInitTab(() => {
         createTab();
     });
+
+
 });
 
 // 启动时创建第一个标签页

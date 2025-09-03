@@ -1,0 +1,318 @@
+// /src/main/sqlite/historyDatabase.js
+const db = require('./database');
+
+class HistoryDatabase {
+    constructor() {
+        this.initTables();
+    }
+
+    // Initialize browsing history related tables
+    initTables() {
+        // Create browsing history table
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS visit_history (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                url         TEXT NOT NULL,
+                title       TEXT DEFAULT 'Loading...',
+                timestamp   TEXT NOT NULL,
+                enter_time  INTEGER NOT NULL,
+                stay_duration REAL,
+                view_id     INTEGER,
+                domain      TEXT,
+                created_at  INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+                updated_at  INTEGER DEFAULT (strftime('%s', 'now') * 1000)
+            )
+        `);
+
+        // Create active records table (for tracking incomplete visits)
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS active_records (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                visit_id    INTEGER NOT NULL,
+                url         TEXT NOT NULL,
+                enter_time  INTEGER NOT NULL,
+                view_id     INTEGER,
+                created_at  INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+                FOREIGN KEY(visit_id) REFERENCES visit_history(id) ON DELETE CASCADE
+            )
+        `);
+
+        // Create shutdown logs table
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS shutdown_logs (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp       TEXT NOT NULL,
+                timestamp_ms    INTEGER NOT NULL,
+                reason          TEXT DEFAULT 'normal',
+                platform        TEXT,
+                version         TEXT,
+                last_visited_url TEXT,
+                session_duration INTEGER DEFAULT 0,
+                created_at      INTEGER DEFAULT (strftime('%s', 'now') * 1000)
+            )
+        `);
+
+        // Create indexes to optimize query performance
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_visit_history_url ON visit_history(url)`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_visit_history_timestamp ON visit_history(timestamp)`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_visit_history_view_id ON visit_history(view_id)`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_active_records_view_id ON active_records(view_id)`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_shutdown_logs_timestamp ON shutdown_logs(timestamp_ms)`);
+    }
+
+    // ===================== Visit History Operations =====================
+
+    // Add visit record
+    addVisitRecord(url, title, timestamp, enterTime, viewId, domain) {
+        const stmt = db.prepare(`
+            INSERT INTO visit_history (url, title, timestamp, enter_time, view_id, domain, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        const info = stmt.run(url, title, timestamp, enterTime, viewId, domain, Date.now());
+        return info.lastInsertRowid;
+    }
+
+    // Update record title
+    updateRecordTitle(visitId, title) {
+        const stmt = db.prepare(`
+            UPDATE visit_history 
+            SET title = ?, updated_at = ?
+            WHERE id = ?
+        `);
+        return stmt.run(title, Date.now(), visitId);
+    }
+
+    // Update record stay duration
+    updateRecordDuration(visitId, stayDuration) {
+        const stmt = db.prepare(`
+            UPDATE visit_history 
+            SET stay_duration = ?, updated_at = ?
+            WHERE id = ?
+        `);
+        return stmt.run(stayDuration, Date.now(), visitId);
+    }
+
+    // Get visit history (with pagination)
+    getVisitHistory(limit = null, offset = 0) {
+        let query = `SELECT * FROM visit_history ORDER BY enter_time DESC`;
+        if (limit) {
+            query += ` LIMIT ? OFFSET ?`;
+            return db.prepare(query).all(limit, offset);
+        }
+        return db.prepare(query).all();
+    }
+
+    // Get total visit history count
+    getVisitHistoryCount() {
+        return db.prepare(`SELECT COUNT(*) as count FROM visit_history`).get().count;
+    }
+
+    // Find recent visit record by URL
+    getRecentVisitByUrl(url, timeThreshold) {
+        const stmt = db.prepare(`
+            SELECT * FROM visit_history 
+            WHERE url = ? AND enter_time > ? AND stay_duration IS NULL
+            ORDER BY enter_time DESC 
+            LIMIT 1
+        `);
+        return stmt.get(url, timeThreshold);
+    }
+
+    // Update record timestamp (for merging visits)
+    updateRecordTimestamp(visitId, timestamp) {
+        const stmt = db.prepare(`
+            UPDATE visit_history 
+            SET timestamp = ?, updated_at = ?
+            WHERE id = ?
+        `);
+        return stmt.run(timestamp, Date.now(), visitId);
+    }
+
+    // ===================== Active Records Operations =====================
+
+    // Add active record
+    addActiveRecord(visitId, url, enterTime, viewId) {
+        const stmt = db.prepare(`
+            INSERT INTO active_records (visit_id, url, enter_time, view_id)
+            VALUES (?, ?, ?, ?)
+        `);
+        const info = stmt.run(visitId, url, enterTime, viewId);
+        return info.lastInsertRowid;
+    }
+
+    // Get all active records
+    getActiveRecords() {
+        return db.prepare(`
+            SELECT ar.*, vh.url, vh.title 
+            FROM active_records ar 
+            JOIN visit_history vh ON ar.visit_id = vh.id 
+            ORDER BY ar.enter_time ASC
+        `).all();
+    }
+
+    // Get active records by view_id
+    getActiveRecordsByViewId(viewId) {
+        return db.prepare(`
+            SELECT ar.*, vh.url, vh.title 
+            FROM active_records ar 
+            JOIN visit_history vh ON ar.visit_id = vh.id 
+            WHERE ar.view_id = ?
+        `).all(viewId);
+    }
+
+    // Delete active record
+    deleteActiveRecord(activeRecordId) {
+        return db.prepare(`DELETE FROM active_records WHERE id = ?`).run(activeRecordId);
+    }
+
+    // Delete active record by visit_id
+    deleteActiveRecordByVisitId(visitId) {
+        return db.prepare(`DELETE FROM active_records WHERE visit_id = ?`).run(visitId);
+    }
+
+    // Delete active records by view_id
+    deleteActiveRecordsByViewId(viewId) {
+        return db.prepare(`DELETE FROM active_records WHERE view_id = ?`).run(viewId);
+    }
+
+    // Get oldest active record
+    getOldestActiveRecord() {
+        return db.prepare(`
+            SELECT ar.*, vh.url, vh.title 
+            FROM active_records ar 
+            JOIN visit_history vh ON ar.visit_id = vh.id 
+            ORDER BY ar.enter_time ASC 
+            LIMIT 1
+        `).get();
+    }
+
+    // Clear all active records
+    clearActiveRecords() {
+        return db.prepare(`DELETE FROM active_records`).run();
+    }
+
+    // ===================== Statistics =====================
+
+    // Get visit statistics
+    getVisitStats() {
+        // Total visit count
+        const totalVisits = db.prepare(`SELECT COUNT(*) as count FROM visit_history`).get().count;
+
+        // Total time (only calculate valid stay duration)
+        const totalTimeResult = db.prepare(`
+            SELECT COALESCE(SUM(stay_duration), 0) as total_time 
+            FROM visit_history 
+            WHERE stay_duration IS NOT NULL AND stay_duration > 0
+        `).get();
+
+        // Average stay time
+        const avgTimeResult = db.prepare(`
+            SELECT COALESCE(AVG(stay_duration), 0) as avg_time 
+            FROM visit_history 
+            WHERE stay_duration IS NOT NULL AND stay_duration > 0
+        `).get();
+
+        // Popular pages (by domain statistics)
+        const topPages = db.prepare(`
+            SELECT domain, COUNT(*) as count 
+            FROM visit_history 
+            WHERE domain IS NOT NULL 
+            GROUP BY domain 
+            ORDER BY count DESC 
+            LIMIT 10
+        `).all();
+
+        // Active records count
+        const activeRecords = db.prepare(`SELECT COUNT(*) as count FROM active_records`).get().count;
+
+        return {
+            totalVisits,
+            totalTime: totalTimeResult.total_time,
+            averageStayTime: avgTimeResult.avg_time,
+            topPages: topPages.reduce((acc, item) => {
+                acc[item.domain] = item.count;
+                return acc;
+            }, {}),
+            activeRecords
+        };
+    }
+
+    // ===================== Shutdown Logs Operations =====================
+
+    // Add shutdown log
+    addShutdownLog(timestamp, timestampMs, reason, platform, version, lastVisitedUrl, sessionDuration) {
+        const stmt = db.prepare(`
+            INSERT INTO shutdown_logs (timestamp, timestamp_ms, reason, platform, version, last_visited_url, session_duration)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        return stmt.run(timestamp, timestampMs, reason, platform, version, lastVisitedUrl, sessionDuration);
+    }
+
+    // Get shutdown history
+    getShutdownHistory(limit = 50) {
+        return db.prepare(`
+            SELECT * FROM shutdown_logs 
+            ORDER BY timestamp_ms DESC 
+            LIMIT ?
+        `).all(limit);
+    }
+
+    // Clean up old shutdown logs (keep recent N records)
+    cleanupShutdownLogs(keepCount = 50) {
+        const stmt = db.prepare(`
+            DELETE FROM shutdown_logs 
+            WHERE id NOT IN (
+                SELECT id FROM shutdown_logs 
+                ORDER BY timestamp_ms DESC 
+                LIMIT ?
+            )
+        `);
+        return stmt.run(keepCount);
+    }
+
+    // ===================== Data Cleanup and Maintenance =====================
+
+    // Clean up old data (keep recent N days of data)
+    cleanupOldData(daysToKeep = 30) {
+        const cutoffTime = Date.now() - (daysToKeep * 24 * 60 * 60 * 1000);
+
+        // Clean up old visit history
+        const cleanupVisits = db.prepare(`
+            DELETE FROM visit_history 
+            WHERE enter_time < ?
+        `).run(cutoffTime);
+
+        // Clean up old shutdown logs
+        this.cleanupShutdownLogs();
+
+        return cleanupVisits;
+    }
+
+    // Get database statistics
+    getDatabaseStats() {
+        const stats = {};
+        stats.visitHistory = db.prepare(`SELECT COUNT(*) as count FROM visit_history`).get().count;
+        stats.activeRecords = db.prepare(`SELECT COUNT(*) as count FROM active_records`).get().count;
+        stats.shutdownLogs = db.prepare(`SELECT COUNT(*) as count FROM shutdown_logs`).get().count;
+
+        // Database file size and other information can be obtained through other methods
+        return stats;
+    }
+
+    // Begin transaction
+    beginTransaction() {
+        return db.prepare('BEGIN TRANSACTION').run();
+    }
+
+    // Commit transaction
+    commitTransaction() {
+        return db.prepare('COMMIT').run();
+    }
+
+    // Rollback transaction
+    rollbackTransaction() {
+        return db.prepare('ROLLBACK').run();
+    }
+}
+
+module.exports = HistoryDatabase;

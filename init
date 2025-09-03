@@ -4,3 +4,7 @@
 //或者 npm install electron-reload --save-dev 这个需要require包
 
 //ctrl + shift + i = f12 打开浏览器控制台
+
+//npm install better-sqlite3 安装sqlite3
+//npm install --save-dev electron-rebuild
+//npx electron-rebuild
