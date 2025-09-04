@@ -1,0 +1,520 @@
+/* 确保 body 和 html 的布局不会影响 BrowserView */
+html,
+body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #f5f5f5;
+    position: relative;
+    /* 添加相对定位 */
+}
+
+#toolbar {
+    display: flex;
+    padding: 8px;
+    background: linear-gradient(to bottom, #fafafa, #eaeaea);
+    align-items: center;
+    flex-shrink: 0;
+    height: 50px;
+    border-bottom: 1px solid #c0c0c0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    position: relative;
+    /* 确保工具栏在正确的层级 */
+    z-index: 1000;
+    /* 高 z-index 确保不被覆盖 */
+}
+
+#tabs {
+    display: flex;
+    background: linear-gradient(to bottom, #e8e8e8, #d8d8d8);
+    padding: 4px 4px 0 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-shrink: 0;
+    height: 36px;
+    border-bottom: 1px solid #c0c0c0;
+    position: relative;
+    /* 确保标签页在正确的层级 */
+    z-index: 999;
+    /* 高 z-index 确保不被覆盖 */
+}
+
+/* 确保所有元素使用border-box */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+
+
+#toolbar button {
+    margin-right: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    border: 1px solid #999;
+    background: linear-gradient(to bottom, #fefefe, #f0f0f0);
+    cursor: pointer;
+    border-radius: 4px;
+    flex-shrink: 0;
+    transition: background 0.1s ease;
+}
+
+#toolbar button:hover {
+    background: linear-gradient(to bottom, #f0f0f0, #e0e0e0);
+}
+
+#toolbar button:active {
+    background: linear-gradient(to bottom, #e0e0e0, #d0d0d0);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+#address {
+    flex: 1;
+    padding: 8px 12px;
+    font-size: 13px;
+    border: 1px solid #999;
+    border-radius: 4px;
+    margin-left: 6px;
+    background: white;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+#address:focus {
+    border-color: #007acc;
+    box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+}
+
+
+.debug-entry {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    padding: 12px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.log-entry {
+    margin-bottom: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.log-entry:last-child {
+    border-bottom: none;
+}
+
+.timestamp {
+    color: #6c757d;
+    font-weight: 500;
+    margin-right: 8px;
+}
+
+/* 滚动条样式 */
+#debug-log::-webkit-scrollbar {
+    width: 8px;
+}
+
+#debug-log::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+#debug-log::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+#debug-log::-webkit-scrollbar-thumb:hover {
+    background: #a1a1a1;
+}
+
+.tab {
+    padding: 6px 24px 6px 12px;
+    background: linear-gradient(to bottom, #c8c8c8, #b8b8b8);
+    margin-right: 2px;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+    white-space: nowrap;
+    min-width: 120px;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    font-size: 12px;
+    color: #333;
+    flex-shrink: 0;
+    border: 1px solid #999;
+    border-bottom: none;
+    transition: background 0.1s ease;
+}
+
+.tab:hover {
+    background: linear-gradient(to bottom, #d0d0d0, #c0c0c0);
+}
+
+.tab.active {
+    background: linear-gradient(to bottom, #ffffff, #f8f8f8);
+    color: #000;
+    border-color: #c0c0c0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    z-index: 1;
+}
+
+/* 历史标签页特殊样式 */
+.tab.history-tab {
+    background: linear-gradient(to bottom, #667eea, #764ba2);
+    color: white;
+    border-color: #667eea;
+}
+
+.tab.history-tab:hover {
+    background: linear-gradient(to bottom, #5a6fd8, #6a4190);
+}
+
+.tab.history-tab.active {
+    background: linear-gradient(to bottom, #667eea, #764ba2);
+    color: white;
+    border-color: #5a6fd8;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.tab.history-tab .title {
+    color: white;
+}
+
+.tab.history-tab .close {
+    color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+}
+
+.tab.history-tab .close:hover {
+    color: white;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-50%) scale(1.1);
+}
+
+
+
+.tab .title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 8px;
+    font-size: 12px;
+    color: inherit;
+}
+
+.tab .close {
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    transform: translateY(-50%);
+    color: #666;
+    font-weight: bold;
+    cursor: pointer;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 12px;
+    line-height: 1;
+    transition: all 0.1s ease;
+}
+
+.tab .close:hover {
+    background: #ff4444;
+    color: white;
+    transform: translateY(-50%) scale(1.1);
+}
+
+/* 关键：webviews容器的CSS */
+#webviews {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+    background: white;
+    /* 确保容器能够正确计算尺寸 */
+    min-height: 0;
+    min-width: 0;
+
+    /* border: 1px solid red; */
+}
+
+/* 关键：webview元素的CSS */
+#webviews webview {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    border: none !important;
+    outline: none !important;
+    display: none;
+    background: white;
+    /* 确保webview在按钮和下拉框之下 */
+    z-index: 1 !important;
+
+    /* Electron 37+ 特定的webview样式 */
+    image-rendering: auto;
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
+
+    /* 确保webview内容正确渲染 */
+    contain: layout style paint;
+}
+
+#webviews webview.active {
+    display: block !important;
+    z-index: 1 !important;
+    /* 确保webview不会遮挡弹框和按钮 */
+    position: absolute !important;
+}
+
+/* 加载状态样式 */
+.loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #666;
+    font-size: 14px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* 滚动条样式 */
+#tabs::-webkit-scrollbar {
+    height: 6px;
+}
+
+#tabs::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+#tabs::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+#tabs::-webkit-scrollbar-thumb:hover {
+    background: #a1a1a1;
+}
+
+/* Config dropdown styles */
+.config-dropdown {
+    position: static;
+    display: inline-block;
+    margin-right: 6px;
+}
+
+.config-dropdown button {
+    margin-right: 0;
+}
+
+.dropdown-content {
+    display: none;
+    position: fixed !important;
+    background-color: #f9f9f9;
+    min-width: 160px;
+    box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.2);
+    z-index: 2147483647 !important;
+    border-radius: 6px;
+    border: 2px solid #ff0000;
+    overflow: visible !important;
+    /* Ensure dropdown is above everything */
+    pointer-events: auto !important;
+    transform: translateZ(0) !important;
+    /* Force highest stacking context */
+    isolation: isolate !important;
+    /* Ensure dropdown is fully visible */
+    max-width: none !important;
+    max-height: none !important;
+    /* Force visibility */
+    visibility: visible !important;
+    opacity: 1 !important;
+    /* Force position to be above all content */
+    top: 100px !important;
+    left: 100px !important;
+    /* 强制在最顶层 */
+    position: fixed !important;
+    z-index: 2147483647 !important;
+    /* 确保在所有元素之上 */
+    transform: translateZ(2147483647px) !important;
+}
+
+.dropdown-content.show {
+    display: block !important;
+    /* Debug: add border to see the dropdown */
+    border: 3px solid #00ff00 !important;
+    /* Ensure visibility */
+    opacity: 1 !important;
+    visibility: visible !important;
+    /* Force display */
+    position: fixed !important;
+    z-index: 2147483647 !important;
+    /* Force position to be above all content */
+    top: 100px !important;
+    left: 100px !important;
+    /* Ensure it's above everything */
+    background-color: #ffff00 !important;
+}
+
+.dropdown-item {
+    color: #333;
+    padding: 12px 16px;
+    text-decoration: none;
+    display: block;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background-color 0.2s ease;
+    border-bottom: 1px solid #eee;
+}
+
+.dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.dropdown-item:hover {
+    background-color: #007acc;
+    color: white;
+}
+
+.dropdown-item:active {
+    background-color: #005a9e;
+}
+
+/* 调试：验证z-index层级 */
+#toolbar {
+    border: 3px solid #00ff00 !important;
+}
+
+#tabs {
+    border: 3px solid #0000ff !important;
+}
+
+#webviews {
+    border: 3px solid #ff00ff !important;
+}
+
+/* 确保配置和测试按钮可见 */
+#config-btn,
+#test-dropdown,
+#simple-test,
+#inline-test {
+    position: relative !important;
+    z-index: 10000 !important;
+    background: linear-gradient(to bottom, #ff6b6b, #ee5a52) !important;
+    color: white !important;
+    border: 2px solid #ff4444 !important;
+    box-shadow: 0 2px 8px rgba(255, 68, 68, 0.3) !important;
+}
+
+#config-btn:hover,
+#test-dropdown:hover,
+#simple-test:hover,
+#inline-test:hover {
+    background: linear-gradient(to bottom, #ff5252, #d32f2f) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(255, 68, 68, 0.4) !important;
+}
+
+#simple-test {
+    background: linear-gradient(to bottom, #4caf50, #388e3c) !important;
+    border-color: #4caf50 !important;
+    box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3) !important;
+}
+
+#simple-test:hover {
+    background: linear-gradient(to bottom, #388e3c, #2e7d32) !important;
+    box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4) !important;
+}
+
+#inline-test {
+    background: linear-gradient(to bottom, #2196f3, #1976d2) !important;
+    border-color: #2196f3 !important;
+    box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3) !important;
+}
+
+#inline-test:hover {
+    background: linear-gradient(to bottom, #1976d2, #1565c0) !important;
+    box-shadow: 0 4px 12px rgba(33, 150, 243, 0.4) !important;
+}
+
+/* 完全独立的测试下拉框样式 */
+.test-dropdown-content {
+    display: none;
+    position: fixed !important;
+    background-color: #ff00ff !important;
+    min-width: 200px;
+    box-shadow: 0px 8px 16px 0px rgba(255, 0, 255, 0.5);
+    z-index: 2147483647 !important;
+    border-radius: 8px;
+    border: 4px solid #00ffff !important;
+    overflow: visible !important;
+    /* 强制在最顶层 */
+    top: 300px !important;
+    left: 300px !important;
+    /* 确保在所有元素之上 */
+    transform: translateZ(2147483647px) !important;
+    /* 强制可见性 */
+    visibility: visible !important;
+    opacity: 1 !important;
+    /* 添加动画效果 */
+    animation: pulse 2s infinite;
+}
+
+.test-dropdown-content.show {
+    display: block !important;
+}
+
+.test-dropdown-item {
+    color: white;
+    padding: 15px 20px;
+    text-decoration: none;
+    display: block;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    transition: background-color 0.2s ease;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.test-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.test-dropdown-item:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0px 8px 16px 0px rgba(255, 0, 255, 0.5);
+    }
+
+    50% {
+        box-shadow: 0px 8px 16px 0px rgba(255, 0, 255, 0.8);
+    }
+
+    100% {
+        box-shadow: 0px 8px 16px 0px rgba(255, 0, 255, 0.5);
+    }
+}

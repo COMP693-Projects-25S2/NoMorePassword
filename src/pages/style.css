@@ -11,7 +11,8 @@ body {
     overflow: hidden;
     background: #f5f5f5;
     position: relative;
-    /* 添加相对定位 */
+    /* 确保层级控制 */
+    isolation: isolate;
 }
 
 #toolbar {
@@ -24,9 +25,7 @@ body {
     border-bottom: 1px solid #c0c0c0;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     position: relative;
-    /* 确保工具栏在正确的层级 */
     z-index: 1000;
-    /* 高 z-index 确保不被覆盖 */
 }
 
 #tabs {
@@ -39,9 +38,7 @@ body {
     height: 36px;
     border-bottom: 1px solid #c0c0c0;
     position: relative;
-    /* 确保标签页在正确的层级 */
-    z-index: 999;
-    /* 高 z-index 确保不被覆盖 */
+    z-index: 1;
 }
 
 /* 确保所有元素使用border-box */
@@ -50,8 +47,6 @@ body {
 *::after {
     box-sizing: border-box;
 }
-
-
 
 #toolbar button {
     margin-right: 6px;
@@ -91,53 +86,23 @@ body {
     box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
 }
 
-
-background: #f8f9fa;
-border: 1px solid #e9ecef;
-border-radius: 4px;
-padding: 12px;
-font-family: 'Monaco',
-'Menlo',
-'Ubuntu Mono',
-monospace;
-font-size: 12px;
-line-height: 1.4;
+/* 配置下拉框样式 */
+.config-dropdown {
+    position: relative;
+    display: inline-block;
+    margin-right: 6px;
 }
 
-.log-entry {
-    margin-bottom: 8px;
-    padding: 4px 0;
-    border-bottom: 1px solid #e9ecef;
+.config-dropdown button {
+    margin-right: 0;
 }
 
-.log-entry:last-child {
-    border-bottom: none;
-}
 
-.timestamp {
-    color: #6c757d;
-    font-weight: 500;
-    margin-right: 8px;
-}
 
-/* 滚动条样式 */
-#debug-log::-webkit-scrollbar {
-    width: 8px;
-}
 
-#debug-log::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 4px;
-}
 
-#debug-log::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
-    border-radius: 4px;
-}
 
-#debug-log::-webkit-scrollbar-thumb:hover {
-    background: #a1a1a1;
-}
+
 
 .tab {
     padding: 6px 24px 6px 12px;
@@ -258,7 +223,7 @@ line-height: 1.4;
     min-height: 0;
     min-width: 0;
 
-    /* border: 1px solid red; */
+
 }
 
 /* 关键：webview元素的CSS */
@@ -272,6 +237,8 @@ line-height: 1.4;
     outline: none !important;
     display: none;
     background: white;
+    /* 确保webview在按钮和下拉框之下 */
+    z-index: 1 !important;
 
     /* Electron 37+ 特定的webview样式 */
     image-rendering: auto;
@@ -280,12 +247,13 @@ line-height: 1.4;
 
     /* 确保webview内容正确渲染 */
     contain: layout style paint;
-
 }
 
 #webviews webview.active {
     display: block !important;
-    z-index: 1;
+    z-index: 1 !important;
+    /* 确保webview不会遮挡弹框和按钮 */
+    position: absolute !important;
 }
 
 /* 加载状态样式 */

@@ -78,7 +78,8 @@ db.exec(`
         domain_id   VARCHAR(50),
         cluster_id  VARCHAR(50),
         channel_id  VARCHAR(50),
-        ip_address  VARCHAR(20)
+        ip_address  VARCHAR(20),
+        is_current  INTEGER DEFAULT 0
     )
 `);
 
@@ -95,6 +96,15 @@ db.exec(`
         duration    INTEGER
     )
 `);
+
+// Add is_current column to existing local_users table if it doesn't exist
+try {
+    db.exec(`ALTER TABLE local_users ADD COLUMN is_current INTEGER DEFAULT 0`);
+    console.log('Added is_current column to local_users table');
+} catch (error) {
+    // Column might already exist, which is fine
+    console.log('is_current column already exists or table is new');
+}
 
 // Set database performance optimization options
 db.pragma('journal_mode = WAL');

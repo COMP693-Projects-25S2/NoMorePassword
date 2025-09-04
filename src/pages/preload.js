@@ -28,12 +28,22 @@ contextBridge.exposeInMainWorld(
     hideBrowserView: () => ipcRenderer.invoke('hide-browser-view'),
     showBrowserView: () => ipcRenderer.invoke('show-browser-view'),
 
+    // Config actions
+    clearLocalUsers: () => ipcRenderer.invoke('clear-local-users'),
+    exitApp: () => ipcRenderer.invoke('exit-app'),
+    openConfigModal: () => ipcRenderer.invoke('open-config-modal'),
+    openUserSelector: () => ipcRenderer.invoke('open-user-selector'),
+    switchUser: (userId) => ipcRenderer.invoke('switch-user', userId),
+    openUserRegistration: () => ipcRenderer.invoke('open-user-registration'),
+
 
 
     // Event listeners
     onTabTitleUpdated: (callback) => ipcRenderer.on('tab-title-updated', callback),
     onAutoTabCreated: (callback) => ipcRenderer.on('auto-tab-created', callback),
     onInitTab: (callback) => ipcRenderer.on('init-tab', callback),
+    onShowNotification: (callback) => ipcRenderer.on('show-notification', callback),
+
 
     // Cleanup listeners
     removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)

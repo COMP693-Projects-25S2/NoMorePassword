@@ -79,17 +79,32 @@ function createHistoryTab() {
     });
 }
 
-function switchTab(id) {
-    window.electronAPI.switchTab(id);
-    activateTab(id);
-    currentTabId = id;
+// Switch to a specific tab
+function switchToTab(tabId) {
+    if (currentTabId === tabId) return;
 
-    // 如果是历史标签页，显示特殊地址
-    if (tabs[id] && tabs[id].isHistory) {
-        addressBar.value = 'browser://history';
-    } else {
-        updateAddressFromTab(id);
+    // Hide current webview
+    if (currentTabId && tabs[currentTabId] && tabs[currentTabId].webview) {
+        tabs[currentTabId].webview.style.display = 'none';
     }
+
+    // Show new webview
+    if (tabs[tabId] && tabs[tabId].webview) {
+        tabs[tabId].webview.style.display = 'block';
+        tabs[tabId].webview.classList.add('active');
+    }
+
+    // Update tab states
+    if (currentTabId && tabs[currentTabId]) {
+        tabs[currentTabId].el.classList.remove('active');
+    }
+    if (tabs[tabId]) {
+        tabs[tabId].el.classList.add('active');
+    }
+
+    currentTabId = tabId;
+    updateAddressFromTab(tabId);
+    console.log(`✅ Switched to tab ${tabId}`);
 }
 
 function activateTab(id) {
@@ -149,7 +164,10 @@ async function showVisitHistory() {
 
 
 
-window.addEventListener('DOMContentLoaded', () => {
+// Setup all event listeners and initialization
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('Setting up all event listeners and initialization...');
+
     // 绑定按钮事件
     document.getElementById('new-tab').onclick = () => createTab();
     document.getElementById('back').onclick = () => window.electronAPI.goBack();
@@ -158,6 +176,27 @@ window.addEventListener('DOMContentLoaded', () => {
 
     // 历史按钮事件 - 现在创建新标签页
     document.getElementById('history').onclick = showVisitHistory;
+
+    // 配置弹框功能 - 独立窗口
+    const configBtn = document.getElementById('config-btn');
+
+    // 显示配置弹框
+    configBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try {
+            const result = await window.electronAPI.openConfigModal();
+            if (!result.success) {
+                console.error('Failed to open config modal:', result.error);
+            }
+        } catch (error) {
+            console.error('Error opening config modal:', error);
+        }
+    });
+
+
+
+
+
 
     addressBar.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
@@ -188,6 +227,15 @@ window.addEventListener('DOMContentLoaded', () => {
         if (id === currentTabId) {
             document.title = title;
         }
+    });
+
+
+
+    // Init tab event listener - create initial tab when main process is ready
+    window.electronAPI.onInitTab(() => {
+        console.log('Received init-tab event from main process');
+        console.log('Creating initial tab...');
+        createTab('https://www.google.com');
     });
 
     // 监听自动创建的标签页
@@ -227,12 +275,89 @@ window.addEventListener('DOMContentLoaded', () => {
         console.log('✅ 自动创建的标签页已添加到界面');
     });
 
-    window.electronAPI.onInitTab(() => {
-        createTab();
+    // 启动时创建第一个标签页 - 等待init-tab事件
+    // 不在这里直接调用createTab，等待主进程的init-tab事件
+    console.log('Waiting for init-tab event from main process...');
+
+
+
+
+
+    // Add notification system
+    window.electronAPI.onShowNotification((_, notification) => {
+        showNotification(notification.type, notification.message);
     });
 
+    console.log('All event listeners and initialization completed');
 
+    console.log('✅ 应用初始化完成');
+    console.log('✅ 配置独立窗口功能已启用');
 });
 
-// 启动时创建第一个标签页
-createTab('https://www.google.com');
+// Notification system
+function showNotification(type, message) {
+    // Remove existing notification if any
+    const existingNotification = document.querySelector('.notification');
+    if (existingNotification) {
+        existingNotification.remove();
+    }
+
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.textContent = message;
+
+    // Add styles
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        border-radius: 6px;
+        color: white;
+        font-weight: 600;
+        z-index: 10000;
+        max-width: 300px;
+        word-wrap: break-word;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        transition: all 0.3s ease;
+    `;
+
+    // Set background color based on type
+    if (type === 'success') {
+        notification.style.background = '#4CAF50';
+    } else if (type === 'error') {
+        notification.style.background = '#f44336';
+    } else {
+        notification.style.background = '#2196F3';
+    }
+
+    // Add to page
+    document.body.appendChild(notification);
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.style.opacity = '0';
+            notification.style.transform = 'translateX(100%)';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 300);
+        }
+    }, 5000);
+
+    // Allow manual close on click
+    notification.onclick = () => {
+        notification.style.opacity = '0';
+        notification.style.transform = 'translateX(100%)';
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 300);
+    };
+}
+
+

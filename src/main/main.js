@@ -1,15 +1,18 @@
-const { app, globalShortcut } = require('electron');
+const { app, globalShortcut, Menu } = require('electron');
 const WindowManager = require('./window/windowManager');
 const ViewManager = require('./window/viewManager');
 const HistoryManager = require('./history/historyManager');
 const IpcHandlers = require('./ipc/ipcHandlers');
+const { StartupValidator } = require('./nodeManager');
 
 class ElectronApp {
     constructor() {
         this.historyManager = new HistoryManager();
         this.windowManager = new WindowManager(this.historyManager);
+        this.startupValidator = new StartupValidator();
         this.viewManager = null;
         this.ipcHandlers = null;
+        this.mainWindow = null; // Initialize mainWindow property
         this.isInitialized = false;
         this.pendingTitleUpdates = new Map();
     }
@@ -27,8 +30,13 @@ class ElectronApp {
             this.historyManager.initialize();
             console.log('History manager initialized');
 
+            // Validate node status on startup
+            await this.startupValidator.validateOnStartup();
+            console.log('Node validation completed');
+
             // Create main window
             const mainWindow = this.windowManager.createWindow();
+            this.mainWindow = mainWindow; // Store reference to main window
             console.log('Main window created');
 
 
@@ -40,7 +48,7 @@ class ElectronApp {
             console.log('View manager created');
 
             // Register IPC handlers
-            this.ipcHandlers = new IpcHandlers(this.viewManager, this.historyManager);
+            this.ipcHandlers = new IpcHandlers(this.viewManager, this.historyManager, this.mainWindow);
             console.log('IPC handlers registered');
 
             // Set up browsing history monitoring
@@ -51,6 +59,10 @@ class ElectronApp {
             this.registerShortcuts();
             console.log('Shortcuts registered');
 
+            // Create application menu
+            this.createApplicationMenu();
+            console.log('Application menu created');
+
             // Complete initialization
             this.historyManager.finalizeInitialization();
 
@@ -60,8 +72,49 @@ class ElectronApp {
             this.isInitialized = true;
             console.log('Application initialization completed');
 
-            // After IPC handlers are registered, send init-tab event
-            mainWindow.webContents.send('init-tab');
+            // Set up IPC listener for user registration dialog
+            const { ipcMain } = require('electron');
+            ipcMain.on('show-user-registration-dialog', () => {
+                console.log('Received show-user-registration-dialog event');
+                if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                    console.log('Sending show-user-registration-dialog to renderer process');
+                    this.mainWindow.webContents.send('show-user-registration-dialog');
+
+                    // Add a backup check to ensure dialog is shown
+                    setTimeout(() => {
+                        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                            console.log('Sending backup dialog show command...');
+                            this.mainWindow.webContents.send('show-user-registration-dialog');
+                        }
+                    }, 500);
+                }
+            });
+
+
+
+            // After IPC handlers are registered and listeners are set up, send init-tab event
+            // Add a longer delay to ensure everything is ready
+            setTimeout(() => {
+                if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                    console.log('Sending init-tab event to renderer process');
+                    this.mainWindow.webContents.send('init-tab');
+                }
+            }, 500); // Increased delay to ensure IPC handlers are fully registered
+
+            // Check if user registration is needed after main window is ready
+            setTimeout(async () => {
+                try {
+                    console.log('Checking if user registration is needed...');
+                    const registrationResult = await this.startupValidator.nodeManager.registerNewUserIfNeeded(this.mainWindow);
+                    if (registrationResult) {
+                        console.log('✅ New user registration completed after main window loaded');
+                    } else {
+                        console.log('No user registration needed or failed to show dialog');
+                    }
+                } catch (error) {
+                    console.error('Error checking user registration after main window loaded:', error);
+                }
+            }, 1500); // Wait 1.5 seconds after main window is ready to ensure everything is loaded
 
 
 
@@ -358,6 +411,110 @@ class ElectronApp {
         }
     }
 
+    createApplicationMenu() {
+        const template = [
+            {
+                label: 'File',
+                submenu: [
+                    {
+                        label: 'Clear Local Users',
+                        accelerator: 'CmdOrCtrl+Shift+L',
+                        click: () => {
+                            this.clearLocalUsers();
+                        }
+                    },
+                    { type: 'separator' },
+                    {
+                        label: 'Exit',
+                        accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
+                        click: () => {
+                            app.quit();
+                        }
+                    }
+                ]
+            },
+            {
+                label: 'Edit',
+                submenu: [
+                    { role: 'undo' },
+                    { role: 'redo' },
+                    { type: 'separator' },
+                    { role: 'cut' },
+                    { role: 'copy' },
+                    { role: 'paste' }
+                ]
+            },
+            {
+                label: 'View',
+                submenu: [
+                    { role: 'reload' },
+                    { role: 'forceReload' },
+                    { role: 'toggleDevTools' },
+                    { type: 'separator' },
+                    { role: 'resetZoom' },
+                    { role: 'zoomIn' },
+                    { role: 'zoomOut' },
+                    { type: 'separator' },
+                    { role: 'togglefullscreen' }
+                ]
+            },
+            {
+                label: 'Window',
+                submenu: [
+                    { role: 'minimize' },
+                    { role: 'close' }
+                ]
+            }
+        ];
+
+        if (process.platform === 'darwin') {
+            template.unshift({
+                label: app.getName(),
+                submenu: [
+                    { role: 'about' },
+                    { type: 'separator' },
+                    { role: 'services' },
+                    { type: 'separator' },
+                    { role: 'hide' },
+                    { role: 'hideOthers' },
+                    { role: 'unhide' },
+                    { type: 'separator' },
+                    { role: 'quit' }
+                ]
+            });
+        }
+
+        const menu = Menu.buildFromTemplate(template);
+        Menu.setApplicationMenu(menu);
+    }
+
+    clearLocalUsers() {
+        try {
+            console.log('Clearing local_users table...');
+            const db = require('./sqlite/database');
+            const result = db.prepare('DELETE FROM local_users').run();
+            console.log(`Cleared ${result.changes} users from local_users table`);
+
+            // Show confirmation to user
+            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                this.mainWindow.webContents.send('show-notification', {
+                    type: 'success',
+                    message: `Successfully cleared ${result.changes} users from local_users table`
+                });
+            }
+        } catch (error) {
+            console.error('Error clearing local_users table:', error);
+
+            // Show error to user
+            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                this.mainWindow.webContents.send('show-notification', {
+                    type: 'error',
+                    message: `Failed to clear local_users table: ${error.message}`
+                });
+            }
+        }
+    }
+
     setupAppEvents() {
         app.on('window-all-closed', async () => {
             // Clear all sessions and login states
@@ -456,6 +613,9 @@ class ElectronApp {
                 this.windowManager.cleanup();
                 this.windowManager = null;
             }
+
+            // Clear mainWindow reference
+            this.mainWindow = null;
 
             this.pendingTitleUpdates.clear();
             globalShortcut.unregisterAll();

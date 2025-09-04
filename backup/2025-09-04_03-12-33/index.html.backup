@@ -19,9 +19,10 @@
         <div class="config-dropdown">
             <button id="config-btn">⚙️</button>
         </div>
-
-
-
+        <button id="test-dropdown">🧪 Test</button>
+        <button id="simple-test">🔧 Simple Test</button>
+        <button id="inline-test">🔵 Inline Test</button>
+        <button id="dropdown-test" style="background: #ff00ff; color: white;">🟣 Dropdown Test</button>
         <input type="text" id="address" value="https://www.google.com" />
 
     </div>
@@ -31,6 +32,19 @@
     <!-- Webview container to replace BrowserView -->
     <div id="webviews">
         <!-- Webviews will be created here dynamically -->
+    </div>
+
+    <!-- Dropdown content moved outside toolbar to avoid overflow issues -->
+    <div class="dropdown-content" id="config-dropdown-content">
+        <div class="dropdown-item" id="clear-local-users">Clear Local Users</div>
+        <div class="dropdown-item" id="exit-app">Exit</div>
+    </div>
+
+    <!-- 完全独立的测试下拉框 -->
+    <div id="test-dropdown-content" class="test-dropdown-content">
+        <div class="test-dropdown-item">Test Item 1</div>
+        <div class="test-dropdown-item">Test Item 2</div>
+        <div class="test-dropdown-item">Test Item 3</div>
     </div>
 
 

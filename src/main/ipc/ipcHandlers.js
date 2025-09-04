@@ -2,9 +2,10 @@ const { ipcMain } = require('electron');
 
 // IPC handlers
 class IpcHandlers {
-    constructor(viewManager, historyManager) {
+    constructor(viewManager, historyManager, mainWindow = null) {
         this.viewManager = viewManager;
         this.historyManager = historyManager;
+        this.mainWindow = mainWindow; // Store reference to main window
         this.registerHandlers();
     }
 
@@ -483,6 +484,31 @@ class IpcHandlers {
             }
         });
 
+        // Clear local users
+        ipcMain.handle('clear-local-users', () => {
+            try {
+                const db = require('../sqlite/database');
+                const result = db.prepare('DELETE FROM local_users').run();
+                console.log(`Cleared ${result.changes} users from local_users table`);
+                return { success: true, changes: result.changes };
+            } catch (error) {
+                console.error('Error clearing local_users table:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Exit application
+        ipcMain.handle('exit-app', () => {
+            try {
+                const { app } = require('electron');
+                app.quit();
+                return { success: true };
+            } catch (error) {
+                console.error('Error exiting application:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
 
 
         // Get browser session information
@@ -513,6 +539,192 @@ class IpcHandlers {
                 };
             }
         });
+
+        // User registration
+        ipcMain.handle('submit-username', async (event, username) => {
+            try {
+                console.log('Handling submit-username:', username);
+
+                if (!username || username.trim() === '') {
+                    throw new Error('Username cannot be empty');
+                }
+
+                // Generate user ID and get public IP
+                const { v4: uuidv4 } = require('uuid');
+                const userId = uuidv4();
+
+                // Get public IP
+                let ipAddress = '127.0.0.1';
+                try {
+                    const response = await fetch('https://api.ipify.org?format=json');
+                    const data = await response.json();
+                    ipAddress = data.ip;
+                } catch (byteError) {
+                    console.error('Failed to get public IP:', byteError);
+                }
+
+                const userData = {
+                    username: username.trim(),
+                    userId: userId,
+                    domainId: null,
+                    clusterId: null,
+                    channelId: null,
+                    ipAddress: ipAddress,
+                    isCurrent: 1
+                };
+
+                console.log('User data prepared:', userData);
+
+                // Insert new user into database
+                const db = require('../sqlite/database');
+
+                // First, set all existing users to not current
+                db.prepare('UPDATE local_users SET is_current = 0').run();
+
+                // Then insert the new user as current
+                const insertStmt = db.prepare(`
+                    INSERT INTO local_users (
+                        user_id, username, domain_id, cluster_id, channel_id, ip_address, is_current
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                `);
+
+                const result = insertStmt.run(
+                    userData.userId,
+                    userData.username,
+                    userData.domainId,
+                    userData.clusterId,
+                    userData.channelId,
+                    userData.ipAddress,
+                    userData.isCurrent
+                );
+
+                if (result.changes > 0) {
+                    console.log(`New user registered successfully: ${userData.username} (${userData.userId})`);
+                    return { success: true, userData };
+                } else {
+                    throw new Error('Failed to insert user into database');
+                }
+
+            } catch (error) {
+                console.error('Error submitting username:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Handle dialog close request
+        ipcMain.on('close-user-registration-dialog', (event) => {
+            console.log('Received close dialog request from renderer');
+            // The dialog will handle its own closing
+        });
+
+        // Handle config modal open request
+        ipcMain.handle('open-config-modal', async (event) => {
+            try {
+                const ConfigModal = require('../configModal');
+                const configModal = new ConfigModal();
+
+                // Use the stored main window reference
+                if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                    await configModal.show(this.mainWindow);
+                    return { success: true };
+                } else {
+                    throw new Error('Main window not found');
+                }
+            } catch (error) {
+                console.error('Failed to open config modal:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Handle user selector modal open request
+        ipcMain.handle('open-user-selector', async (event) => {
+            try {
+                const UserSelectorModal = require('../userSelectorModal');
+                const userSelectorModal = new UserSelectorModal();
+
+                // Use the stored main window reference
+                if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                    const result = await userSelectorModal.show(this.mainWindow);
+                    return result;
+                } else {
+                    throw new Error('Main window not found');
+                }
+            } catch (error) {
+                console.error('Failed to open user selector modal:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Handle user switch request
+        ipcMain.handle('switch-user', async (event, userId) => {
+            try {
+                console.log('Switching to user:', userId);
+
+                const db = require('../sqlite/database');
+
+                // First, set all users to not current
+                db.prepare('UPDATE local_users SET is_current = 0').run();
+
+                // Then set the selected user as current
+                const result = db.prepare('UPDATE local_users SET is_current = 1 WHERE user_id = ?').run(userId);
+
+                if (result.changes > 0) {
+                    console.log('Successfully switched to user:', userId);
+
+                    // Get the new current user info
+                    const newUser = db.prepare('SELECT * FROM local_users WHERE user_id = ?').get(userId);
+
+                    // Show greeting dialog for the switched user
+                    try {
+                        const UserRegistrationDialog = require('../nodeManager/userRegistrationDialog');
+                        const greetingDialog = new UserRegistrationDialog();
+
+                        // Use the stored main window reference instead of event.sender
+                        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                            console.log('Showing greeting dialog for switched user:', newUser.username);
+                            await greetingDialog.showGreeting(this.mainWindow);
+                        } else {
+                            console.warn('Main window not available for greeting dialog');
+                        }
+                    } catch (greetingError) {
+                        console.error('Error showing greeting dialog:', greetingError);
+                        // Don't fail the user switch if greeting fails
+                    }
+
+                    return {
+                        success: true,
+                        user: newUser,
+                        message: `Switched to user: ${newUser.username}`
+                    };
+                } else {
+                    throw new Error('User not found or switch failed');
+                }
+            } catch (error) {
+                console.error('Error switching user:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Handle new user registration request
+        ipcMain.handle('open-user-registration', async (event) => {
+            try {
+                const UserRegistrationDialog = require('../nodeManager/userRegistrationDialog');
+                const userRegistrationDialog = new UserRegistrationDialog();
+
+                // Use the stored main window reference
+                if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                    await userRegistrationDialog.show(this.mainWindow);
+                    return { success: true };
+                } else {
+                    throw new Error('Main window not found');
+                }
+            } catch (error) {
+                console.error('Failed to open user registration dialog:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+
 
 
     }
@@ -562,6 +774,13 @@ class IpcHandlers {
             'cleanup-old-data',
             'force-write-data',
             'get-session-info',
+
+            // User registration related
+            'submit-username',
+            'open-config-modal',
+            'open-user-selector',
+            'switch-user',
+            'open-user-registration',
 
 
         ];
