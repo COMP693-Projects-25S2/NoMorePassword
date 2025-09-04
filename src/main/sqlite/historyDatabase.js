@@ -12,6 +12,7 @@ class HistoryDatabase {
         db.exec(`
             CREATE TABLE IF NOT EXISTS visit_history (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     VARCHAR(50),
                 url         TEXT NOT NULL,
                 title       TEXT DEFAULT 'Loading...',
                 timestamp   TEXT NOT NULL,
@@ -52,10 +53,20 @@ class HistoryDatabase {
             )
         `);
 
+        // Add user_id column to existing visit_history table if it doesn't exist
+        try {
+            db.exec(`ALTER TABLE visit_history ADD COLUMN user_id VARCHAR(50)`);
+            console.log('Added user_id column to visit_history table');
+        } catch (error) {
+            // Column might already exist, which is fine
+            console.log('user_id column already exists or table is new');
+        }
+
         // Create indexes to optimize query performance
         db.exec(`CREATE INDEX IF NOT EXISTS idx_visit_history_url ON visit_history(url)`);
         db.exec(`CREATE INDEX IF NOT EXISTS idx_visit_history_timestamp ON visit_history(timestamp)`);
         db.exec(`CREATE INDEX IF NOT EXISTS idx_visit_history_view_id ON visit_history(view_id)`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_visit_history_user_id ON visit_history(user_id)`);
         db.exec(`CREATE INDEX IF NOT EXISTS idx_active_records_view_id ON active_records(view_id)`);
         db.exec(`CREATE INDEX IF NOT EXISTS idx_shutdown_logs_timestamp ON shutdown_logs(timestamp_ms)`);
     }
@@ -63,12 +74,12 @@ class HistoryDatabase {
     // ===================== Visit History Operations =====================
 
     // Add visit record
-    addVisitRecord(url, title, timestamp, enterTime, viewId, domain) {
+    addVisitRecord(url, title, timestamp, enterTime, viewId, domain, userId = null) {
         const stmt = db.prepare(`
-            INSERT INTO visit_history (url, title, timestamp, enter_time, view_id, domain, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO visit_history (user_id, url, title, timestamp, enter_time, view_id, domain, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        const info = stmt.run(url, title, timestamp, enterTime, viewId, domain, Date.now());
+        const info = stmt.run(userId, url, title, timestamp, enterTime, viewId, domain, Date.now());
         return info.lastInsertRowid;
     }
 
@@ -92,14 +103,24 @@ class HistoryDatabase {
         return stmt.run(stayDuration, Date.now(), visitId);
     }
 
-    // Get visit history (with pagination)
-    getVisitHistory(limit = null, offset = 0) {
-        let query = `SELECT * FROM visit_history ORDER BY enter_time DESC`;
+    // Get visit history (with pagination and user filtering)
+    getVisitHistory(limit = null, offset = 0, userId = null) {
+        let query = `SELECT * FROM visit_history`;
+        const params = [];
+
+        if (userId) {
+            query += ` WHERE user_id = ?`;
+            params.push(userId);
+        }
+
+        query += ` ORDER BY enter_time DESC`;
+
         if (limit) {
             query += ` LIMIT ? OFFSET ?`;
-            return db.prepare(query).all(limit, offset);
+            params.push(limit, offset);
+            return db.prepare(query).all(...params);
         }
-        return db.prepare(query).all();
+        return db.prepare(query).all(...params);
     }
 
     // Get total visit history count
@@ -193,34 +214,51 @@ class HistoryDatabase {
 
     // ===================== Statistics =====================
 
-    // Get visit statistics
-    getVisitStats() {
+    // Get visit statistics (with user filtering)
+    getVisitStats(userId = null) {
+        let whereClause = '';
+        const params = [];
+
+        if (userId) {
+            whereClause = ' WHERE user_id = ?';
+            params.push(userId);
+        }
+
         // Total visit count
-        const totalVisits = db.prepare(`SELECT COUNT(*) as count FROM visit_history`).get().count;
+        const totalVisits = db.prepare(`SELECT COUNT(*) as count FROM visit_history${whereClause}`).get(...params).count;
 
         // Total time (only calculate valid stay duration)
+        const totalTimeWhere = userId ? ' AND user_id = ?' : '';
+        const totalTimeParams = userId ? [userId] : [];
         const totalTimeResult = db.prepare(`
             SELECT COALESCE(SUM(stay_duration), 0) as total_time 
             FROM visit_history 
-            WHERE stay_duration IS NOT NULL AND stay_duration > 0
-        `).get();
+            WHERE stay_duration IS NOT NULL AND stay_duration > 0${totalTimeWhere}
+        `).get(...totalTimeParams);
 
         // Average stay time
         const avgTimeResult = db.prepare(`
             SELECT COALESCE(AVG(stay_duration), 0) as avg_time 
             FROM visit_history 
-            WHERE stay_duration IS NOT NULL AND stay_duration > 0
-        `).get();
+            WHERE stay_duration IS NOT NULL AND stay_duration > 0${totalTimeWhere}
+        `).get(...totalTimeParams);
 
         // Popular pages (by domain statistics)
-        const topPages = db.prepare(`
+        let topPagesQuery = `
             SELECT domain, COUNT(*) as count 
             FROM visit_history 
-            WHERE domain IS NOT NULL 
+            WHERE domain IS NOT NULL
+        `;
+        if (whereClause) {
+            topPagesQuery += ` AND user_id = ?`;
+        }
+        topPagesQuery += `
             GROUP BY domain 
             ORDER BY count DESC 
             LIMIT 10
-        `).all();
+        `;
+
+        const topPages = db.prepare(topPagesQuery).all(...params);
 
         // Active records count
         const activeRecords = db.prepare(`SELECT COUNT(*) as count FROM active_records`).get().count;

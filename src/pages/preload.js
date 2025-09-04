@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld(
     getHistoryData: () => ipcRenderer.invoke('get-history-data'),
     getVisitHistory: () => ipcRenderer.invoke('get-visit-history'),
     getVisitStats: () => ipcRenderer.invoke('get-visit-stats'),
+    getCurrentUser: () => ipcRenderer.invoke('get-current-user'),
 
     // Browser view control
     hideBrowserView: () => ipcRenderer.invoke('hide-browser-view'),
@@ -35,6 +36,7 @@ contextBridge.exposeInMainWorld(
     openUserSelector: () => ipcRenderer.invoke('open-user-selector'),
     switchUser: (userId) => ipcRenderer.invoke('switch-user', userId),
     openUserRegistration: () => ipcRenderer.invoke('open-user-registration'),
+    clearCurrentUserActivities: () => ipcRenderer.invoke('clear-current-user-activities'),
 
 
 

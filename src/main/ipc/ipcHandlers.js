@@ -165,6 +165,16 @@ class IpcHandlers {
             }
         });
 
+        // Get current user
+        ipcMain.handle('get-current-user', () => {
+            try {
+                return this.historyManager.userActivityManager.getCurrentUser();
+            } catch (error) {
+                console.error('Failed to get current user:', error);
+                return null;
+            }
+        });
+
         // Get shutdown history
         ipcMain.handle('get-shutdown-history', () => {
             try {
@@ -288,6 +298,9 @@ class IpcHandlers {
                         if (record) {
                             console.log(`Recorded navigation visit: ${url}`);
                         }
+
+                        // Record navigation activity
+                        this.historyManager.recordNavigationActivity(url, 'Loading...', 'navigate');
                     }
                 }
 
@@ -312,6 +325,9 @@ class IpcHandlers {
                         if (url) {
                             this.historyManager.recordVisit(url, viewId);
                             console.log(`Recorded back navigation visit: ${url}`);
+
+                            // Record navigation activity
+                            this.historyManager.recordNavigationActivity(url, 'Loading...', 'back');
                         }
                     }
                 }
@@ -337,6 +353,9 @@ class IpcHandlers {
                         if (url) {
                             this.historyManager.recordVisit(url, viewId);
                             console.log(`Recorded forward navigation visit: ${url}`);
+
+                            // Record navigation activity
+                            this.historyManager.recordNavigationActivity(url, 'Loading...', 'forward');
                         }
                     }
                 }
@@ -362,6 +381,9 @@ class IpcHandlers {
                         if (url) {
                             this.historyManager.recordVisit(url, viewId);
                             console.log(`Recorded refresh visit: ${url}`);
+
+                            // Record navigation activity
+                            this.historyManager.recordNavigationActivity(url, 'Loading...', 'refresh');
                         }
                     }
                 }
@@ -505,6 +527,21 @@ class IpcHandlers {
                 return { success: true };
             } catch (error) {
                 console.error('Error exiting application:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Clear current user activities
+        ipcMain.handle('clear-current-user-activities', () => {
+            try {
+                if (this.historyManager) {
+                    const result = this.historyManager.clearCurrentUserActivities();
+                    return result;
+                } else {
+                    return { success: false, error: 'History manager not available' };
+                }
+            } catch (error) {
+                console.error('Error clearing current user activities:', error);
                 return { success: false, error: error.message };
             }
         });
@@ -748,6 +785,7 @@ class IpcHandlers {
             'get-visit-history',
             'get-visit-stats',
             'get-history-data',
+            'get-current-user',
             'get-shutdown-history',
             'trigger-shutdown-log',
             'get-active-records',
@@ -782,6 +820,8 @@ class IpcHandlers {
             'switch-user',
             'open-user-registration',
 
+            // User activities related
+            'clear-current-user-activities',
 
         ];
 

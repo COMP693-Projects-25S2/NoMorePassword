@@ -27,7 +27,7 @@ class ConfigModal {
             // Calculate modal position (top-left of main window)
             const mainBounds = mainWindow.getBounds();
             const modalWidth = 280;
-            const modalHeight = 280;
+            const modalHeight = 320; // Increased height for new option
 
             // Position modal at top-left of main window content area (below toolbar and tabs)
             const x = mainBounds.x + 20; // 20px from left edge
@@ -210,6 +210,10 @@ class ConfigModal {
                 <span class="config-option-icon">🗑️</span>
                 <span class="config-option-text">Clear Local Users</span>
             </div>
+            <div class="config-option" id="clear-user-activities">
+                <span class="config-option-icon">📊</span>
+                <span class="config-option-text">Clear My Activities</span>
+            </div>
             <div class="config-option" id="exit-app">
                 <span class="config-option-icon">🚪</span>
                 <span class="config-option-text">Exit Application</span>
@@ -227,6 +231,7 @@ class ConfigModal {
             const newUserBtn = document.getElementById('new-user');
             const switchUserBtn = document.getElementById('switch-user');
             const clearUsersBtn = document.getElementById('clear-local-users');
+            const clearActivitiesBtn = document.getElementById('clear-user-activities');
             const exitAppBtn = document.getElementById('exit-app');
 
             // Handle close button click
@@ -278,6 +283,21 @@ class ConfigModal {
                     }
                 } catch (error) {
                     alert(\`Error clearing local_users table: \${error.message}\`);
+                }
+                window.close();
+            });
+
+            // Handle clear user activities
+            clearActivitiesBtn.addEventListener('click', async () => {
+                try {
+                    const result = await ipcRenderer.invoke('clear-current-user-activities');
+                    if (result.success) {
+                        alert(\`Successfully cleared \${result.changes} activities for current user\`);
+                    } else {
+                        alert(\`Failed to clear user activities: \${result.error}\`);
+                    }
+                } catch (error) {
+                    alert(\`Error clearing user activities: \${error.message}\`);
                 }
                 window.close();
             });

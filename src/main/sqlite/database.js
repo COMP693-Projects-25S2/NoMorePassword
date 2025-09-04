@@ -3,8 +3,8 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const FileUtils = require('../utils/fileUtils');
 
-// Database file path
-const dbPath = path.join(FileUtils.getAppRoot(), 'secure.db');
+// Database file path - use secure.db from sqlite folder
+const dbPath = path.join(__dirname, 'secure.db');
 
 // Check if directory exists
 const dbDir = path.dirname(dbPath);
@@ -86,14 +86,17 @@ db.exec(`
 // Create table: user_activities
 db.exec(`
     CREATE TABLE IF NOT EXISTS user_activities (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id     VARCHAR(50),
-        website     TEXT,
+        username    TEXT,
+        activity_type VARCHAR(50),
         url         TEXT,
         title       TEXT,
-        description VARCHAR(50),
-        date        TEXT,
-        time        TEXT,
-        duration    INTEGER
+        description TEXT,
+        start_time  INTEGER,
+        end_time    INTEGER,
+        duration    INTEGER,
+        created_at  INTEGER DEFAULT (strftime('%s', 'now'))
     )
 `);
 
@@ -104,6 +107,33 @@ try {
 } catch (error) {
     // Column might already exist, which is fine
     console.log('is_current column already exists or table is new');
+}
+
+// Add username column to existing user_activities table if it doesn't exist
+try {
+    db.exec(`ALTER TABLE user_activities ADD COLUMN username TEXT`);
+    console.log('Added username column to user_activities table');
+} catch (error) {
+    // Column might already exist, which is fine
+    console.log('username column already exists or table is new');
+}
+
+// Add activity_type column to existing user_activities table if it doesn't exist
+try {
+    db.exec(`ALTER TABLE user_activities ADD COLUMN activity_type VARCHAR(50)`);
+    console.log('Added activity_type column to user_activities table');
+} catch (error) {
+    // Column might already exist, which is fine
+    console.log('activity_type column already exists or table is new');
+}
+
+// Add start_time column to existing user_activities table if it doesn't exist
+try {
+    db.exec(`ALTER TABLE user_activities ADD COLUMN start_time INTEGER`);
+    console.log('Added start_time column to user_activities table');
+} catch (error) {
+    // Column might already exist, which is fine
+    console.log('start_time column already exists or table is new');
 }
 
 // Set database performance optimization options

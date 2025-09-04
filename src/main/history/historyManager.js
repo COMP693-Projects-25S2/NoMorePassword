@@ -1,6 +1,7 @@
 const VisitTracker = require('./visitTracker');
 const ShutdownLogger = require('./shutdownLogger');
 const HistoryDatabase = require('../sqlite/historyDatabase');
+const UserActivityManager = require('./userActivityManager');
 
 // History Manager - Database version
 class HistoryManager {
@@ -8,6 +9,7 @@ class HistoryManager {
         this.historyDB = new HistoryDatabase();
         this.visitTracker = new VisitTracker();
         this.shutdownLogger = new ShutdownLogger(this.visitTracker);
+        this.userActivityManager = new UserActivityManager();
         this.sessionStartTime = Date.now();
         this.isFullyInitialized = false;
     }
@@ -73,7 +75,23 @@ class HistoryManager {
      */
     recordVisit(url, viewId) {
         try {
-            const result = this.visitTracker.recordVisit(url, viewId);
+            // Get current user ID for visit tracking
+            const currentUser = this.userActivityManager ? this.userActivityManager.getCurrentUser() : null;
+            const userId = currentUser ? currentUser.user_id : null;
+
+            // Only record visits if user is logged in
+            if (!userId) {
+                console.log('No current user found, skipping visit recording');
+                return null;
+            }
+
+            const result = this.visitTracker.recordVisit(url, viewId, userId);
+
+            // Also record user activity if we have a current user
+            if (result && this.userActivityManager) {
+                this.userActivityManager.recordTabActivity('visit', url, 'Loading...');
+            }
+
             return result;
         } catch (error) {
             console.error('Failed to record visit:', error);
@@ -154,7 +172,23 @@ class HistoryManager {
      */
     getStats() {
         try {
-            return this.historyDB.getVisitStats();
+            // Get current user ID for filtering
+            const currentUser = this.userActivityManager ? this.userActivityManager.getCurrentUser() : null;
+            const userId = currentUser ? currentUser.user_id : null;
+
+            // If no user is logged in, return empty stats
+            if (!userId) {
+                console.log('No current user found, returning empty stats');
+                return {
+                    totalVisits: 0,
+                    totalTime: 0,
+                    averageStayTime: 0,
+                    topPages: {},
+                    activeRecords: 0
+                };
+            }
+
+            return this.historyDB.getVisitStats(userId);
         } catch (error) {
             console.error('Failed to get visit stats:', error);
             return {
@@ -172,7 +206,17 @@ class HistoryManager {
      */
     getHistory(limit = null) {
         try {
-            return this.historyDB.getVisitHistory(limit);
+            // Get current user ID for filtering
+            const currentUser = this.userActivityManager ? this.userActivityManager.getCurrentUser() : null;
+            const userId = currentUser ? currentUser.user_id : null;
+
+            // If no user is logged in, return empty history
+            if (!userId) {
+                console.log('No current user found, returning empty history');
+                return [];
+            }
+
+            return this.historyDB.getVisitHistory(limit, 0, userId);
         } catch (error) {
             console.error('Failed to get history from database:', error);
             return [];
@@ -547,8 +591,84 @@ class HistoryManager {
             basicInitialized: this.isFullyInitialized,
             shutdownLoggerInitialized: this.shutdownLogger ? this.shutdownLogger.isInitialized() : false,
             visitTrackerReady: this.visitTracker ? true : false,
-            databaseReady: this.historyDB ? true : false
+            databaseReady: this.historyDB ? true : false,
+            userActivityManagerReady: this.userActivityManager ? true : false
         };
+    }
+
+    /**
+     * Record user navigation activity
+     */
+    recordNavigationActivity(url, title, navigationType) {
+        try {
+            if (this.userActivityManager) {
+                return this.userActivityManager.recordNavigation(url, title, navigationType);
+            }
+            return null;
+        } catch (error) {
+            console.error('Failed to record navigation activity:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Record user tab activity
+     */
+    recordTabActivity(action, url = null, title = null) {
+        try {
+            if (this.userActivityManager) {
+                return this.userActivityManager.recordTabActivity(action, url, title);
+            }
+            return null;
+        } catch (error) {
+            console.error('Failed to record tab activity:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Get current user activities
+     */
+    getCurrentUserActivities(limit = 100) {
+        try {
+            if (this.userActivityManager) {
+                return this.userActivityManager.getUserActivities(null, limit);
+            }
+            return [];
+        } catch (error) {
+            console.error('Failed to get current user activities:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Clear current user activities
+     */
+    clearCurrentUserActivities() {
+        try {
+            if (this.userActivityManager) {
+                return this.userActivityManager.clearCurrentUserActivities();
+            }
+            return { success: false, error: 'User activity manager not available' };
+        } catch (error) {
+            console.error('Failed to clear current user activities:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Get current user activity stats
+     */
+    getCurrentUserActivityStats() {
+        try {
+            if (this.userActivityManager) {
+                return this.userActivityManager.getCurrentUserStats();
+            }
+            return { totalActivities: 0, activitiesByType: {}, totalDuration: 0 };
+        } catch (error) {
+            console.error('Failed to get current user activity stats:', error);
+            return { totalActivities: 0, activitiesByType: {}, totalDuration: 0 };
+        }
     }
 }
 

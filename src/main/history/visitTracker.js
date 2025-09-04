@@ -183,7 +183,7 @@ class VisitTracker {
     /**
      * Create new visit record and save to database
      */
-    createNewVisitRecord(url, viewId, currentTime) {
+    createNewVisitRecord(url, viewId, currentTime, userId = null) {
         try {
             const timestamp = new Date(currentTime).toISOString();
             const domain = UrlUtils.extractDomain(url);
@@ -192,7 +192,8 @@ class VisitTracker {
                 url,
                 domain,
                 viewId,
-                timestamp
+                timestamp,
+                userId
             });
 
             // Insert into database and get ID
@@ -202,7 +203,8 @@ class VisitTracker {
                 timestamp,
                 currentTime,
                 viewId,
-                domain
+                domain,
+                userId
             );
 
             if (!visitId) {
@@ -231,7 +233,7 @@ class VisitTracker {
     /**
      * Main visit record method - all using database
      */
-    recordVisit(url, viewId) {
+    recordVisit(url, viewId, userId = null) {
         // Skip special URLs
         if (!UrlUtils.isValidUrl(url)) {
             console.log(`Skipping invalid URL: ${url}`);
@@ -268,7 +270,7 @@ class VisitTracker {
             this.finishActiveRecordsByViewId(viewId, now);
 
             // 4. Create new record
-            const newRecord = this.createNewVisitRecord(url, viewId, now);
+            const newRecord = this.createNewVisitRecord(url, viewId, now, userId);
             if (!newRecord) {
                 throw new Error('Failed to create new visit record');
             }

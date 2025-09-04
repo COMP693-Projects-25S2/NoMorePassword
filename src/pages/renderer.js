@@ -29,7 +29,7 @@ function createTab(url = 'https://www.google.com') {
         tabEl.appendChild(closeBtn);
         tabsContainer.appendChild(tabEl);
 
-        tabEl.onclick = () => switchTab(id);
+        tabEl.onclick = () => switchToTab(id);
 
         tabs[id] = { el: tabEl, title, titleNode, closeBtn };
 
@@ -67,7 +67,7 @@ function createHistoryTab() {
         tabEl.appendChild(closeBtn);
         tabsContainer.appendChild(tabEl);
 
-        tabEl.onclick = () => switchTab(id);
+        tabEl.onclick = () => switchToTab(id);
 
         tabs[id] = { el: tabEl, title, titleNode, closeBtn, isHistory: true };
 
@@ -83,28 +83,26 @@ function createHistoryTab() {
 function switchToTab(tabId) {
     if (currentTabId === tabId) return;
 
-    // Hide current webview
-    if (currentTabId && tabs[currentTabId] && tabs[currentTabId].webview) {
-        tabs[currentTabId].webview.style.display = 'none';
-    }
+    // Call main process to switch tab
+    window.electronAPI.switchTab(tabId).then((success) => {
+        if (success) {
+            // Update tab states in renderer
+            if (currentTabId && tabs[currentTabId]) {
+                tabs[currentTabId].el.classList.remove('active');
+            }
+            if (tabs[tabId]) {
+                tabs[tabId].el.classList.add('active');
+            }
 
-    // Show new webview
-    if (tabs[tabId] && tabs[tabId].webview) {
-        tabs[tabId].webview.style.display = 'block';
-        tabs[tabId].webview.classList.add('active');
-    }
-
-    // Update tab states
-    if (currentTabId && tabs[currentTabId]) {
-        tabs[currentTabId].el.classList.remove('active');
-    }
-    if (tabs[tabId]) {
-        tabs[tabId].el.classList.add('active');
-    }
-
-    currentTabId = tabId;
-    updateAddressFromTab(tabId);
-    console.log(`✅ Switched to tab ${tabId}`);
+            currentTabId = tabId;
+            updateAddressFromTab(tabId);
+            console.log(`✅ Switched to tab ${tabId}`);
+        } else {
+            console.error(`Failed to switch to tab ${tabId}`);
+        }
+    }).catch((error) => {
+        console.error(`Error switching to tab ${tabId}:`, error);
+    });
 }
 
 function activateTab(id) {
@@ -263,7 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tabEl.appendChild(closeBtn);
         tabsContainer.appendChild(tabEl);
 
-        tabEl.onclick = () => switchTab(id);
+        tabEl.onclick = () => switchToTab(id);
 
         tabs[id] = { el: tabEl, title, titleNode, closeBtn };
 
