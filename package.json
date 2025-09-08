@@ -13,13 +13,20 @@
     "build": "electron-builder",
     "dist": "npm run build",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "tree": "tree src /f /a > tree.txt"
+    "tree": "tree src /f /a > tree.txt",
+    "clean": "rimraf dist",
+    "postinstall": "electron-builder install-app-deps",
+    "lint": "echo \"No linter configured\"",
+    "audit:fix": "npm audit fix",
+    "init": "node init.js",
+    "fix-modules": "npx electron-rebuild"
   },
   "devDependencies": {
     "electron": "^37.3.1",
     "electron-builder": "latest",
     "electron-rebuild": "^3.2.9",
-    "electron-reload": "^2.0.0-alpha.1"
+    "electron-reload": "^2.0.0-alpha.1",
+    "rimraf": "^5.0.0"
   },
   "keywords": [
     "electron",
