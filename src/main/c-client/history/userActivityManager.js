@@ -20,11 +20,9 @@ class UserActivityManager {
             if (currentUser) {
                 this.currentUserId = currentUser.user_id;
                 this.currentUsername = currentUser.username;
-                console.log(`UserActivityManager: Current user updated to ${this.currentUsername} (${this.currentUserId})`);
             } else {
                 this.currentUserId = null;
                 this.currentUsername = null;
-                console.log('UserActivityManager: No current user found');
             }
         } catch (error) {
             console.error('Error updating current user:', error);
@@ -63,7 +61,6 @@ class UserActivityManager {
         this.updateCurrentUser();
 
         if (!this.currentUserId) {
-            console.log('UserActivityManager: No current user, skipping activity recording');
             return null;
         }
 
@@ -88,7 +85,6 @@ class UserActivityManager {
                 Math.floor(Date.now() / 1000) // Unix timestamp
             );
 
-            console.log(`UserActivityManager: Recorded ${activityType} activity for user ${this.currentUsername}`);
             return { id: result.lastInsertRowid, changes: result.changes };
         } catch (error) {
             console.error('Error recording user activity:', error);
@@ -168,7 +164,6 @@ class UserActivityManager {
         try {
             const targetUserId = userId || this.currentUserId;
             if (!targetUserId) {
-                console.log('UserActivityManager: No user ID provided and no current user');
                 return [];
             }
 
@@ -200,7 +195,6 @@ class UserActivityManager {
             const stmt = db.prepare('DELETE FROM user_activities WHERE user_id = ?');
             const result = stmt.run(this.currentUserId);
 
-            console.log(`UserActivityManager: Cleared ${result.changes} activities for user ${this.currentUsername}`);
             return { success: true, changes: result.changes };
         } catch (error) {
             console.error('Error clearing current user activities:', error);
@@ -218,7 +212,6 @@ class UserActivityManager {
             const stmt = db.prepare('DELETE FROM user_activities WHERE user_id = ?');
             const result = stmt.run(userId);
 
-            console.log(`UserActivityManager: Cleared ${result.changes} activities for user ${userId}`);
             return { success: true, changes: result.changes };
         } catch (error) {
             console.error('Error clearing user activities:', error);

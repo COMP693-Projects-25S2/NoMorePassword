@@ -20,7 +20,6 @@ const db = new Database(dbPath);
 // In actual applications, don't hardcode passwords, can get from environment variables or user input
 try {
     db.pragma(`key = 'your_secret_password'`);
-    console.log('Database encryption enabled');
 } catch (error) {
     console.warn('Database encryption setup failed, using unencrypted database:', error);
 }
@@ -107,7 +106,6 @@ try {
     console.log('Added is_current column to local_users table');
 } catch (error) {
     // Column might already exist, which is fine
-    console.log('is_current column already exists or table is new');
 }
 
 // Add username column to existing user_activities table if it doesn't exist
@@ -116,7 +114,6 @@ try {
     console.log('Added username column to user_activities table');
 } catch (error) {
     // Column might already exist, which is fine
-    console.log('username column already exists or table is new');
 }
 
 // Add activity_type column to existing user_activities table if it doesn't exist
@@ -125,7 +122,6 @@ try {
     console.log('Added activity_type column to user_activities table');
 } catch (error) {
     // Column might already exist, which is fine
-    console.log('activity_type column already exists or table is new');
 }
 
 // Add start_time column to existing user_activities table if it doesn't exist
@@ -134,7 +130,6 @@ try {
     console.log('Added start_time column to user_activities table');
 } catch (error) {
     // Column might already exist, which is fine
-    console.log('start_time column already exists or table is new');
 }
 
 // Add end_time column to existing user_activities table if it doesn't exist
@@ -143,7 +138,6 @@ try {
     console.log('Added end_time column to user_activities table');
 } catch (error) {
     // Column might already exist, which is fine
-    console.log('end_time column already exists or table is new');
 }
 
 // Add created_at column to existing user_activities table if it doesn't exist
@@ -152,7 +146,6 @@ try {
     console.log('Added created_at column to user_activities table');
 } catch (error) {
     // Column might already exist, which is fine
-    console.log('created_at column already exists or table is new');
 }
 
 // Add updated_at column to existing user_activities table if it doesn't exist
@@ -161,7 +154,6 @@ try {
     console.log('Added updated_at column to user_activities table');
 } catch (error) {
     // Column might already exist, which is fine
-    console.log('updated_at column already exists or table is new');
 }
 
 // Disable foreign key constraints for simpler data management
@@ -173,6 +165,5 @@ db.pragma('synchronous = NORMAL');
 db.pragma('cache_size = 1000');
 db.pragma('temp_store = memory');
 
-console.log('Database initialized successfully');
 
 module.exports = db;

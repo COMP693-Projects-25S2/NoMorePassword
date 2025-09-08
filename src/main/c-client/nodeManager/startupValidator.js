@@ -11,18 +11,15 @@ class StartupValidator {
      */
     async validateOnStartup() {
         try {
-            console.log('=== Starting startup node validation ===');
 
             // Validate current node status
             const nodeValidationResult = await this.nodeManager.validateCurrentNodeOnStartup();
 
             if (nodeValidationResult) {
-                console.log('✅ Node status validation passed');
             } else {
                 console.error('❌ Node status validation failed');
             }
 
-            console.log('=== Startup node validation completed ===');
             return nodeValidationResult;
 
         } catch (error) {

@@ -14,7 +14,6 @@ class NodeManager {
      */
     async validateCurrentNodeOnStartup() {
         try {
-            console.log('Starting to validate current node status...');
 
             // Get all users from database
             const allUsers = this.db.prepare('SELECT * FROM local_users').all();
@@ -23,15 +22,12 @@ class NodeManager {
             const currentUsers = allUsers.filter(user => user.is_current === 1);
             const currentCount = currentUsers.length;
 
-            console.log(`Found ${allUsers.length} local users, ${currentCount} marked as current node`);
 
             if (currentCount === 0) {
-                console.log('All users have is_current=0, status is normal');
                 return true;
             }
 
             if (currentCount === 1) {
-                console.log('Only one user marked as current node, status is normal');
                 return true;
             }
 
@@ -141,7 +137,6 @@ class NodeManager {
             const userCount = this.db.prepare('SELECT COUNT(*) as count FROM local_users').get();
 
             if (userCount.count === 0) {
-                console.log('local_users table is empty, prompting for new user registration');
 
                 // Show dialog using independent BrowserWindow
                 if (mainWindow && !mainWindow.isDestroyed()) {
@@ -150,7 +145,6 @@ class NodeManager {
                             this.userRegistrationDialog = new UserRegistrationDialog();
                         }
 
-                        console.log('Showing user registration dialog...');
                         await this.userRegistrationDialog.show(mainWindow);
 
                         return true; // Return true to indicate dialog was shown
@@ -163,27 +157,8 @@ class NodeManager {
                     return false;
                 }
             } else {
-                console.log('local_users table has existing users, showing greeting dialog');
-
-                // Show greeting dialog for existing user
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    try {
-                        if (!this.userRegistrationDialog) {
-                            this.userRegistrationDialog = new UserRegistrationDialog();
-                        }
-
-                        console.log('Showing user greeting dialog...');
-                        await this.userRegistrationDialog.showGreeting(mainWindow);
-
-                        return true; // Return true to indicate dialog was shown
-                    } catch (dialogError) {
-                        console.error('Error showing user greeting dialog:', dialogError);
-                        return false;
-                    }
-                } else {
-                    console.warn('Main window not available for dialog display');
-                    return false;
-                }
+                // For existing users, don't show any dialog - just continue
+                return false; // Return false to indicate no dialog was shown
             }
 
         } catch (error) {

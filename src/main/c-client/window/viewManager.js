@@ -57,12 +57,10 @@ class ViewManager {
     }
 
     hideAllViews() {
-        console.log('🔄 ViewManager: Hiding all browser views...');
         const { views } = this;
         const mainWindow = this.mainWindow;
 
         if (!mainWindow || !mainWindow.getMainWindow) {
-            console.log('⚠️ ViewManager: Main window not available for hiding views');
             return;
         }
 
@@ -74,7 +72,6 @@ class ViewManager {
             if (view && !view.webContents.isDestroyed()) {
                 try {
                     electronMainWindow.removeBrowserView(view);
-                    console.log(`🔄 ViewManager: Hidden view ${viewId}`);
                 } catch (error) {
                     console.log(`⚠️ ViewManager: Error hiding view ${viewId}:`, error.message);
                 }
@@ -82,7 +79,6 @@ class ViewManager {
         });
 
         this.currentViewId = null;
-        console.log('✅ ViewManager: All browser views hidden');
     }
 
     async navigateTo(url) {
@@ -138,7 +134,10 @@ class ViewManager {
                     contextIsolation: true,
                     webSecurity: true,
                     allowRunningInsecureContent: false,
-                    experimentalFeatures: false
+                    experimentalFeatures: false,
+                    // Add network configuration
+                    partition: 'persist:main',
+                    cache: false
                 }
             });
 
@@ -169,7 +168,6 @@ class ViewManager {
                 });
             }
 
-            console.log(`✅ Created new browser view with ID: ${id}`);
             return { id, view };
 
         } catch (error) {
@@ -187,7 +185,7 @@ class ViewManager {
                 webPreferences: {
                     nodeIntegration: false,
                     contextIsolation: true,
-                    preload: path.join(__dirname, '../../pages/preload.js')
+                    preload: path.join(__dirname, '../../../pages/preload.js')
                 }
             });
 
@@ -199,7 +197,7 @@ class ViewManager {
             view.setBounds(bounds);
 
             // Load history page
-            const historyPath = path.join(__dirname, '../../pages/history.html');
+            const historyPath = path.join(__dirname, '../../../pages/history.html');
             await view.webContents.loadFile(historyPath);
 
             // Setup listeners
@@ -343,7 +341,6 @@ class ViewManager {
      * Cleanup all views
      */
     cleanup() {
-        console.log('🧹 Cleaning up ViewManager...');
         Object.keys(this.views).forEach(id => {
             this.closeTab(parseInt(id));
         });

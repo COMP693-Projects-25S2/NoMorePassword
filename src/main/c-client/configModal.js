@@ -57,7 +57,7 @@ class ConfigModal {
                     nodeIntegration: true,
                     contextIsolation: false,
                     enableRemoteModule: false,
-                    preload: path.join(__dirname, '../pages/preload.js'),
+                    preload: path.join(__dirname, '../../pages/preload.js'),
                     sandbox: false
                 }
             });

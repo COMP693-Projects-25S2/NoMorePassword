@@ -2,11 +2,12 @@ const { ipcMain } = require('electron');
 
 // IPC handlers
 class IpcHandlers {
-    constructor(viewManager, historyManager, mainWindow = null, clientManager = null) {
+    constructor(viewManager, historyManager, mainWindow = null, clientManager = null, nodeManager = null) {
         this.viewManager = viewManager;
         this.historyManager = historyManager;
         this.mainWindow = mainWindow; // Store reference to main window
         this.clientManager = clientManager; // Store reference to client manager
+        this.nodeManager = nodeManager; // Store reference to node manager
         this.registerHandlers();
     }
 
@@ -46,7 +47,6 @@ class IpcHandlers {
                     const viewId = view.id || Date.now(); // Ensure viewId exists
                     const record = this.historyManager.recordVisit(url, viewId);
                     if (record) {
-                        console.log(`Recorded initial visit for new tab: ${url}`);
                     }
                 }
                 return view;
@@ -640,7 +640,29 @@ class IpcHandlers {
                 );
 
                 if (result.changes > 0) {
-                    console.log(`New user registered successfully: ${userData.username} (${userData.userId})`);
+                    // Registration successful, close any open registration dialog first
+                    try {
+                        if (this.nodeManager && this.nodeManager.userRegistrationDialog) {
+                            this.nodeManager.userRegistrationDialog.closeFromExternalRequest();
+                        }
+                    } catch (closeError) {
+                        console.error('Error closing registration dialog:', closeError);
+                    }
+
+                    // Then show greeting dialog
+                    try {
+                        const UserRegistrationDialog = require('../nodeManager/userRegistrationDialog');
+                        const userRegistrationDialog = new UserRegistrationDialog();
+
+                        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                            await userRegistrationDialog.showGreeting(this.mainWindow);
+                        } else {
+                            console.warn('Main window not available for greeting dialog');
+                        }
+                    } catch (greetingError) {
+                        console.error('Error showing greeting dialog after registration:', greetingError);
+                    }
+
                     return { success: true, userData };
                 } else {
                     throw new Error('Failed to insert user into database');
@@ -653,9 +675,28 @@ class IpcHandlers {
         });
 
         // Handle dialog close request
-        ipcMain.on('close-user-registration-dialog', (event) => {
-            console.log('Received close dialog request from renderer');
-            // The dialog will handle its own closing
+        ipcMain.on('close-user-registration-dialog', async (event) => {
+            // Close the registration dialog
+            if (this.nodeManager && this.nodeManager.userRegistrationDialog) {
+                this.nodeManager.userRegistrationDialog.closeFromExternalRequest();
+
+                // After closing registration dialog, show greeting dialog
+                try {
+                    const UserRegistrationDialog = require('../nodeManager/userRegistrationDialog');
+                    const userRegistrationDialog = new UserRegistrationDialog();
+
+                    // Use the stored main window reference
+                    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                        await userRegistrationDialog.showGreeting(this.mainWindow);
+                    } else {
+                        console.warn('Main window not available for greeting dialog');
+                    }
+                } catch (greetingError) {
+                    console.error('Error showing greeting dialog after registration:', greetingError);
+                }
+            } else {
+                console.warn('NodeManager or userRegistrationDialog not available');
+            }
         });
 
         // Handle config modal open request
@@ -751,6 +792,11 @@ class IpcHandlers {
             try {
                 const UserRegistrationDialog = require('../nodeManager/userRegistrationDialog');
                 const userRegistrationDialog = new UserRegistrationDialog();
+
+                // Store the dialog instance in nodeManager so it can be closed later
+                if (this.nodeManager) {
+                    this.nodeManager.userRegistrationDialog = userRegistrationDialog;
+                }
 
                 // Use the stored main window reference
                 if (this.mainWindow && !this.mainWindow.isDestroyed()) {

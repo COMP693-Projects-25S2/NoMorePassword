@@ -13,7 +13,6 @@ class ShutdownLogger {
         // Mark whether event listeners have been initialized
         this.eventsInitialized = false;
 
-        console.log('ShutdownLogger created - events will be set up later');
     }
 
     /**
@@ -25,10 +24,8 @@ class ShutdownLogger {
             return;
         }
 
-        console.log('Setting up ShutdownLogger event listeners...');
         this.setupEventListeners();
         this.eventsInitialized = true;
-        console.log('ShutdownLogger initialized - tracking app lifecycle');
     }
 
     /**
@@ -215,7 +212,6 @@ class ShutdownLogger {
      * Actually set up event listeners
      */
     setupActualEventListeners() {
-        console.log('Setting up shutdown event listeners...');
 
         // Note: Do not set window-all-closed and before-quit events here
         // These should be managed by the main app to avoid conflicts
@@ -259,7 +255,6 @@ class ShutdownLogger {
             });
         }
 
-        console.log('Shutdown event listeners configured (without app lifecycle events)');
     }
 
     /**

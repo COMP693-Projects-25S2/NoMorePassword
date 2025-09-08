@@ -57,7 +57,7 @@ class ClientSelectorModal {
                     nodeIntegration: true,
                     contextIsolation: false,
                     enableRemoteModule: false,
-                    preload: path.join(__dirname, '../pages/preload.js'),
+                    preload: path.join(__dirname, '../../pages/preload.js'),
                     sandbox: false
                 }
             });
@@ -254,7 +254,6 @@ class ClientSelectorModal {
         let selectedClient = null;
 
         document.addEventListener('DOMContentLoaded', () => {
-            console.log('Client selector modal loaded');
 
             const closeBtn = document.getElementById('closeBtn');
             const cClientOption = document.getElementById('c-client-option');
@@ -263,7 +262,6 @@ class ClientSelectorModal {
 
             // Handle close button click
             closeBtn.addEventListener('click', () => {
-                console.log('Close button clicked');
                 window.close();
             });
 
@@ -283,7 +281,6 @@ class ClientSelectorModal {
                 try {
                     const result = await ipcRenderer.invoke('switch-to-client', selectedClient);
                     if (result.success) {
-                        console.log('Client switch initiated successfully');
                     } else {
                         alert(\`Failed to switch client: \${result.error}\`);
                     }

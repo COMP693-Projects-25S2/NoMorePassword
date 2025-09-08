@@ -27,7 +27,7 @@ class WindowManager {
             webPreferences: {
                 contextIsolation: true,
                 nodeIntegration: false,
-                preload: path.join(__dirname, '../../pages/preload.js'),
+                preload: path.join(__dirname, '../../../pages/preload.js'),
             }
         });
 
@@ -46,28 +46,16 @@ class WindowManager {
         if (!this.mainWindow) return;
 
         const currentClient = this.clientManager ? this.clientManager.getCurrentClient() : 'c-client';
-        console.log(`🔍 WindowManager: getCurrentClient() returned: ${currentClient}`);
-        console.log(`🔍 WindowManager: clientManager exists: ${!!this.clientManager}`);
-        if (this.clientManager) {
-            console.log(`🔍 WindowManager: clientManager.currentClient: ${this.clientManager.currentClient}`);
-        }
 
         let interfaceFile;
 
         if (currentClient === 'b-client') {
-            interfaceFile = path.join(__dirname, '../../pages/b-client.html');
-            console.log(`🔄 WindowManager: Loading B-Client interface: ${interfaceFile}`);
+            interfaceFile = path.join(__dirname, '../../../pages/b-client.html');
         } else {
-            interfaceFile = path.join(__dirname, '../../pages/index.html');
-            console.log(`🔄 WindowManager: Loading C-Client interface: ${interfaceFile}`);
+            interfaceFile = path.join(__dirname, '../../../pages/index.html');
         }
 
-        // Add page load event listeners for debugging
-        this.mainWindow.webContents.once('did-finish-load', () => {
-            console.log(`✅ WindowManager: Page loaded successfully: ${interfaceFile}`);
-            console.log(`✅ WindowManager: Current URL: ${this.mainWindow.webContents.getURL()}`);
-        });
-
+        // Add page load event listeners
         this.mainWindow.webContents.once('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
             console.error(`❌ WindowManager: Page failed to load: ${interfaceFile}`);
             console.error(`❌ WindowManager: Error: ${errorCode} - ${errorDescription}`);
@@ -81,7 +69,6 @@ class WindowManager {
      */
     reloadClientInterface() {
         try {
-            console.log(`🔄 WindowManager: Reloading interface for current client...`);
             this.loadClientInterface();
 
             this.mainWindow.once('ready-to-show', () => {
@@ -143,12 +130,10 @@ class WindowManager {
 
         // Window focus event
         this.mainWindow.on('focus', () => {
-            console.log('Window focused');
         });
 
         // Window blur event
         this.mainWindow.on('blur', () => {
-            console.log('Window blurred');
         });
 
         // Window minimize event
@@ -183,7 +168,6 @@ class WindowManager {
 
         // Window show event
         this.mainWindow.on('show', () => {
-            console.log('Window shown');
         });
 
         // Window hide event
@@ -249,7 +233,6 @@ class WindowManager {
             height: height - topOffset
         };
 
-        console.log('Calculated view bounds:', bounds);
         return bounds;
     }
 

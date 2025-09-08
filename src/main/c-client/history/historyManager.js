@@ -499,7 +499,6 @@ class HistoryManager {
                 try {
                     const result = this.cleanupLoadingTitles();
                     if (result.updated > 0) {
-                        console.log(`Startup cleanup: Updated ${result.updated} Loading... titles`);
                     }
                 } catch (error) {
                     console.error('Startup cleanup failed:', error);

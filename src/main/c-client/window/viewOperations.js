@@ -61,7 +61,6 @@ class ViewOperations {
                 try {
                     title = view.webContents.getTitle();
                 } catch (err) {
-                    console.log(`Failed to get title from webContents (id=${id}):`, err);
                 }
 
                 // Method 2: Execute JavaScript if method 1 fails
@@ -94,7 +93,6 @@ class ViewOperations {
                             })()
                         `);
                     } catch (executeError) {
-                        console.log(`Failed to execute JavaScript for title (id=${id}):`, executeError);
                         title = 'Loading...';
                     }
                 }
@@ -142,14 +140,12 @@ class ViewOperations {
         const { historyManager } = this.viewManager;
 
         view.webContents.on('did-navigate', (event, url) => {
-            console.log(`🌐 Navigation: ${url}`);
             if (historyManager) {
                 historyManager.recordVisit(url, id);
             }
         });
 
         view.webContents.on('did-navigate-in-page', (event, url) => {
-            console.log(`🌐 In-page navigation: ${url}`);
             if (historyManager) {
                 historyManager.recordVisit(url, id);
             }
@@ -208,7 +204,6 @@ class ViewOperations {
                 mainWindow.sendToWindow('tab-switched', { id: parseInt(id) });
             }
 
-            console.log(`✅ Switched to view ${id}`);
             return true;
 
         } catch (error) {
@@ -225,21 +220,20 @@ class ViewOperations {
         const view = views[id];
 
         if (!view) {
-            console.log(`View ${id} not found`);
             return;
         }
 
         try {
             // Remove from main window if it's the current view
             if (this.viewManager.currentViewId === id) {
-                if (!view.webContents.isDestroyed()) {
+                if (view.webContents && !view.webContents.isDestroyed() && mainWindow && mainWindow.getMainWindow()) {
                     mainWindow.getMainWindow().removeBrowserView(view);
                 }
                 this.viewManager.currentViewId = null;
             }
 
             // Destroy the view
-            if (!view.webContents.isDestroyed()) {
+            if (view.webContents && !view.webContents.isDestroyed()) {
                 view.webContents.destroy();
             }
 
@@ -251,7 +245,6 @@ class ViewOperations {
                 mainWindow.sendToWindow('tab-closed', { id: parseInt(id) });
             }
 
-            console.log(`✅ Tab ${id} closed`);
 
         } catch (error) {
             console.error(`Error closing tab ${id}:`, error);
@@ -278,7 +271,6 @@ class ViewOperations {
 
         try {
             await currentView.webContents.loadURL(url);
-            console.log(`✅ Navigated to: ${url}`);
             return true;
         } catch (error) {
             console.error(`Error navigating to ${url}:`, error);

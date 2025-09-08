@@ -13,7 +13,6 @@ class VisitTracker {
         // In-memory cache for active records, for fast access and performance optimization
         this.activeRecordsCache = [];
 
-        console.log('VisitTracker initialized - pure database mode');
     }
 
     /**
@@ -21,7 +20,6 @@ class VisitTracker {
      */
     loadActiveRecords() {
         try {
-            console.log('Loading active records from database...');
 
             const dbActiveRecords = this.historyDB.getActiveRecords();
             this.activeRecordsCache = dbActiveRecords.map(record => ({
@@ -33,7 +31,6 @@ class VisitTracker {
                 viewId: record.view_id
             }));
 
-            console.log(`Loaded ${this.activeRecordsCache.length} active records from database`);
 
             // Validate cache data integrity
             this.validateCacheIntegrity();
@@ -57,7 +54,6 @@ class VisitTracker {
                 // Reload cache
                 this.loadActiveRecords();
             } else {
-                console.log('Cache integrity validated - database and cache are in sync');
             }
         } catch (error) {
             console.error('Failed to validate cache integrity:', error);
@@ -78,7 +74,6 @@ class VisitTracker {
             const shouldMerge = timeDiff < MERGE_THRESHOLD && recentRecord.stay_duration === null;
 
             if (shouldMerge) {
-                console.log(`Should merge with recent record: ${url} (${timeDiff}ms ago)`);
             }
 
             return shouldMerge;
@@ -99,7 +94,6 @@ class VisitTracker {
             if (recentRecord) {
                 const timestamp = new Date(currentTime).toISOString();
                 this.historyDB.updateRecordTimestamp(recentRecord.id, timestamp);
-                console.log(`Merged visit in database: ${url} (updated timestamp to ${timestamp})`);
                 return recentRecord.id;
             }
             return null;
@@ -135,7 +129,6 @@ class VisitTracker {
                     this.activeRecordsCache.splice(index, 1);
                 }
 
-                console.log(`Finished record in database: ${activeRecord.url} - ${stayDuration.toFixed(2)}s`);
             }
         } catch (error) {
             console.error('Failed to finish record in database:', error);
@@ -173,7 +166,6 @@ class VisitTracker {
 
             const finishedCount = toFinish.length;
             if (finishedCount > 0) {
-                console.log(`Finished ${finishedCount} active records for viewId ${viewId} in database`);
             }
         } catch (error) {
             console.error('Failed to finish active records by viewId:', error);
@@ -188,13 +180,6 @@ class VisitTracker {
             const timestamp = new Date(currentTime).toISOString();
             const domain = UrlUtils.extractDomain(url);
 
-            console.log('Creating new visit record in database:', {
-                url,
-                domain,
-                viewId,
-                timestamp,
-                userId
-            });
 
             // Insert into database and get ID
             const visitId = this.historyDB.addVisitRecord(
@@ -222,7 +207,6 @@ class VisitTracker {
                 domain
             };
 
-            console.log(`New visit record created in database with ID: ${visitId}`);
             return newRecord;
         } catch (error) {
             console.error('Failed to create new visit record in database:', error);
@@ -242,12 +226,10 @@ class VisitTracker {
 
         // Additional check if it's a history page
         if (UrlUtils.isHistoryRelatedPage(url)) {
-            console.log(`VisitTracker: Skipping history page: ${url}`);
             return null;
         }
 
         const now = Date.now();
-        console.log(`Recording visit to database: ${url} (view: ${viewId})`);
 
         try {
             // Begin database transaction
@@ -296,13 +278,6 @@ class VisitTracker {
             // Commit database transaction
             this.historyDB.commitTransaction();
 
-            console.log('Visit recorded successfully in database:', {
-                visitId: newRecord.id,
-                activeRecordId: activeRecordId,
-                url: newRecord.url,
-                viewId: newRecord.viewId,
-                activeRecordsCount: this.activeRecordsCache.length
-            });
 
             return newRecord;
 
@@ -330,7 +305,6 @@ class VisitTracker {
             if (record && record.id) {
                 const finalTitle = title || 'Untitled Page';
                 this.historyDB.updateRecordTitle(record.id, finalTitle);
-                console.log(`Updated title in database for ${record.url || 'record'}: ${finalTitle}`);
             } else {
                 console.warn('Invalid record object for title update:', record);
             }

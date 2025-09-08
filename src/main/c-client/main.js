@@ -25,21 +25,17 @@ class ElectronApp {
             return;
         }
 
-        console.log(`Initializing Electron application (${this.clientManager.getClientDisplayName()})...`);
 
         try {
             // Initialize history manager
             this.historyManager.initialize();
-            console.log('History manager initialized');
 
             // Validate node status on startup
             await this.startupValidator.validateOnStartup();
-            console.log('Node validation completed');
 
             // Create main window
             const mainWindow = this.windowManager.createWindow();
             this.mainWindow = mainWindow; // Store reference to main window
-            console.log('Main window created');
 
 
             // Wait for window to be ready
@@ -47,27 +43,21 @@ class ElectronApp {
 
             // Show the window
             mainWindow.show();
-            console.log('Main window shown');
 
             // Create view manager
             this.viewManager = new ViewManager(this.windowManager, this.historyManager);
-            console.log('View manager created');
 
             // Register IPC handlers
-            this.ipcHandlers = new IpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager);
-            console.log('IPC handlers registered');
+            this.ipcHandlers = new IpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager, this.startupValidator.nodeManager);
 
             // Set up browsing history monitoring
             this.setupHistoryRecording();
-            console.log('History recording setup completed');
 
             // Register keyboard shortcuts
             this.registerShortcuts();
-            console.log('Shortcuts registered');
 
             // Create application menu
             this.createApplicationMenu();
-            console.log('Application menu created');
 
             // Complete initialization
             this.historyManager.finalizeInitialization();
@@ -76,7 +66,6 @@ class ElectronApp {
             this.setupPeriodicCleanup();
 
             this.isInitialized = true;
-            console.log('Application initialization completed');
 
             // Listen for client switch events
             this.setupClientSwitchListener();
@@ -85,7 +74,6 @@ class ElectronApp {
             // Add a longer delay to ensure everything is ready
             setTimeout(() => {
                 if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                    console.log('Sending init-tab event to renderer process');
                     this.mainWindow.webContents.send('init-tab');
                 }
             }, 500); // Increased delay to ensure IPC handlers are fully registered
@@ -93,12 +81,21 @@ class ElectronApp {
             // Check if user registration is needed after main window is ready
             setTimeout(async () => {
                 try {
-                    console.log('Checking if user registration is needed...');
                     const registrationResult = await this.startupValidator.nodeManager.registerNewUserIfNeeded(this.mainWindow);
                     if (registrationResult) {
-                        console.log('✅ New user registration completed after main window loaded');
+                        // New user registration dialog was shown
                     } else {
-                        console.log('No user registration needed or failed to show dialog');
+                        // For existing users, show greeting dialog
+                        try {
+                            const UserRegistrationDialog = require('./nodeManager/userRegistrationDialog');
+                            const userRegistrationDialog = new UserRegistrationDialog();
+
+                            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                                await userRegistrationDialog.showGreeting(this.mainWindow);
+                            }
+                        } catch (greetingError) {
+                            console.error('Error showing greeting dialog for existing user:', greetingError);
+                        }
                     }
                 } catch (error) {
                     console.error('Error checking user registration after main window loaded:', error);
@@ -151,7 +148,7 @@ class ElectronApp {
             // Initialize new IPC handlers based on client type
             try {
                 if (targetClient === 'b-client') {
-                    const BClientIpcHandlers = require('./b-client/ipc/ipcHandlers');
+                    const BClientIpcHandlers = require('../b-client/ipc/ipcHandlers');
                     this.ipcHandlers = new BClientIpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager);
                 } else {
                     const CClientIpcHandlers = require('./ipc/ipcHandlers');
@@ -176,7 +173,6 @@ class ElectronApp {
                         // Send init-tab event to renderer process
                         setTimeout(() => {
                             if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                                console.log('Sending init-tab event to renderer process');
                                 this.mainWindow.webContents.send('init-tab');
                             }
                         }, 500);
@@ -184,17 +180,21 @@ class ElectronApp {
                         // Check if user registration is needed
                         setTimeout(async () => {
                             try {
-                                console.log('Checking if user registration is needed...');
-                                const registrationResult = await this.startupValidator.nodeManager.registerNewUserIfNeeded(this.mainWindow);
-                                if (registrationResult) {
-                                    console.log('✅ New user registration completed after client switch');
-                                } else {
-                                    console.log('No user registration needed or failed to show dialog');
-                                }
+                                await this.startupValidator.nodeManager.registerNewUserIfNeeded(this.mainWindow);
                             } catch (error) {
                                 console.error('Error checking user registration after client switch:', error);
                             }
                         }, 1500);
+
+                    } else if (targetClient === 'b-client') {
+                        // B-Client specific initialization
+                        setTimeout(async () => {
+                            try {
+                                await this.startupValidator.nodeManager.registerNewUserIfNeeded(this.mainWindow);
+                            } catch (error) {
+                                console.error('B-Client: Error checking user registration after client switch:', error);
+                            }
+                        }, 1000);
                     }
 
                 } catch (error) {
@@ -738,7 +738,6 @@ process.on('unhandledRejection', (reason, promise) => {
 app.whenReady().then(async () => {
     try {
         await electronApp.initialize();
-        console.log('Application started successfully');
     } catch (error) {
         console.error('Failed to start application:', error);
         app.quit();

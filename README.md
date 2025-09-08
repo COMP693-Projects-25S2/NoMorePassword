@@ -65,13 +65,19 @@ npm run build
 src/
 ├── main/                    # 主进程代码
 │   ├── b-client/           # B-Client 特定代码
-│   ├── window/             # 窗口管理
-│   ├── sqlite/             # 数据库相关
-│   ├── history/            # 历史记录管理
-│   ├── ipc/                # IPC 通信处理
-│   └── nodeManager/        # 节点管理
+│   │   ├── window/         # B-Client 窗口管理
+│   │   ├── sqlite/         # B-Client 数据库
+│   │   ├── history/        # B-Client 历史记录
+│   │   ├── ipc/            # B-Client IPC 处理
+│   │   └── nodeManager/    # B-Client 节点管理
+│   └── c-client/           # C-Client 特定代码
+│       ├── window/         # C-Client 窗口管理
+│       ├── sqlite/         # C-Client 数据库
+│       ├── history/        # C-Client 历史记录
+│       ├── ipc/            # C-Client IPC 处理
+│       └── nodeManager/    # C-Client 节点管理
 ├── pages/                  # 渲染进程页面
-│   ├── index.html          # 主页面
+│   ├── index.html          # C-Client 主页面
 │   ├── b-client.html       # B-Client 页面
 │   ├── history.html        # 历史记录页面
 │   └── userRegistration.html # 用户注册页面
@@ -95,7 +101,7 @@ src/
 - 会话数据
 
 数据库文件位置：
-- C-Client: `src/main/sqlite/secure.db`
+- C-Client: `src/main/c-client/sqlite/secure.db`
 - B-Client: `src/main/b-client/sqlite/b_client_secure.db`
 
 ## 开发说明

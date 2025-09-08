@@ -65,7 +65,7 @@ class UserRegistrationDialog {
                     nodeIntegration: true, // Enable nodeIntegration for require
                     contextIsolation: false, // Disable contextIsolation to allow require
                     enableRemoteModule: false,
-                    preload: path.join(__dirname, '../../pages/preload.js'),
+                    preload: path.join(__dirname, '../../../pages/preload.js'),
                     sandbox: false // Disable sandbox for better compatibility
                 }
             });
@@ -88,8 +88,6 @@ class UserRegistrationDialog {
 
             // Start keeping dialog in front
             this.startKeepInFront();
-
-            // User registration dialog created and shown successfully
 
         } catch (error) {
             console.error('Error creating user registration dialog:', error);
@@ -138,14 +136,6 @@ class UserRegistrationDialog {
             const finalX = Math.min(x, screenWidth - dialogWidth - 20);
             const finalY = Math.min(y, screenHeight - dialogHeight - 20);
 
-            // Log positioning information for debugging
-            console.log('Greeting dialog positioning:', {
-                mainBounds: mainBounds,
-                dialogSize: { width: dialogWidth, height: dialogHeight },
-                calculatedPosition: { x, y },
-                finalPosition: { x: finalX, y: finalY },
-                screenSize: { width: screenWidth, height: screenHeight }
-            });
 
             // Positioning greeting dialog
 
@@ -169,7 +159,7 @@ class UserRegistrationDialog {
                     nodeIntegration: true,
                     contextIsolation: false,
                     enableRemoteModule: false,
-                    preload: path.join(__dirname, '../../pages/preload.js'),
+                    preload: path.join(__dirname, '../../../pages/preload.js'),
                     sandbox: false
                 }
             });
@@ -190,13 +180,13 @@ class UserRegistrationDialog {
             // Start monitoring main window
             this.startMainWindowMonitoring();
 
-            // Auto-close after 5 seconds
+            // Auto-close after 3 seconds
             setTimeout(() => {
                 if (this.dialogWindow && !this.dialogWindow.isDestroyed()) {
-                    // Auto-closing greeting dialog after 5 seconds
+                    // Auto-closing greeting dialog after 3 seconds
                     this.close();
                 }
-            }, 5000);
+            }, 3000);
 
             // User greeting dialog created and shown successfully
 
@@ -778,20 +768,31 @@ class UserRegistrationDialog {
     }
 
     close() {
-        // Always allow closing when called from IPC
+        // Always allow closing when called from IPC or external request
         if (this.isIntentionalClose) {
             // Intentional close detected, proceeding with close
-        }
-
-        try {
-            if (this.dialogWindow && !this.dialogWindow.isDestroyed()) {
-                this.dialogWindow.close();
+            try {
+                if (this.dialogWindow && !this.dialogWindow.isDestroyed()) {
+                    this.dialogWindow.close();
+                }
+            } catch (error) {
+                console.error('Error closing dialog window:', error);
             }
-        } catch (error) {
-            console.error('Error closing dialog window:', error);
-        }
 
-        this.cleanup();
+            this.cleanup();
+        } else {
+            // Not an intentional close, check if we should allow it
+            // For now, allow all close requests to prevent dialog from getting stuck
+            try {
+                if (this.dialogWindow && !this.dialogWindow.isDestroyed()) {
+                    this.dialogWindow.close();
+                }
+            } catch (error) {
+                console.error('Error closing dialog window:', error);
+            }
+
+            this.cleanup();
+        }
     }
 
     cleanup() {

@@ -60,7 +60,6 @@ class HistoryDatabase {
             console.log('Added user_id column to visit_history table');
         } catch (error) {
             // Column might already exist, which is fine
-            console.log('user_id column already exists or table is new');
         }
 
         // Create indexes to optimize query performance
@@ -70,7 +69,7 @@ class HistoryDatabase {
             db.exec(`CREATE INDEX IF NOT EXISTS idx_visit_history_user_id ON visit_history(user_id)`);
             db.exec(`CREATE INDEX IF NOT EXISTS idx_active_records_view_id ON active_records(view_id)`);
             db.exec(`CREATE INDEX IF NOT EXISTS idx_shutdown_logs_timestamp ON shutdown_logs(timestamp_ms)`);
-            
+
             // Try to create timestamp index, but don't fail if column doesn't exist
             try {
                 db.exec(`CREATE INDEX IF NOT EXISTS idx_visit_history_timestamp ON visit_history(timestamp)`);

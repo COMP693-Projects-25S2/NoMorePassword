@@ -46,7 +46,6 @@ class ClientManager {
             if (fs.existsSync(this.clientConfigFile)) {
                 const config = JSON.parse(fs.readFileSync(this.clientConfigFile, 'utf8'));
                 const configClient = config.currentClient || 'c-client';
-                console.log(`📁 ClientManager: Config file shows: ${configClient}, but current client is: ${this.currentClient}`);
                 // Don't override the current client type detected from command line args
                 // Only use config for other settings if needed
             } else {
