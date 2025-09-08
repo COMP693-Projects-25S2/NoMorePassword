@@ -63,6 +63,87 @@ class HistoryDatabase {
             console.log('user_id column already exists or table is new');
         }
 
+        // Add timestamp column to existing visit_history table if it doesn't exist
+        try {
+            db.exec(`ALTER TABLE visit_history ADD COLUMN timestamp TEXT`);
+            console.log('Added timestamp column to visit_history table');
+        } catch (error) {
+            // Column might already exist, which is fine
+            console.log('timestamp column already exists or table is new');
+        }
+
+        // Add created_at column to existing visit_history table if it doesn't exist
+        try {
+            db.exec(`ALTER TABLE visit_history ADD COLUMN created_at INTEGER`);
+            console.log('Added created_at column to visit_history table');
+        } catch (error) {
+            // Column might already exist, which is fine
+            console.log('created_at column already exists or table is new');
+        }
+
+        // Add updated_at column to existing visit_history table if it doesn't exist
+        try {
+            db.exec(`ALTER TABLE visit_history ADD COLUMN updated_at INTEGER`);
+            console.log('Added updated_at column to visit_history table');
+        } catch (error) {
+            // Column might already exist, which is fine
+            console.log('updated_at column already exists or table is new');
+        }
+
+        // Add stay_duration column to existing visit_history table if it doesn't exist
+        try {
+            db.exec(`ALTER TABLE visit_history ADD COLUMN stay_duration REAL`);
+            console.log('Added stay_duration column to visit_history table');
+        } catch (error) {
+            // Column might already exist, which is fine
+            console.log('stay_duration column already exists or table is new');
+        }
+
+        // Add timestamp_ms column to existing shutdown_logs table if it doesn't exist
+        try {
+            db.exec(`ALTER TABLE shutdown_logs ADD COLUMN timestamp_ms INTEGER`);
+            console.log('Added timestamp_ms column to shutdown_logs table');
+        } catch (error) {
+            // Column might already exist, which is fine
+            console.log('timestamp_ms column already exists or table is new');
+        }
+
+        // Add platform column to existing shutdown_logs table if it doesn't exist
+        try {
+            db.exec(`ALTER TABLE shutdown_logs ADD COLUMN platform TEXT`);
+            console.log('Added platform column to shutdown_logs table');
+        } catch (error) {
+            // Column might already exist, which is fine
+            console.log('platform column already exists or table is new');
+        }
+
+        // Add version column to existing shutdown_logs table if it doesn't exist
+        try {
+            db.exec(`ALTER TABLE shutdown_logs ADD COLUMN version TEXT`);
+            console.log('Added version column to shutdown_logs table');
+        } catch (error) {
+            // Column might already exist, which is fine
+            console.log('version column already exists or table is new');
+        }
+
+        // Add last_visited_url column to existing shutdown_logs table if it doesn't exist
+        try {
+            db.exec(`ALTER TABLE shutdown_logs ADD COLUMN last_visited_url TEXT`);
+            console.log('Added last_visited_url column to shutdown_logs table');
+        } catch (error) {
+            // Column might already exist, which is fine
+            console.log('last_visited_url column already exists or table is new');
+        }
+
+        // Add session_duration column to existing shutdown_logs table if it doesn't exist
+        try {
+            db.exec(`ALTER TABLE shutdown_logs ADD COLUMN session_duration INTEGER`);
+            console.log('Added session_duration column to shutdown_logs table');
+        } catch (error) {
+            // Column might already exist, which is fine
+            console.log('session_duration column already exists or table is new');
+        }
+
         // Create indexes to optimize query performance
         try {
             db.exec(`CREATE INDEX IF NOT EXISTS idx_visit_history_url ON visit_history(url)`);
@@ -70,7 +151,7 @@ class HistoryDatabase {
             db.exec(`CREATE INDEX IF NOT EXISTS idx_visit_history_user_id ON visit_history(user_id)`);
             db.exec(`CREATE INDEX IF NOT EXISTS idx_active_records_view_id ON active_records(view_id)`);
             db.exec(`CREATE INDEX IF NOT EXISTS idx_shutdown_logs_timestamp ON shutdown_logs(timestamp_ms)`);
-            
+
             // Try to create timestamp index, but don't fail if column doesn't exist
             try {
                 db.exec(`CREATE INDEX IF NOT EXISTS idx_visit_history_timestamp ON visit_history(timestamp)`);
@@ -174,12 +255,24 @@ class HistoryDatabase {
 
     // Get all active records
     getActiveRecords() {
-        return db.prepare(`
-            SELECT ar.*, vh.url, vh.title 
-            FROM active_records ar 
-            JOIN visit_history vh ON ar.visit_id = vh.id 
-            ORDER BY ar.enter_time ASC
-        `).all();
+        try {
+            // First check if active_records table exists and has data
+            const count = db.prepare(`SELECT COUNT(*) as count FROM active_records`).get().count;
+            if (count === 0) {
+                return [];
+            }
+
+            // Try to get records with join
+            return db.prepare(`
+                SELECT ar.*, vh.url, vh.title 
+                FROM active_records ar 
+                JOIN visit_history vh ON ar.visit_id = vh.id 
+                ORDER BY ar.enter_time ASC
+            `).all();
+        } catch (error) {
+            console.log('getActiveRecords: No active records found or table structure issue:', error.message);
+            return [];
+        }
     }
 
     // Get active records by view_id

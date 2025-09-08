@@ -57,32 +57,30 @@ class ViewManager {
     }
 
     hideAllViews() {
-        console.log('🔄 ViewManager: Hiding all browser views...');
         const { views } = this;
         const mainWindow = this.mainWindow;
 
         if (!mainWindow || !mainWindow.getMainWindow) {
-            console.log('⚠️ ViewManager: Main window not available for hiding views');
             return;
         }
 
         const electronMainWindow = mainWindow.getMainWindow();
+        if (!electronMainWindow) {
+            return;
+        }
 
-        // Hide all views by removing them from the main window
         Object.keys(views).forEach(viewId => {
             const view = views[viewId];
             if (view && !view.webContents.isDestroyed()) {
                 try {
                     electronMainWindow.removeBrowserView(view);
-                    console.log(`🔄 ViewManager: Hidden view ${viewId}`);
                 } catch (error) {
-                    console.log(`⚠️ ViewManager: Error hiding view ${viewId}:`, error.message);
+                    console.error(`B-Client ViewManager: Error hiding view ${viewId}:`, error);
                 }
             }
         });
 
         this.currentViewId = null;
-        console.log('✅ ViewManager: All browser views hidden');
     }
 
     async navigateTo(url) {

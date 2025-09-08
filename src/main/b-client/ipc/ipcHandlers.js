@@ -5,8 +5,9 @@ class IpcHandlers {
     constructor(viewManager, historyManager, mainWindow = null, clientManager = null) {
         this.viewManager = viewManager;
         this.historyManager = historyManager;
-        this.mainWindow = mainWindow; // Store reference to main window
-        this.clientManager = clientManager; // Store reference to client manager
+        this.mainWindow = mainWindow;
+        this.clientManager = clientManager;
+
         this.registerHandlers();
     }
 
@@ -841,7 +842,7 @@ class IpcHandlers {
             try {
                 ipcMain.removeHandler(handler);
             } catch (error) {
-                console.log(`Warning: Failed to remove handler ${handler}:`, error.message);
+                console.log(`B-Client: Warning: Failed to remove handler ${handler}:`, error.message);
             }
         });
 
@@ -872,17 +873,17 @@ class IpcHandlers {
         });
 
         // Switch to specific client
-        ipcMain.handle('switch-to-client', async (_, targetClient) => {
+        ipcMain.handle('switch-to-client', async (event, targetClient) => {
             try {
                 if (!this.clientManager) {
-                    console.error('C-Client IPC: Client manager not available');
+                    console.error('B-Client IPC: Client manager not available');
                     return { success: false, error: 'Client manager not available' };
                 }
 
                 const result = this.clientManager.switchClient(targetClient);
                 return result;
             } catch (error) {
-                console.error('C-Client IPC: Exception during switch to specific client:', error);
+                console.error('B-Client IPC: Exception during switch to specific client:', error);
                 return { success: false, error: error.message };
             }
         });

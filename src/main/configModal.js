@@ -27,7 +27,7 @@ class ConfigModal {
             // Calculate modal position (top-left of main window)
             const mainBounds = mainWindow.getBounds();
             const modalWidth = 280;
-            const modalHeight = 320; // Increased height for new option
+            const modalHeight = 360; // Increased height for client switching option
 
             // Position modal at top-left of main window content area (below toolbar and tabs)
             const x = mainBounds.x + 20; // 20px from left edge
@@ -198,6 +198,10 @@ class ConfigModal {
         </div>
 
         <div class="modal-body">
+            <div class="config-option" id="switch-client">
+                <span class="config-option-icon">🔄</span>
+                <span class="config-option-text">Switch to B-Client</span>
+            </div>
             <div class="config-option" id="new-user">
                 <span class="config-option-icon">➕</span>
                 <span class="config-option-text">New User</span>
@@ -228,6 +232,7 @@ class ConfigModal {
             console.log('Configuration modal loaded');
 
             const closeBtn = document.getElementById('closeBtn');
+            const switchClientBtn = document.getElementById('switch-client');
             const newUserBtn = document.getElementById('new-user');
             const switchUserBtn = document.getElementById('switch-user');
             const clearUsersBtn = document.getElementById('clear-local-users');
@@ -237,6 +242,27 @@ class ConfigModal {
             // Handle close button click
             closeBtn.addEventListener('click', () => {
                 console.log('Close button clicked');
+                window.close();
+            });
+
+            // Handle switch client - directly switch to B-Client
+            switchClientBtn.addEventListener('click', async () => {
+                try {
+                    console.log('🔄 C-Client: Switch button clicked, initiating switch to B-Client...');
+                    const result = await ipcRenderer.invoke('switch-to-client', 'b-client');
+                    console.log('🔄 C-Client: Switch result received:', result);
+                    
+                    if (result.success) {
+                        console.log('✅ C-Client: Switching to B-Client successful, closing config modal...');
+                    } else {
+                        console.error('❌ C-Client: Failed to switch to B-Client:', result.error);
+                        alert(\`Failed to switch to B-Client: \${result.error}\`);
+                    }
+                } catch (error) {
+                    console.error('❌ C-Client: Error during switch to B-Client:', error);
+                    alert(\`Error switching to B-Client: \${error.message}\`);
+                }
+                console.log('🔄 C-Client: Closing config modal window...');
                 window.close();
             });
 

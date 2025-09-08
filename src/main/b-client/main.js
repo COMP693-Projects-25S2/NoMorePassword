@@ -4,9 +4,9 @@ const ViewManager = require('./window/viewManager');
 const HistoryManager = require('./history/historyManager');
 const IpcHandlers = require('./ipc/ipcHandlers');
 const { StartupValidator } = require('./nodeManager');
-const ClientManager = require('./clientManager');
+const ClientManager = require('../clientManager');
 
-class ElectronApp {
+class BClientApp {
     constructor() {
         this.clientManager = new ClientManager();
         this.historyManager = new HistoryManager();
@@ -14,60 +14,55 @@ class ElectronApp {
         this.startupValidator = new StartupValidator();
         this.viewManager = null;
         this.ipcHandlers = null;
-        this.mainWindow = null; // Initialize mainWindow property
+        this.mainWindow = null;
         this.isInitialized = false;
         this.pendingTitleUpdates = new Map();
     }
 
     async initialize() {
         if (this.isInitialized) {
-            console.log('Application already initialized');
+            console.log('B-Client application already initialized');
             return;
         }
 
-        console.log(`Initializing Electron application (${this.clientManager.getClientDisplayName()})...`);
+        console.log('Initializing B-Client (Enterprise) application...');
 
         try {
             // Initialize history manager
             this.historyManager.initialize();
-            console.log('History manager initialized');
+            console.log('B-Client history manager initialized');
 
             // Validate node status on startup
             await this.startupValidator.validateOnStartup();
-            console.log('Node validation completed');
+            console.log('B-Client node validation completed');
 
             // Create main window
             const mainWindow = this.windowManager.createWindow();
-            this.mainWindow = mainWindow; // Store reference to main window
-            console.log('Main window created');
-
+            this.mainWindow = mainWindow;
+            console.log('B-Client main window created');
 
             // Wait for window to be ready
             await this.waitForWindowReady(mainWindow);
 
-            // Show the window
-            mainWindow.show();
-            console.log('Main window shown');
-
             // Create view manager
             this.viewManager = new ViewManager(this.windowManager, this.historyManager);
-            console.log('View manager created');
+            console.log('B-Client view manager created');
 
             // Register IPC handlers
             this.ipcHandlers = new IpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager);
-            console.log('IPC handlers registered');
+            console.log('B-Client IPC handlers registered');
 
             // Set up browsing history monitoring
             this.setupHistoryRecording();
-            console.log('History recording setup completed');
+            console.log('B-Client history recording setup completed');
 
             // Register keyboard shortcuts
             this.registerShortcuts();
-            console.log('Shortcuts registered');
+            console.log('B-Client shortcuts registered');
 
             // Create application menu
             this.createApplicationMenu();
-            console.log('Application menu created');
+            console.log('B-Client application menu created');
 
             // Complete initialization
             this.historyManager.finalizeInitialization();
@@ -76,139 +71,36 @@ class ElectronApp {
             this.setupPeriodicCleanup();
 
             this.isInitialized = true;
-            console.log('Application initialization completed');
+            console.log('B-Client application initialization completed');
 
-            // Listen for client switch events
-            this.setupClientSwitchListener();
+            // Set up IPC listener for user registration dialog
+            const { ipcMain } = require('electron');
+            ipcMain.on('show-user-registration-dialog', () => {
+                console.log('B-Client: Received show-user-registration-dialog event');
+                if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                    console.log('B-Client: Sending show-user-registration-dialog to renderer process');
+                    this.mainWindow.webContents.send('show-user-registration-dialog');
+                }
+            });
 
-            // After IPC handlers are registered and listeners are set up, send init-tab event
-            // Add a longer delay to ensure everything is ready
+            // After IPC handlers are registered, send init-tab event
             setTimeout(() => {
                 if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                    console.log('Sending init-tab event to renderer process');
+                    // Send init-tab event to renderer process
                     this.mainWindow.webContents.send('init-tab');
                 }
-            }, 500); // Increased delay to ensure IPC handlers are fully registered
+            }, 500);
 
-            // Check if user registration is needed after main window is ready
-            setTimeout(async () => {
-                try {
-                    console.log('Checking if user registration is needed...');
-                    const registrationResult = await this.startupValidator.nodeManager.registerNewUserIfNeeded(this.mainWindow);
-                    if (registrationResult) {
-                        console.log('✅ New user registration completed after main window loaded');
-                    } else {
-                        console.log('No user registration needed or failed to show dialog');
-                    }
-                } catch (error) {
-                    console.error('Error checking user registration after main window loaded:', error);
-                }
-            }, 1500); // Wait 1.5 seconds after main window is ready to ensure everything is loaded
+            // Skip user registration for direct B-Client launch
 
         } catch (error) {
-            console.error('Failed to initialize application:', error);
+            console.error('B-Client: Failed to initialize application:', error);
+            this.cleanup();
             throw error;
         }
     }
 
-    /**
-     * Setup client switch event listener
-     */
-    setupClientSwitchListener() {
-        const { app } = require('electron');
-
-        app.on('client-switch', (targetClient) => {
-            this.handleClientSwitch(targetClient);
-        });
-    }
-
-    /**
-     * Handle client switch
-     */
-    async handleClientSwitch(targetClient) {
-        try {
-
-            // Update window title and properties
-            if (this.mainWindow) {
-                const displayName = this.clientManager.getClientDisplayName();
-                this.mainWindow.setTitle(displayName);
-            }
-
-            // Hide all browser views when switching to B-Client
-            if (targetClient === 'b-client' && this.viewManager) {
-                this.viewManager.hideAllViews();
-            }
-
-            // Reinitialize IPC handlers for the new client
-            if (this.ipcHandlers) {
-                try {
-                    this.ipcHandlers.cleanup();
-                } catch (error) {
-                    console.log(`Main: Error cleaning up old IPC handlers:`, error.message);
-                }
-            }
-
-            // Initialize new IPC handlers based on client type
-            try {
-                if (targetClient === 'b-client') {
-                    const BClientIpcHandlers = require('./b-client/ipc/ipcHandlers');
-                    this.ipcHandlers = new BClientIpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager);
-                } else {
-                    const CClientIpcHandlers = require('./ipc/ipcHandlers');
-                    this.ipcHandlers = new CClientIpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager);
-                }
-            } catch (error) {
-                console.error(`❌ Main: Error initializing ${targetClient} IPC handlers:`, error);
-                throw error;
-            }
-
-            // Reload the main window with new client interface
-            if (this.mainWindow && this.windowManager) {
-                try {
-                    this.windowManager.reloadClientInterface();
-
-                    // Wait for page to load completely
-                    await this.waitForWindowReady(this.mainWindow);
-
-                    // Trigger client-specific initialization after page load
-                    if (targetClient === 'c-client') {
-
-                        // Send init-tab event to renderer process
-                        setTimeout(() => {
-                            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                                console.log('Sending init-tab event to renderer process');
-                                this.mainWindow.webContents.send('init-tab');
-                            }
-                        }, 500);
-
-                        // Check if user registration is needed
-                        setTimeout(async () => {
-                            try {
-                                console.log('Checking if user registration is needed...');
-                                const registrationResult = await this.startupValidator.nodeManager.registerNewUserIfNeeded(this.mainWindow);
-                                if (registrationResult) {
-                                    console.log('✅ New user registration completed after client switch');
-                                } else {
-                                    console.log('No user registration needed or failed to show dialog');
-                                }
-                            } catch (error) {
-                                console.error('Error checking user registration after client switch:', error);
-                            }
-                        }, 1500);
-                    }
-
-                } catch (error) {
-                    console.error(`❌ Main: Error reloading interface for ${targetClient}:`, error);
-                    throw error;
-                }
-            }
-
-        } catch (error) {
-            console.error(`Main: Failed to switch to ${targetClient}:`, error);
-        }
-    }
-
-    async waitForWindowReady(window) {
+    waitForWindowReady(window) {
         return new Promise((resolve) => {
             if (window.webContents.isLoading()) {
                 window.webContents.once('did-finish-load', () => {
@@ -255,7 +147,7 @@ class ElectronApp {
                                     }
                                 }
                             } catch (error) {
-                                console.error('Error in did-start-navigation handler:', error);
+                                console.error('B-Client: Error in did-start-navigation handler:', error);
                             }
                         }, 200);
                     }
@@ -281,7 +173,7 @@ class ElectronApp {
                         }
                     }
                 } catch (error) {
-                    console.error('Error in did-finish-load handler:', error);
+                    console.error('B-Client: Error in did-finish-load handler:', error);
                 }
             });
 
@@ -302,7 +194,7 @@ class ElectronApp {
                         }
                     }
                 } catch (error) {
-                    console.error('Error in page-title-updated handler:', error);
+                    console.error('B-Client: Error in page-title-updated handler:', error);
                 }
             });
 
@@ -320,7 +212,7 @@ class ElectronApp {
                         this.updateRecordTitle(validatedURL, viewId, `Failed to load: ${errorDescription}`);
                     }
                 } catch (error) {
-                    console.error('Error in did-fail-load handler:', error);
+                    console.error('B-Client: Error in did-fail-load handler:', error);
                 }
             });
 
@@ -376,7 +268,7 @@ class ElectronApp {
                 }
             }
         } catch (error) {
-            console.error('Failed to update record title:', error);
+            console.error('B-Client: Failed to update record title:', error);
         }
     }
 
@@ -391,7 +283,7 @@ class ElectronApp {
                 }
             }
         } catch (error) {
-            console.error('Failed to get viewId from WebContents:', error);
+            console.error('B-Client: Failed to get viewId from WebContents:', error);
         }
 
         return null;
@@ -416,11 +308,11 @@ class ElectronApp {
                 `).run(fiveMinutesAgo);
 
                 if (result.changes > 0) {
-                    console.log(`Cleaned up ${result.changes} loading records`);
+                    console.log(`B-Client: Cleaned up ${result.changes} loading records`);
                 }
             }
         } catch (error) {
-            console.error('Failed to cleanup loading records:', error);
+            console.error('B-Client: Failed to cleanup loading records:', error);
         }
     }
 
@@ -438,10 +330,10 @@ class ElectronApp {
             }
 
             if (cleanedCount > 0) {
-                console.log(`Cleaned up ${cleanedCount} pending title updates`);
+                console.log(`B-Client: Cleaned up ${cleanedCount} pending title updates`);
             }
         } catch (error) {
-            console.error('Failed to cleanup pending updates:', error);
+            console.error('B-Client: Failed to cleanup pending updates:', error);
         }
     }
 
@@ -490,7 +382,7 @@ class ElectronApp {
             });
 
         } catch (error) {
-            console.error('Failed to register shortcuts:', error);
+            console.error('B-Client: Failed to register shortcuts:', error);
         }
     }
 
@@ -573,10 +465,10 @@ class ElectronApp {
 
     clearLocalUsers() {
         try {
-            console.log('Clearing local_users table...');
+            console.log('B-Client: Clearing local_users table...');
             const db = require('./sqlite/database');
             const result = db.prepare('DELETE FROM local_users').run();
-            console.log(`Cleared ${result.changes} users from local_users table`);
+            console.log(`B-Client: Cleared ${result.changes} users from local_users table`);
 
             // Show confirmation to user
             if (this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -586,7 +478,7 @@ class ElectronApp {
                 });
             }
         } catch (error) {
-            console.error('Error clearing local_users table:', error);
+            console.error('B-Client: Error clearing local_users table:', error);
 
             // Show error to user
             if (this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -599,14 +491,20 @@ class ElectronApp {
     }
 
     setupAppEvents() {
+        // Listen for client switch events
+        app.on('client-switch', (targetClient) => {
+            console.log(`🔄 B-Client: Received client-switch event for: ${targetClient}`);
+            this.handleClientSwitch(targetClient);
+        });
+
         app.on('window-all-closed', async () => {
             // Clear all sessions and login states
             if (this.windowManager && this.windowManager.viewManager) {
                 try {
-                    console.log('🧹 All windows closed, starting to clear all sessions...');
+                    console.log('🧹 B-Client: All windows closed, starting to clear all sessions...');
                     await this.windowManager.viewManager.clearAllSessions();
                 } catch (error) {
-                    console.error('❌ Error clearing sessions:', error);
+                    console.error('❌ B-Client: Error clearing sessions:', error);
                 }
             }
 
@@ -623,10 +521,10 @@ class ElectronApp {
             // Clear all sessions and login states
             if (this.windowManager && this.windowManager.viewManager) {
                 try {
-                    console.log('🧹 Application exiting, starting to clear all sessions...');
+                    console.log('🧹 B-Client: Application exiting, starting to clear all sessions...');
                     await this.windowManager.viewManager.clearAllSessions();
                 } catch (error) {
-                    console.error('❌ Error clearing sessions:', error);
+                    console.error('❌ B-Client: Error clearing sessions:', error);
                 }
             }
 
@@ -642,7 +540,7 @@ class ElectronApp {
                 try {
                     await this.initialize();
                 } catch (error) {
-                    console.error('Failed to reactivate application:', error);
+                    console.error('B-Client: Failed to reactivate application:', error);
                 }
             } else {
                 mainWindow.show();
@@ -656,7 +554,7 @@ class ElectronApp {
                     this.historyManager.forceWrite();
                 }
             } catch (error) {
-                console.error('Failed in will-quit handler:', error);
+                console.error('B-Client: Failed in will-quit handler:', error);
             }
         });
 
@@ -675,7 +573,7 @@ class ElectronApp {
     cleanup() {
         if (!this.isInitialized) return;
 
-        console.log('Cleaning up application resources...');
+        console.log('B-Client: Cleaning up application resources...');
 
         try {
             if (this.viewManager) {
@@ -705,7 +603,82 @@ class ElectronApp {
             this.isInitialized = false;
 
         } catch (error) {
-            console.error('Error during cleanup:', error);
+            console.error('B-Client: Error during cleanup:', error);
+        }
+    }
+
+    handleClientSwitch(targetClient) {
+        if (targetClient === 'c-client') {
+
+            // Update window title
+            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                this.mainWindow.setTitle('Consumer Client');
+            }
+
+            // Clean up B-Client IPC handlers
+            if (this.ipcHandlers) {
+                this.ipcHandlers.cleanup();
+                this.ipcHandlers = null;
+            }
+
+            // Initialize C-Client IPC handlers
+            const CClientIpcHandlers = require('../ipc/ipcHandlers');
+            this.ipcHandlers = new CClientIpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager);
+
+            // Load C-Client interface
+            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                const path = require('path');
+                const cClientPath = path.join(__dirname, '../../pages/index.html');
+                this.mainWindow.loadFile(cClientPath);
+
+                // Wait for page to load and then trigger C-Client initialization
+                this.mainWindow.webContents.once('did-finish-load', () => {
+                    // Send init-tab event to C-Client
+                    setTimeout(() => {
+                        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                            this.mainWindow.webContents.send('init-tab');
+                        }
+                    }, 500);
+
+                    // Check if user registration is needed for C-Client
+                    setTimeout(async () => {
+                        try {
+                            const registrationResult = await this.startupValidator.nodeManager.registerNewUserIfNeeded(this.mainWindow);
+                        } catch (error) {
+                            console.error('B-Client: Error checking C-Client user registration after switch:', error);
+                        }
+                    }, 1000);
+                });
+            }
+
+        } else if (targetClient === 'b-client') {
+
+            // Update window title
+            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                this.mainWindow.setTitle('Enterprise Client');
+            }
+
+            // Hide all browser views for B-Client
+            if (this.viewManager) {
+                this.viewManager.hideAllViews();
+            }
+
+            // Clean up C-Client IPC handlers
+            if (this.ipcHandlers) {
+                this.ipcHandlers.cleanup();
+                this.ipcHandlers = null;
+            }
+
+            // Initialize B-Client IPC handlers
+            const BClientIpcHandlers = require('./ipc/ipcHandlers');
+            this.ipcHandlers = new BClientIpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager);
+
+            // Load B-Client interface
+            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                const path = require('path');
+                const bClientPath = path.join(__dirname, '../../pages/b-client.html');
+                this.mainWindow.loadFile(bClientPath);
+            }
         }
     }
 
@@ -715,37 +688,37 @@ class ElectronApp {
     }
 }
 
-// Create application instance
-const electronApp = new ElectronApp();
+// Create B-Client application instance
+const bClientApp = new BClientApp();
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
-    console.error('Uncaught Exception:', error);
-    if (electronApp.historyManager) {
-        electronApp.historyManager.logShutdown('uncaught-exception');
+    console.error('B-Client: Uncaught Exception:', error);
+    if (bClientApp.historyManager) {
+        bClientApp.historyManager.logShutdown('uncaught-exception');
     }
     setTimeout(() => process.exit(1), 1000);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection:', reason);
-    if (electronApp.historyManager) {
-        electronApp.historyManager.logShutdown('unhandled-rejection');
+    console.error('B-Client: Unhandled Rejection:', reason);
+    if (bClientApp.historyManager) {
+        bClientApp.historyManager.logShutdown('unhandled-rejection');
     }
 });
 
 // Initialize when application is ready
 app.whenReady().then(async () => {
     try {
-        await electronApp.initialize();
-        console.log('Application started successfully');
+        await bClientApp.initialize();
+        console.log('B-Client application started successfully');
     } catch (error) {
-        console.error('Failed to start application:', error);
+        console.error('B-Client: Failed to start application:', error);
         app.quit();
     }
 });
 
 // Set up application event listeners
-electronApp.setupAppEvents();
+bClientApp.setupAppEvents();
 
-module.exports = electronApp;
+module.exports = bClientApp;

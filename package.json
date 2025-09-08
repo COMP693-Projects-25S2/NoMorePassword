@@ -5,7 +5,11 @@
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
+    "start:c-client": "electron . --c-client",
+    "start:b-client": "electron src/main/b-client/main.js --b-client",
     "dev": "electron . --dev",
+    "dev:c-client": "electron . --dev --c-client",
+    "dev:b-client": "electron src/main/b-client/main.js --dev --b-client",
     "build": "electron-builder",
     "dist": "npm run build",
     "test": "echo \"Error: no test specified\" && exit 1",

@@ -27,72 +27,20 @@ class WindowManager {
             webPreferences: {
                 contextIsolation: true,
                 nodeIntegration: false,
-                preload: path.join(__dirname, '../../pages/preload.js'),
+                preload: path.join(__dirname, '../../../pages/preload.js'),
             }
         });
 
-        // Load client-specific interface
-        this.loadClientInterface();
+        // Load B-Client specific interface
+        this.mainWindow.loadFile(path.join(__dirname, '../../../pages/b-client.html'));
 
         this.setupWindowEvents();
 
+        this.mainWindow.once('ready-to-show', () => {
+            this.mainWindow.show();
+        });
+
         return this.mainWindow;
-    }
-
-    /**
-     * Load client-specific interface
-     */
-    loadClientInterface() {
-        if (!this.mainWindow) return;
-
-        const currentClient = this.clientManager ? this.clientManager.getCurrentClient() : 'c-client';
-        console.log(`🔍 WindowManager: getCurrentClient() returned: ${currentClient}`);
-        console.log(`🔍 WindowManager: clientManager exists: ${!!this.clientManager}`);
-        if (this.clientManager) {
-            console.log(`🔍 WindowManager: clientManager.currentClient: ${this.clientManager.currentClient}`);
-        }
-
-        let interfaceFile;
-
-        if (currentClient === 'b-client') {
-            interfaceFile = path.join(__dirname, '../../pages/b-client.html');
-            console.log(`🔄 WindowManager: Loading B-Client interface: ${interfaceFile}`);
-        } else {
-            interfaceFile = path.join(__dirname, '../../pages/index.html');
-            console.log(`🔄 WindowManager: Loading C-Client interface: ${interfaceFile}`);
-        }
-
-        // Add page load event listeners for debugging
-        this.mainWindow.webContents.once('did-finish-load', () => {
-            console.log(`✅ WindowManager: Page loaded successfully: ${interfaceFile}`);
-            console.log(`✅ WindowManager: Current URL: ${this.mainWindow.webContents.getURL()}`);
-        });
-
-        this.mainWindow.webContents.once('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-            console.error(`❌ WindowManager: Page failed to load: ${interfaceFile}`);
-            console.error(`❌ WindowManager: Error: ${errorCode} - ${errorDescription}`);
-        });
-
-        this.mainWindow.loadFile(interfaceFile);
-    }
-
-    /**
-     * Reload interface for current client
-     */
-    reloadClientInterface() {
-        try {
-            console.log(`🔄 WindowManager: Reloading interface for current client...`);
-            this.loadClientInterface();
-
-            this.mainWindow.once('ready-to-show', () => {
-                this.mainWindow.show();
-            });
-
-            return this.mainWindow;
-        } catch (error) {
-            console.error('❌ WindowManager: Error reloading client interface:', error);
-            throw error;
-        }
     }
 
     /**

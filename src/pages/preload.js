@@ -38,6 +38,9 @@ contextBridge.exposeInMainWorld(
     openUserRegistration: () => ipcRenderer.invoke('open-user-registration'),
     clearCurrentUserActivities: () => ipcRenderer.invoke('clear-current-user-activities'),
 
+    // Client switching
+    switchToClient: (clientType) => ipcRenderer.invoke('switch-to-client', clientType),
+
 
 
     // Event listeners
