@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <title>Browse History</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
+            padding: 25px;
+            border-radius: 12px;
+            text-align: center;
+            color: white;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+        }
+
+        .stat-card.visits {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .stat-card.time {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .stat-card.avg {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        .stat-card .icon {
+            font-size: 2.5em;
+            margin-bottom: 15px;
+            opacity: 0.9;
+        }
+
+        .stat-card h3 {
+            margin-bottom: 15px;
+            font-size: 1.1em;
+            font-weight: 500;
+            opacity: 0.9;
+        }
+
+        .stat-card .value {
+            font-size: 2.8em;
+            margin-bottom: 5px;
+            font-weight: bold;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .stat-card .unit {
+            font-size: 1em;
+            opacity: 0.8;
+        }
+
+        .history-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 30px;
+            margin-top: 20px;
+        }
+
+        .history-section h2 {
+            color: #333;
+            font-size: 1.8em;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .history-list {
+            max-height: 600px;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+
+        /* Date separator styles */
+        .date-separator {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            margin: 20px 0 15px 0;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1.1em;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .date-separator.today {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+        }
+
+        .date-separator.yesterday {
+            background: linear-gradient(135deg, #FF9800 0%, #f57c00 100%);
+        }
+
+        .history-item {
+            border-left: 4px solid;
+            background: white;
+            margin-bottom: 12px;
+            padding: 20px;
+            border-radius: 0 10px 10px 0;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .history-item:hover {
+            background: #f0f0f0;
+            transform: translateX(5px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .history-item-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 15px;
+        }
+
+        .history-item-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .history-item-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 1.05em;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            word-break: break-word;
+        }
+
+        .history-item-domain {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .history-item-time {
+            color: #999;
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .history-item-duration {
+            color: white;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .no-history {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .no-history .icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .no-history h3 {
+            margin-bottom: 15px;
+            font-size: 1.5em;
+            color: #555;
+        }
+
+        .no-history p {
+            color: #777;
+            font-size: 1.1em;
+        }
+
+        .history-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .history-list::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        .history-list::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 4px;
+        }
+
+        .history-list::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .loading .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                <span>📊</span>
+                Browse History
+            </h1>
+            <p>Your browsing statistics and recent activity</p>
+        </div>
+
+        <div class="content">
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p>Loading your browsing history...</p>
+            </div>
+
+            <div id="stats-container" style="display: none;">
+                <div class="stats-grid" id="stats"></div>
+
+                <div class="history-section">
+                    <h2>
+                        <span>📖</span>
+                        Recent History
+                        <span id="history-count" style="font-size: 0.8em; color: #666; font-weight: normal;"></span>
+                    </h2>
+                    <div class="history-list" id="history-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Utility functions
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatTime(seconds) {
+            if (seconds < 60) {
+                return `${seconds.toFixed(1)}s`;
+            } else if (seconds < 3600) {
+                return `${(seconds / 60).toFixed(1)}min`;
+            } else {
+                return `${(seconds / 3600).toFixed(1)}h`;
+            }
+        }
+
+        // Format date for display
+        function formatDate(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diffTime = Math.abs(now - date);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            if (diffDays === 1) {
+                return 'Today';
+            } else if (diffDays === 2) {
+                return 'Yesterday';
+            } else if (diffDays <= 7) {
+                return date.toLocaleDateString('en-US', { weekday: 'long' });
+            } else {
+                return date.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+            }
+        }
+
+        // Get date class for styling
+        function getDateClass(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diffTime = Math.abs(now - date);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            if (diffDays === 1) return 'today';
+            if (diffDays === 2) return 'yesterday';
+            return '';
+        }
+
+        // Generate stats cards
+        function generateStats(stats) {
+            return `
+                <div class="stat-card visits">
+                    <div class="icon">🌐</div>
+                    <h3>Total Visits</h3>
+                    <div class="value">${stats.totalVisits || 0}</div>
+                    <div class="unit">pages</div>
+                </div>
+                <div class="stat-card time">
+                    <div class="icon">⏱</div>
+                    <h3>Total Time</h3>
+                    <div class="value">${formatTime(stats.totalTime || 0)}</div>
+                    <div class="unit">browsing</div>
+                </div>
+                <div class="stat-card avg">
+                    <div class="icon">📈</div>
+                    <h3>Average Stay</h3>
+                    <div class="value">${formatTime(stats.averageStayTime || 0)}</div>
+                    <div class="unit">per page</div>
+                </div>
+            `;
+        }
+
+        // Generate history list with date grouping
+        function generateHistory(history) {
+            if (!history || history.length === 0) {
+                return `
+                    <div class="no-history">
+                        <div class="icon">📭</div>
+                        <h3>No browsing history yet</h3>
+                        <p>Start browsing to see your history here.</p>
+                    </div>
+                `;
+            }
+
+            // Sort history by timestamp (newest first)
+            const sortedHistory = history.sort((a, b) => b.timestamp - a.timestamp);
+
+            // Group by date
+            const groupedHistory = {};
+            sortedHistory.forEach(record => {
+                const dateKey = new Date(record.timestamp).toDateString();
+                if (!groupedHistory[dateKey]) {
+                    groupedHistory[dateKey] = [];
+                }
+                groupedHistory[dateKey].push(record);
+            });
+
+            // Generate HTML for each date group
+            let historyHTML = '';
+            Object.entries(groupedHistory).forEach(([dateKey, records]) => {
+                const firstRecord = records[0];
+                const dateClass = getDateClass(firstRecord.timestamp);
+
+                // Add date separator
+                historyHTML += `
+                    <div class="date-separator ${dateClass}">
+                        📅 ${formatDate(firstRecord.timestamp)}
+                    </div>
+                `;
+
+                // Add records for this date
+                records.forEach((record, index) => {
+                    const stayTime = record.stayDuration ? formatTime(record.stayDuration) : 'Active';
+                    const time = new Date(record.timestamp).toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                    let domain = 'Unknown';
+
+                    try {
+                        domain = new URL(record.url).hostname;
+                    } catch (e) {
+                        domain = record.url ? record.url.substring(0, 50) + '...' : 'Unknown';
+                    }
+
+                    const stayColor = record.stayDuration ?
+                        (record.stayDuration > 60 ? '#4CAF50' : record.stayDuration > 10 ? '#FF9800' : '#757575') :
+                        '#2196F3';
+
+                    historyHTML += `
+                        <div class="history-item" style="border-left-color: ${stayColor};" data-index="${index}">
+                            <div class="history-item-content">
+                                <div class="history-item-info">
+                                    <div class="history-item-title">
+                                        ${escapeHtml(record.title || 'Untitled Page')}
+                                    </div>
+                                    <div class="history-item-domain">
+                                        <span>🌐</span>
+                                        <span>${escapeHtml(domain)}</span>
+                                    </div>
+                                    <div class="history-item-time">
+                                        <span>🕒</span>
+                                        <span>${time}</span>
+                                    </div>
+                                </div>
+                                <div class="history-item-duration" style="background: ${stayColor};">
+                                    <span>⏱</span>
+                                    <span>${stayTime}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+            });
+
+            return historyHTML;
+        }
+
+        // Update page content
+        function updateContent(historyData, statsData) {
+            try {
+                const loadingEl = document.getElementById('loading');
+                const statsContainer = document.getElementById('stats-container');
+                const statsEl = document.getElementById('stats');
+                const historyListEl = document.getElementById('history-list');
+                const historyCountEl = document.getElementById('history-count');
+
+                if (!loadingEl || !statsContainer || !statsEl || !historyListEl || !historyCountEl) {
+                    return false;
+                }
+
+                loadingEl.style.display = 'none';
+                statsContainer.style.display = 'block';
+
+                const statsHTML = generateStats(statsData || {});
+                statsEl.innerHTML = statsHTML;
+
+                const historyHTML = generateHistory(historyData || []);
+                historyListEl.innerHTML = historyHTML;
+
+                const count = historyData ? historyData.length : 0;
+                historyCountEl.textContent = `(Total ${count} visits)`;
+
+                return true;
+            } catch (error) {
+                console.error('Error updating content:', error);
+                return false;
+            }
+        }
+
+        // Check if user is logged in
+        async function checkUserLoginStatus() {
+            try {
+                if (typeof window.electronAPI === 'undefined') {
+                    return false;
+                }
+                // Try to get current user info
+                const currentUser = await window.electronAPI.getCurrentUser();
+                return currentUser && currentUser.user_id;
+            } catch (error) {
+                console.error('Error checking user login status:', error);
+                return false;
+            }
+        }
+
+        // Show login prompt
+        function showLoginPrompt() {
+            const loadingEl = document.getElementById('loading');
+            const statsContainer = document.getElementById('stats-container');
+
+            if (loadingEl) {
+                loadingEl.style.display = 'none';
+            }
+
+            if (statsContainer) {
+                statsContainer.innerHTML = `
+                    <div class="no-history">
+                        <div class="icon">🔒</div>
+                        <h3>Please Login First</h3>
+                        <p>You need to be logged in to view your browsing history.</p>
+                    </div>
+                `;
+                statsContainer.style.display = 'block';
+            }
+        }
+
+        // Page initialization
+        async function initializePage() {
+            try {
+                if (typeof window.electronAPI === 'undefined') {
+                    return;
+                }
+
+                // Check if user is logged in
+                const isLoggedIn = await checkUserLoginStatus();
+                if (!isLoggedIn) {
+                    showLoginPrompt();
+                    return;
+                }
+
+                const data = await window.electronAPI.getHistoryData();
+                updateContent(data.history, data.stats);
+
+            } catch (error) {
+                console.error('Error fetching history data:', error);
+            }
+        }
+
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializePage);
+        } else {
+            initializePage();
+        }
+    </script>
+</body>
+
+</html>

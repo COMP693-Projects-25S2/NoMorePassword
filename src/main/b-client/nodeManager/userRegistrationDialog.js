@@ -65,7 +65,7 @@ class UserRegistrationDialog {
                     nodeIntegration: true, // Enable nodeIntegration for require
                     contextIsolation: false, // Disable contextIsolation to allow require
                     enableRemoteModule: false,
-                    preload: path.join(__dirname, '../../pages/preload.js'),
+                    preload: path.join(__dirname, '../pages/preload.js'),
                     sandbox: false // Disable sandbox for better compatibility
                 }
             });
@@ -169,7 +169,7 @@ class UserRegistrationDialog {
                     nodeIntegration: true,
                     contextIsolation: false,
                     enableRemoteModule: false,
-                    preload: path.join(__dirname, '../../pages/preload.js'),
+                    preload: path.join(__dirname, '../pages/preload.js'),
                     sandbox: false
                 }
             });

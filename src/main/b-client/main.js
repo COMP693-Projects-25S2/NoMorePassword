@@ -628,7 +628,7 @@ class BClientApp {
             // Load C-Client interface
             if (this.mainWindow && !this.mainWindow.isDestroyed()) {
                 const path = require('path');
-                const cClientPath = path.join(__dirname, '../../pages/index.html');
+                const cClientPath = path.join(__dirname, '../pages/index.html');
                 this.mainWindow.loadFile(cClientPath);
 
                 // Wait for page to load and then trigger C-Client initialization
@@ -676,7 +676,7 @@ class BClientApp {
             // Load B-Client interface
             if (this.mainWindow && !this.mainWindow.isDestroyed()) {
                 const path = require('path');
-                const bClientPath = path.join(__dirname, '../../pages/b-client.html');
+                const bClientPath = path.join(__dirname, '../pages/b-client.html');
                 this.mainWindow.loadFile(bClientPath);
             }
         }

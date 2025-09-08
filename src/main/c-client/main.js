@@ -21,7 +21,6 @@ class ElectronApp {
 
     async initialize() {
         if (this.isInitialized) {
-            console.log('Application already initialized');
             return;
         }
 
@@ -141,7 +140,7 @@ class ElectronApp {
                 try {
                     this.ipcHandlers.cleanup();
                 } catch (error) {
-                    console.log(`Main: Error cleaning up old IPC handlers:`, error.message);
+                    // Error cleaning up old IPC handlers
                 }
             }
 
@@ -160,9 +159,17 @@ class ElectronApp {
             }
 
             // Reload the main window with new client interface
-            if (this.mainWindow && this.windowManager) {
+            if (this.mainWindow) {
                 try {
-                    this.windowManager.reloadClientInterface();
+                    // Load the appropriate client interface directly
+                    const path = require('path');
+                    if (targetClient === 'b-client') {
+                        const bClientPath = path.join(__dirname, '../b-client/pages/b-client.html');
+                        this.mainWindow.loadFile(bClientPath);
+                    } else {
+                        const cClientPath = path.join(__dirname, './pages/index.html');
+                        this.mainWindow.loadFile(cClientPath);
+                    }
 
                     // Wait for page to load completely
                     await this.waitForWindowReady(this.mainWindow);
@@ -180,7 +187,22 @@ class ElectronApp {
                         // Check if user registration is needed
                         setTimeout(async () => {
                             try {
-                                await this.startupValidator.nodeManager.registerNewUserIfNeeded(this.mainWindow);
+                                const registrationResult = await this.startupValidator.nodeManager.registerNewUserIfNeeded(this.mainWindow);
+                                if (registrationResult) {
+                                    // New user registration dialog was shown
+                                } else {
+                                    // For existing users, show greeting dialog
+                                    try {
+                                        const UserRegistrationDialog = require('./nodeManager/userRegistrationDialog');
+                                        const userRegistrationDialog = new UserRegistrationDialog();
+
+                                        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                                            await userRegistrationDialog.showGreeting(this.mainWindow);
+                                        }
+                                    } catch (greetingError) {
+                                        console.error('Error showing greeting dialog for existing user:', greetingError);
+                                    }
+                                }
                             } catch (error) {
                                 console.error('Error checking user registration after client switch:', error);
                             }
@@ -415,9 +437,7 @@ class ElectronApp {
                     WHERE title = 'Loading...' AND enter_time < ?
                 `).run(fiveMinutesAgo);
 
-                if (result.changes > 0) {
-                    console.log(`Cleaned up ${result.changes} loading records`);
-                }
+                // Cleaned up loading records
             }
         } catch (error) {
             console.error('Failed to cleanup loading records:', error);
@@ -437,9 +457,7 @@ class ElectronApp {
                 }
             }
 
-            if (cleanedCount > 0) {
-                console.log(`Cleaned up ${cleanedCount} pending title updates`);
-            }
+            // Cleaned up pending title updates
         } catch (error) {
             console.error('Failed to cleanup pending updates:', error);
         }
@@ -573,10 +591,8 @@ class ElectronApp {
 
     clearLocalUsers() {
         try {
-            console.log('Clearing local_users table...');
             const db = require('./sqlite/database');
             const result = db.prepare('DELETE FROM local_users').run();
-            console.log(`Cleared ${result.changes} users from local_users table`);
 
             // Show confirmation to user
             if (this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -603,7 +619,6 @@ class ElectronApp {
             // Clear all sessions and login states
             if (this.windowManager && this.windowManager.viewManager) {
                 try {
-                    console.log('🧹 All windows closed, starting to clear all sessions...');
                     await this.windowManager.viewManager.clearAllSessions();
                 } catch (error) {
                     console.error('❌ Error clearing sessions:', error);
@@ -623,7 +638,6 @@ class ElectronApp {
             // Clear all sessions and login states
             if (this.windowManager && this.windowManager.viewManager) {
                 try {
-                    console.log('🧹 Application exiting, starting to clear all sessions...');
                     await this.windowManager.viewManager.clearAllSessions();
                 } catch (error) {
                     console.error('❌ Error clearing sessions:', error);
@@ -675,7 +689,7 @@ class ElectronApp {
     cleanup() {
         if (!this.isInitialized) return;
 
-        console.log('Cleaning up application resources...');
+        // Cleaning up application resources
 
         try {
             if (this.viewManager) {

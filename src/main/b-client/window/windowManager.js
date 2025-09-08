@@ -27,12 +27,12 @@ class WindowManager {
             webPreferences: {
                 contextIsolation: true,
                 nodeIntegration: false,
-                preload: path.join(__dirname, '../../../pages/preload.js'),
+                preload: path.join(__dirname, '../pages/preload.js'),
             }
         });
 
         // Load B-Client specific interface
-        this.mainWindow.loadFile(path.join(__dirname, '../../../pages/b-client.html'));
+        this.mainWindow.loadFile(path.join(__dirname, '../pages/b-client.html'));
 
         this.setupWindowEvents();
 

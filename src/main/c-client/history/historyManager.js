@@ -1,5 +1,4 @@
 const VisitTracker = require('./visitTracker');
-const ShutdownLogger = require('./shutdownLogger');
 const HistoryDatabase = require('../sqlite/historyDatabase');
 const UserActivityManager = require('./userActivityManager');
 
@@ -8,7 +7,6 @@ class HistoryManager {
     constructor() {
         this.historyDB = new HistoryDatabase();
         this.visitTracker = new VisitTracker();
-        this.shutdownLogger = new ShutdownLogger(this.visitTracker);
         this.userActivityManager = new UserActivityManager();
         this.sessionStartTime = Date.now();
         this.isFullyInitialized = false;
@@ -39,9 +37,7 @@ class HistoryManager {
                 return false;
             }
 
-            if (this.shutdownLogger && !this.shutdownLogger.isInitialized()) {
-                this.shutdownLogger.initialize();
-            }
+            // ShutdownLogger removed
 
             return true;
         } catch (error) {
@@ -278,13 +274,7 @@ class HistoryManager {
      * Log shutdown
      */
     logShutdown(reason = 'normal') {
-        try {
-            if (this.shutdownLogger) {
-                this.shutdownLogger.recordShutdown(reason);
-            }
-        } catch (error) {
-            console.error('Failed to log shutdown:', error);
-        }
+        // ShutdownLogger removed
     }
 
     /**
@@ -305,9 +295,7 @@ class HistoryManager {
      */
     cleanup() {
         try {
-            if (this.shutdownLogger) {
-                this.shutdownLogger.recordShutdown('cleanup');
-            }
+            // ShutdownLogger removed
 
             const now = Date.now();
             this.visitTracker.clearAllActiveRecords(now);
@@ -588,7 +576,7 @@ class HistoryManager {
     getInitializationStatus() {
         return {
             basicInitialized: this.isFullyInitialized,
-            shutdownLoggerInitialized: this.shutdownLogger ? this.shutdownLogger.isInitialized() : false,
+            shutdownLoggerInitialized: false, // ShutdownLogger removed
             visitTrackerReady: this.visitTracker ? true : false,
             databaseReady: this.historyDB ? true : false,
             userActivityManagerReady: this.userActivityManager ? true : false

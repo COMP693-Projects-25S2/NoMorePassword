@@ -57,7 +57,7 @@ class ConfigModal {
                     nodeIntegration: true,
                     contextIsolation: false,
                     enableRemoteModule: false,
-                    preload: path.join(__dirname, '../../pages/preload.js'),
+                    preload: path.join(__dirname, '../pages/preload.js'),
                     sandbox: false
                 }
             });
@@ -78,7 +78,7 @@ class ConfigModal {
             // Start monitoring main window
             this.startMainWindowMonitoring();
 
-            console.log('✅ Config modal created and shown successfully');
+            // Config modal created and shown successfully
 
         } catch (error) {
             console.error('Error creating config modal:', error);
@@ -229,7 +229,6 @@ class ConfigModal {
         const { ipcRenderer } = require('electron');
 
         document.addEventListener('DOMContentLoaded', () => {
-            console.log('Configuration modal loaded');
 
             const closeBtn = document.getElementById('closeBtn');
             const switchClientBtn = document.getElementById('switch-client');
@@ -241,19 +240,16 @@ class ConfigModal {
 
             // Handle close button click
             closeBtn.addEventListener('click', () => {
-                console.log('Close button clicked');
                 window.close();
             });
 
             // Handle switch client - directly switch to B-Client
             switchClientBtn.addEventListener('click', async () => {
                 try {
-                    console.log('🔄 C-Client: Switch button clicked, initiating switch to B-Client...');
                     const result = await ipcRenderer.invoke('switch-to-client', 'b-client');
-                    console.log('🔄 C-Client: Switch result received:', result);
                     
                     if (result.success) {
-                        console.log('✅ C-Client: Switching to B-Client successful, closing config modal...');
+                        // Switching to B-Client successful
                     } else {
                         console.error('❌ C-Client: Failed to switch to B-Client:', result.error);
                         alert(\`Failed to switch to B-Client: \${result.error}\`);
@@ -262,7 +258,6 @@ class ConfigModal {
                     console.error('❌ C-Client: Error during switch to B-Client:', error);
                     alert(\`Error switching to B-Client: \${error.message}\`);
                 }
-                console.log('🔄 C-Client: Closing config modal window...');
                 window.close();
             });
 
@@ -271,7 +266,7 @@ class ConfigModal {
                 try {
                     const result = await ipcRenderer.invoke('open-user-registration');
                     if (result.success) {
-                        console.log('User registration dialog opened successfully');
+                        // User registration dialog opened successfully
                     } else {
                         alert(\`Failed to open user registration dialog: \${result.error}\`);
                     }
@@ -286,9 +281,9 @@ class ConfigModal {
                 try {
                     const result = await ipcRenderer.invoke('open-user-selector');
                     if (result.success) {
-                        console.log('User switched successfully');
+                        // User switched successfully
                     } else if (result.cancelled) {
-                        console.log('User selection cancelled');
+                        // User selection cancelled
                     } else {
                         alert(\`Failed to switch user: \${result.error}\`);
                     }
@@ -348,18 +343,17 @@ class ConfigModal {
     setupEventListeners() {
         // Handle window close
         this.modalWindow.on('closed', () => {
-            console.log('Configuration modal window closed');
             this.cleanup();
         });
 
         // Handle window focus
         this.modalWindow.on('focus', () => {
-            console.log('Configuration modal focused');
+            // Configuration modal focused
         });
 
         // Handle window blur
         this.modalWindow.on('blur', () => {
-            console.log('Configuration modal blurred');
+            // Configuration modal blurred
         });
     }
 
@@ -367,7 +361,6 @@ class ConfigModal {
         if (this.monitoringEnabled) return;
 
         this.monitoringEnabled = true;
-        console.log('Starting main window monitoring for config modal');
 
         // Monitor main window status every 2 seconds (more frequent)
         this.mainWindowCheckInterval = setInterval(() => {
@@ -377,27 +370,19 @@ class ConfigModal {
 
     checkMainWindowStatus() {
         if (!this.mainWindow || !this.modalWindow) {
-            console.log('Config modal: mainWindow or modalWindow not available');
             return;
         }
 
         try {
             // Check if main window is destroyed
             if (this.mainWindow.isDestroyed()) {
-                console.log('Main window destroyed, closing config modal');
                 this.close();
                 return;
             }
 
             // Check if main window is not visible (minimized or hidden)
             if (!this.mainWindow.isVisible()) {
-                console.log('Main window not visible, but keeping config modal open');
                 return;
-            }
-
-            // Log status check (every 10th check to avoid spam)
-            if (Math.random() < 0.1) {
-                console.log('Config modal: main window status check - visible and not destroyed');
             }
 
         } catch (error) {
@@ -406,7 +391,7 @@ class ConfigModal {
     }
 
     cleanup() {
-        console.log('Cleaning up config modal resources');
+        // Cleaning up config modal resources
 
         // Clear monitoring interval
         if (this.mainWindowCheckInterval) {
@@ -419,7 +404,7 @@ class ConfigModal {
         this.modalWindow = null;
         this.mainWindow = null;
 
-        console.log('Config modal cleanup completed');
+        // Config modal cleanup completed
     }
 
     close() {

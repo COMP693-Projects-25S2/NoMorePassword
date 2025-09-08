@@ -27,7 +27,7 @@ class WindowManager {
             webPreferences: {
                 contextIsolation: true,
                 nodeIntegration: false,
-                preload: path.join(__dirname, '../../../pages/preload.js'),
+                preload: path.join(__dirname, '../pages/preload.js'),
             }
         });
 
@@ -50,9 +50,9 @@ class WindowManager {
         let interfaceFile;
 
         if (currentClient === 'b-client') {
-            interfaceFile = path.join(__dirname, '../../../pages/b-client.html');
+            interfaceFile = path.join(__dirname, '../pages/b-client.html');
         } else {
-            interfaceFile = path.join(__dirname, '../../../pages/index.html');
+            interfaceFile = path.join(__dirname, '../pages/index.html');
         }
 
         // Add page load event listeners
@@ -106,12 +106,10 @@ class WindowManager {
 
         // Window close event
         this.mainWindow.on('close', async (event) => {
-            console.log('window is closing...');
 
             // Clear all sessions and login status
             if (this.viewManager) {
                 try {
-                    console.log('🧹 Window closing, starting to clear all sessions...');
                     await this.viewManager.clearAllSessions();
                 } catch (error) {
                     console.error('❌ Error clearing sessions:', error);
@@ -138,32 +136,32 @@ class WindowManager {
 
         // Window minimize event
         this.mainWindow.on('minimize', () => {
-            console.log('Window minimized');
+            // Window minimized
         });
 
         // Window restore event
         this.mainWindow.on('restore', () => {
-            console.log('Window restored');
+            // Window restored
         });
 
         // Window maximize event
         this.mainWindow.on('maximize', () => {
-            console.log('Window maximized');
+            // Window maximized
         });
 
         // Window unmaximize event
         this.mainWindow.on('unmaximize', () => {
-            console.log('Window unmaximized');
+            // Window unmaximized
         });
 
         // Window enter full screen event
         this.mainWindow.on('enter-full-screen', () => {
-            console.log('Window entered full screen');
+            // Window entered full screen
         });
 
         // Window leave full screen event
         this.mainWindow.on('leave-full-screen', () => {
-            console.log('Window left full screen');
+            // Window left full screen
         });
 
         // Window show event
@@ -172,7 +170,7 @@ class WindowManager {
 
         // Window hide event
         this.mainWindow.on('hide', () => {
-            console.log('Window hidden');
+            // Window hidden
         });
     }
 
@@ -182,7 +180,6 @@ class WindowManager {
     onWindowResize() {
         if (this.resizeCallback) {
             const bounds = this.getViewBounds();
-            console.log('Window resized, updating view bounds:', bounds);
             this.resizeCallback(bounds);
         }
     }
@@ -735,7 +732,7 @@ class WindowManager {
      * Clean up resources
      */
     cleanup() {
-        console.log('Cleaning up WindowManager resources...');
+        // Cleaning up WindowManager resources
 
         // Clear callback functions
         this.resizeCallback = null;
@@ -747,7 +744,7 @@ class WindowManager {
         // Clear history manager reference
         this.historyManager = null;
 
-        console.log('WindowManager resources cleaned up');
+        // WindowManager resources cleaned up
     }
 }
 

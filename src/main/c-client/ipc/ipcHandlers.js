@@ -299,9 +299,7 @@ class IpcHandlers {
                     if (currentView) {
                         const viewId = currentView.id || Date.now();
                         const record = this.historyManager.recordVisit(url, viewId);
-                        if (record) {
-                            console.log(`Recorded navigation visit: ${url}`);
-                        }
+                        // Recorded navigation visit
 
                         // Record navigation activity
                         this.historyManager.recordNavigationActivity(url, 'Loading...', 'navigate');
@@ -328,7 +326,6 @@ class IpcHandlers {
                         const viewId = currentView.id || Date.now();
                         if (url) {
                             this.historyManager.recordVisit(url, viewId);
-                            console.log(`Recorded back navigation visit: ${url}`);
 
                             // Record navigation activity
                             this.historyManager.recordNavigationActivity(url, 'Loading...', 'back');
@@ -356,7 +353,6 @@ class IpcHandlers {
                         const viewId = currentView.id || Date.now();
                         if (url) {
                             this.historyManager.recordVisit(url, viewId);
-                            console.log(`Recorded forward navigation visit: ${url}`);
 
                             // Record navigation activity
                             this.historyManager.recordNavigationActivity(url, 'Loading...', 'forward');
@@ -384,7 +380,6 @@ class IpcHandlers {
                         const viewId = currentView.id || Date.now();
                         if (url) {
                             this.historyManager.recordVisit(url, viewId);
-                            console.log(`Recorded refresh visit: ${url}`);
 
                             // Record navigation activity
                             this.historyManager.recordNavigationActivity(url, 'Loading...', 'refresh');
@@ -515,7 +510,6 @@ class IpcHandlers {
             try {
                 const db = require('../sqlite/database');
                 const result = db.prepare('DELETE FROM local_users').run();
-                console.log(`Cleared ${result.changes} users from local_users table`);
                 return { success: true, changes: result.changes };
             } catch (error) {
                 console.error('Error clearing local_users table:', error);
@@ -584,7 +578,6 @@ class IpcHandlers {
         // User registration
         ipcMain.handle('submit-username', async (event, username) => {
             try {
-                console.log('Handling submit-username:', username);
 
                 if (!username || username.trim() === '') {
                     throw new Error('Username cannot be empty');
@@ -614,7 +607,7 @@ class IpcHandlers {
                     isCurrent: 1
                 };
 
-                console.log('User data prepared:', userData);
+                // User data prepared
 
                 // Insert new user into database
                 const db = require('../sqlite/database');
@@ -740,7 +733,6 @@ class IpcHandlers {
         // Handle user switch request
         ipcMain.handle('switch-user', async (event, userId) => {
             try {
-                console.log('Switching to user:', userId);
 
                 const db = require('../sqlite/database');
 
@@ -751,7 +743,6 @@ class IpcHandlers {
                 const result = db.prepare('UPDATE local_users SET is_current = 1 WHERE user_id = ?').run(userId);
 
                 if (result.changes > 0) {
-                    console.log('Successfully switched to user:', userId);
 
                     // Get the new current user info
                     const newUser = db.prepare('SELECT * FROM local_users WHERE user_id = ?').get(userId);
@@ -763,7 +754,6 @@ class IpcHandlers {
 
                         // Use the stored main window reference instead of event.sender
                         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                            console.log('Showing greeting dialog for switched user:', newUser.username);
                             await greetingDialog.showGreeting(this.mainWindow);
                         } else {
                             console.warn('Main window not available for greeting dialog');
@@ -887,11 +877,11 @@ class IpcHandlers {
             try {
                 ipcMain.removeHandler(handler);
             } catch (error) {
-                console.log(`Warning: Failed to remove handler ${handler}:`, error.message);
+                // Warning: Failed to remove handler
             }
         });
 
-        console.log('IPC handlers cleaned up');
+        // IPC handlers cleaned up
     }
 
     /**

@@ -185,7 +185,7 @@ class ViewManager {
                 webPreferences: {
                     nodeIntegration: false,
                     contextIsolation: true,
-                    preload: path.join(__dirname, '../../../pages/preload.js')
+                    preload: path.join(__dirname, '../pages/preload.js')
                 }
             });
 
@@ -197,7 +197,7 @@ class ViewManager {
             view.setBounds(bounds);
 
             // Load history page
-            const historyPath = path.join(__dirname, '../../../pages/history.html');
+            const historyPath = path.join(__dirname, '../pages/history.html');
             await view.webContents.loadFile(historyPath);
 
             // Setup listeners
