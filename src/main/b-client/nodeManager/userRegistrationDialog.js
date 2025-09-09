@@ -109,9 +109,8 @@ class UserRegistrationDialog {
 
             // Creating user greeting dialog window
 
-            // Get current user from database
-            const db = require('../sqlite/database');
-            const currentUser = db.prepare('SELECT username FROM local_users WHERE is_current = 1').get();
+            // B-Client doesn't use local_users table
+            const currentUser = null;
 
             if (!currentUser) {
                 // No current user found, skipping greeting dialog

@@ -1,209 +1,220 @@
-// /src/main/nodeManager/nodeManager.js
+// B-Client Node Manager - Simplified for user_cookies and user_accounts only
 const db = require('../sqlite/database');
-const UserRegistrationDialog = require('./userRegistrationDialog');
 
 class NodeManager {
     constructor() {
         this.db = db;
-        this.userRegistrationDialog = null;
     }
 
     /**
-     * Check local_users table on project startup to ensure only 1 user has is_current=1, 
-     * others are 0, or all users have is_current=0
+     * B-Client doesn't use local_users table
+     * This method is kept for compatibility but does nothing
      */
-    async validateCurrentNodeOnStartup() {
-        try {
-            console.log('Starting to validate current node status...');
-
-            // Get all users from database
-            const allUsers = this.db.prepare('SELECT * FROM local_users').all();
-
-            // Count records with is_current=1
-            const currentUsers = allUsers.filter(user => user.is_current === 1);
-            const currentCount = currentUsers.length;
-
-            console.log(`Found ${allUsers.length} local users, ${currentCount} marked as current node`);
-
-            if (currentCount === 0) {
-                console.log('All users have is_current=0, status is normal');
-                return true;
-            }
-
-            if (currentCount === 1) {
-                console.log('Only one user marked as current node, status is normal');
-                return true;
-            }
-
-            // If more than 1 user marked as current node, need to fix
-            if (currentCount > 1) {
-                console.warn(`Found ${currentCount} users marked as current node, starting to fix...`);
-                await this.fixMultipleCurrentNodes();
-                return true;
-            }
-
-        } catch (error) {
-            console.error('Error occurred while validating current node status:', error);
-            return false;
-        }
+    validateCurrentNodeStatus() {
+        // B-Client doesn't track current node status
+        return true;
     }
 
     /**
- * Fix multiple is_current=1 issue by setting all users to 0, indicating no user login state
- */
-    async fixMultipleCurrentNodes() {
-        try {
-            // Get all users with is_current=1
-            const currentUsers = this.db.prepare(
-                'SELECT user_id FROM local_users WHERE is_current = 1'
-            ).all();
-
-            if (currentUsers.length <= 1) {
-                return;
-            }
-
-            console.log(`Found ${currentUsers.length} users marked as current node, starting to fix...`);
-
-            // Set all users' is_current to 0, indicating no user login state
-            const resetAllResult = this.db.prepare('UPDATE local_users SET is_current = 0').run();
-            console.log(`Set all ${resetAllResult.changes} users' is_current field to 0, now no user is logged in`);
-
-            console.log('Fix completed, all users are set to non-current node state');
-
-        } catch (error) {
-            console.error('Error occurred while fixing multiple current nodes:', error);
-            throw error;
-        }
+     * B-Client doesn't use local_users table
+     * This method is kept for compatibility but does nothing
+     */
+    resetAllCurrentNodes() {
+        // B-Client doesn't track current node status
+        return true;
     }
 
     /**
-     * Set specified user as current node
+     * B-Client doesn't use local_users table
+     * This method is kept for compatibility but does nothing
      */
     setCurrentNode(userId) {
-        try {
-            // First set all users' is_current to 0
-            this.db.prepare('UPDATE local_users SET is_current = 0').run();
-
-            // Set specified user's is_current to 1
-            const result = this.db.prepare(
-                'UPDATE local_users SET is_current = 1 WHERE user_id = ?'
-            ).run(userId);
-
-            if (result.changes > 0) {
-                console.log(`User ${userId} has been set as current node`);
-                return true;
-            } else {
-                console.warn(`User ${userId} not found, failed to set as current node`);
-                return false;
-            }
-        } catch (error) {
-            console.error('Error occurred while setting current node:', error);
-            return false;
-        }
+        // B-Client doesn't track current node status
+        return true;
     }
 
     /**
-     * Get current node information
+     * B-Client doesn't use local_users table
+     * This method is kept for compatibility but does nothing
      */
     getCurrentNode() {
-        try {
-            const currentUser = this.db.prepare(
-                'SELECT * FROM local_users WHERE is_current = 1'
-            ).get();
+        // B-Client doesn't track current node status
+        return null;
+    }
 
-            return currentUser || null;
+    /**
+     * B-Client doesn't use local_users table
+     * This method is kept for compatibility but does nothing
+     */
+    clearCurrentNode() {
+        // B-Client doesn't track current node status
+        return true;
+    }
+
+    /**
+     * B-Client doesn't use local_users table
+     * This method is kept for compatibility but does nothing
+     */
+    async registerNewUserIfNeeded(mainWindow) {
+        // B-Client doesn't track local users
+        return false;
+    }
+
+    /**
+     * B-Client doesn't use local_users table
+     * This method is kept for compatibility but does nothing
+     */
+    getUserCount() {
+        // B-Client doesn't track local users
+        return 0;
+    }
+
+    // B-Client specific methods for user_cookies and user_accounts
+    addUserCookie(userId, username, cookie, autoRefresh = false, refreshTime = null) {
+        try {
+            const stmt = this.db.prepare(`
+                INSERT OR REPLACE INTO user_cookies (user_id, username, cookie, auto_refresh, refresh_time)
+                VALUES (?, ?, ?, ?, ?)
+            `);
+            return stmt.run(userId, username, cookie, autoRefresh ? 1 : 0, refreshTime);
         } catch (error) {
-            console.error('Error occurred while getting current node information:', error);
+            console.error('Error adding user cookie:', error);
             return null;
         }
     }
 
-    /**
-     * Clear current node marker
-     */
-    clearCurrentNode() {
+    getUserCookie(userId, username) {
         try {
-            const result = this.db.prepare('UPDATE local_users SET is_current = 0').run();
-            console.log(`Cleared all current node markers, affected ${result.changes} records`);
-            return true;
+            const stmt = this.db.prepare(`
+                SELECT * FROM user_cookies 
+                WHERE user_id = ? AND username = ?
+            `);
+            return stmt.get(userId, username);
         } catch (error) {
-            console.error('Error occurred while clearing current node markers:', error);
-            return false;
+            console.error('Error getting user cookie:', error);
+            return null;
         }
     }
 
-    /**
-     * Register new user if local_users table is empty
-     */
-    async registerNewUserIfNeeded(mainWindow) {
+    updateUserCookie(userId, username, cookie, autoRefresh = false, refreshTime = null) {
         try {
-            // Check if local_users table is empty
-            const userCount = this.db.prepare('SELECT COUNT(*) as count FROM local_users').get();
-
-            if (userCount.count === 0) {
-                console.log('local_users table is empty, prompting for new user registration');
-
-                // Show dialog using independent BrowserWindow
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    try {
-                        if (!this.userRegistrationDialog) {
-                            this.userRegistrationDialog = new UserRegistrationDialog();
-                        }
-
-                        console.log('Showing user registration dialog...');
-                        await this.userRegistrationDialog.show(mainWindow);
-
-                        return true; // Return true to indicate dialog was shown
-                    } catch (dialogError) {
-                        console.error('Error showing user registration dialog:', dialogError);
-                        return false;
-                    }
-                } else {
-                    console.warn('Main window not available for dialog display');
-                    return false;
-                }
-            } else {
-                console.log('local_users table has existing users, showing greeting dialog');
-
-                // Show greeting dialog for existing user
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    try {
-                        if (!this.userRegistrationDialog) {
-                            this.userRegistrationDialog = new UserRegistrationDialog();
-                        }
-
-                        console.log('Showing user greeting dialog...');
-                        await this.userRegistrationDialog.showGreeting(mainWindow);
-
-                        return true; // Return true to indicate dialog was shown
-                    } catch (dialogError) {
-                        console.error('Error showing user greeting dialog:', dialogError);
-                        return false;
-                    }
-                } else {
-                    console.warn('Main window not available for dialog display');
-                    return false;
-                }
-            }
-
+            const stmt = this.db.prepare(`
+                UPDATE user_cookies 
+                SET cookie = ?, auto_refresh = ?, refresh_time = ?
+                WHERE user_id = ? AND username = ?
+            `);
+            return stmt.run(cookie, autoRefresh ? 1 : 0, refreshTime, userId, username);
         } catch (error) {
-            console.error('Error occurred during user registration:', error);
-            return false;
+            console.error('Error updating user cookie:', error);
+            return null;
         }
     }
 
-
-
-    /**
-     * Get total user count
-     */
-    getUserCount() {
+    deleteUserCookie(userId, username) {
         try {
-            const result = this.db.prepare('SELECT COUNT(*) as count FROM local_users').get();
-            return result.count;
+            const stmt = this.db.prepare(`
+                DELETE FROM user_cookies 
+                WHERE user_id = ? AND username = ?
+            `);
+            return stmt.run(userId, username);
         } catch (error) {
-            console.error('Error occurred while getting user count:', error);
-            return 0;
+            console.error('Error deleting user cookie:', error);
+            return null;
+        }
+    }
+
+    addUserAccount(userId, username, website, account, password) {
+        try {
+            const stmt = this.db.prepare(`
+                INSERT OR REPLACE INTO user_accounts (user_id, username, website, account, password)
+                VALUES (?, ?, ?, ?, ?)
+            `);
+            return stmt.run(userId, username, website, account, password);
+        } catch (error) {
+            console.error('Error adding user account:', error);
+            return null;
+        }
+    }
+
+    getUserAccount(userId, username, website, account) {
+        try {
+            const stmt = this.db.prepare(`
+                SELECT * FROM user_accounts 
+                WHERE user_id = ? AND username = ? AND website = ? AND account = ?
+            `);
+            return stmt.get(userId, username, website, account);
+        } catch (error) {
+            console.error('Error getting user account:', error);
+            return null;
+        }
+    }
+
+    getUserAccountsByWebsite(userId, username, website) {
+        try {
+            const stmt = this.db.prepare(`
+                SELECT * FROM user_accounts 
+                WHERE user_id = ? AND username = ? AND website = ?
+                ORDER BY create_time DESC
+            `);
+            return stmt.all(userId, username, website);
+        } catch (error) {
+            console.error('Error getting user accounts by website:', error);
+            return [];
+        }
+    }
+
+    updateUserAccount(userId, username, website, account, password) {
+        try {
+            const stmt = this.db.prepare(`
+                UPDATE user_accounts 
+                SET password = ?
+                WHERE user_id = ? AND username = ? AND website = ? AND account = ?
+            `);
+            return stmt.run(password, userId, username, website, account);
+        } catch (error) {
+            console.error('Error updating user account:', error);
+            return null;
+        }
+    }
+
+    deleteUserAccount(userId, username, website, account) {
+        try {
+            const stmt = this.db.prepare(`
+                DELETE FROM user_accounts 
+                WHERE user_id = ? AND username = ? AND website = ? AND account = ?
+            `);
+            return stmt.run(userId, username, website, account);
+        } catch (error) {
+            console.error('Error deleting user account:', error);
+            return null;
+        }
+    }
+
+    getAllUserCookies(userId) {
+        try {
+            const stmt = this.db.prepare(`
+                SELECT * FROM user_cookies 
+                WHERE user_id = ?
+                ORDER BY create_time DESC
+            `);
+            return stmt.all(userId);
+        } catch (error) {
+            console.error('Error getting all user cookies:', error);
+            return [];
+        }
+    }
+
+    getAllUserAccounts(userId) {
+        try {
+            const stmt = this.db.prepare(`
+                SELECT * FROM user_accounts 
+                WHERE user_id = ?
+                ORDER BY create_time DESC
+            `);
+            return stmt.all(userId);
+        } catch (error) {
+            console.error('Error getting all user accounts:', error);
+            return [];
         }
     }
 }

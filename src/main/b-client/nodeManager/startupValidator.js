@@ -50,12 +50,9 @@ class StartupValidator {
             // Get current node information
             status.currentNode = this.nodeManager.getCurrentNode();
 
-            // Get user statistics
-            const users = this.nodeManager.db.prepare('SELECT COUNT(*) as total FROM local_users').get();
-            status.totalUsers = users.total;
-
-            const currentUsers = this.nodeManager.db.prepare('SELECT COUNT(*) as current FROM local_users WHERE is_current = 1').get();
-            status.currentUsers = currentUsers.current;
+            // B-Client doesn't use local_users table
+            status.totalUsers = 0;
+            status.currentUsers = 0;
 
             return status;
 

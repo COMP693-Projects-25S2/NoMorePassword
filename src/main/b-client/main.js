@@ -299,17 +299,7 @@ class BClientApp {
     cleanupLoadingRecords() {
         try {
             if (this.historyManager) {
-                const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
-                const db = require('./sqlite/database');
-                const result = db.prepare(`
-                    UPDATE visit_history 
-                    SET title = 'Failed to load' 
-                    WHERE title = 'Loading...' AND enter_time < ?
-                `).run(fiveMinutesAgo);
-
-                if (result.changes > 0) {
-                    console.log(`B-Client: Cleaned up ${result.changes} loading records`);
-                }
+                // B-Client doesn't track visit history
             }
         } catch (error) {
             console.error('B-Client: Failed to cleanup loading records:', error);
@@ -464,29 +454,12 @@ class BClientApp {
     }
 
     clearLocalUsers() {
-        try {
-            console.log('B-Client: Clearing local_users table...');
-            const db = require('./sqlite/database');
-            const result = db.prepare('DELETE FROM local_users').run();
-            console.log(`B-Client: Cleared ${result.changes} users from local_users table`);
-
-            // Show confirmation to user
-            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                this.mainWindow.webContents.send('show-notification', {
-                    type: 'success',
-                    message: `Successfully cleared ${result.changes} users from local_users table`
-                });
-            }
-        } catch (error) {
-            console.error('B-Client: Error clearing local_users table:', error);
-
-            // Show error to user
-            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                this.mainWindow.webContents.send('show-notification', {
-                    type: 'error',
-                    message: `Failed to clear local_users table: ${error.message}`
-                });
-            }
+        // B-Client doesn't use local_users table
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send('show-notification', {
+                type: 'info',
+                message: 'B-Client doesn\'t use local users table'
+            });
         }
     }
 
