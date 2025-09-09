@@ -31,8 +31,8 @@ class WindowManager {
             }
         });
 
-        // Load B-Client specific interface
-        this.mainWindow.loadFile(path.join(__dirname, '../pages/b-client.html'));
+        // Load B-Client dashboard interface
+        this.mainWindow.loadFile(path.join(__dirname, '../pages/dashboard.html'));
 
         this.setupWindowEvents();
 

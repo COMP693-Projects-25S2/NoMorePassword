@@ -1,4 +1,4 @@
-const db = require('../sqlite/database');
+const db = require('../sqlite/initDatabase');
 
 /**
  * User Activity Manager

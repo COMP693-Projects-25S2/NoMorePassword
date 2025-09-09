@@ -50,7 +50,7 @@ class WindowManager {
         let interfaceFile;
 
         if (currentClient === 'b-client') {
-            interfaceFile = path.join(__dirname, '../pages/b-client.html');
+            interfaceFile = path.join(__dirname, '../../b-client/pages/dashboard.html');
         } else {
             interfaceFile = path.join(__dirname, '../pages/index.html');
         }

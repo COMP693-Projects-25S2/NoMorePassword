@@ -915,6 +915,12 @@ class IpcHandlers {
                     return { success: false, error: 'Client manager not available' };
                 }
 
+                // Hide browser views when switching away from C-Client
+                if (targetClient !== 'c-client' && this.viewManager) {
+                    this.viewManager.hideAllViews();
+                    console.log('🔄 C-Client IPC: Hidden all browser views for client switch');
+                }
+
                 const result = this.clientManager.switchClient(targetClient);
                 return result;
             } catch (error) {

@@ -1,11 +1,11 @@
 const VisitTracker = require('./visitTracker');
-const HistoryDatabase = require('../sqlite/historyDatabase');
+const UserDatabase = require('../sqlite/userDatabase');
 const UserActivityManager = require('./userActivityManager');
 
 // History Manager - Database version
 class HistoryManager {
     constructor() {
-        this.historyDB = new HistoryDatabase();
+        this.historyDB = new UserDatabase();
         this.visitTracker = new VisitTracker();
         this.userActivityManager = new UserActivityManager();
         this.sessionStartTime = Date.now();
@@ -184,7 +184,14 @@ class HistoryManager {
                 };
             }
 
-            return this.historyDB.getVisitStats(userId);
+            // B-Client doesn't track visit history, return empty stats
+            return {
+                totalVisits: 0,
+                totalTime: 0,
+                averageStayTime: 0,
+                topPages: {},
+                activeRecords: 0
+            };
         } catch (error) {
             console.error('Failed to get visit stats:', error);
             return {
@@ -504,7 +511,7 @@ class HistoryManager {
      */
     cleanupLoadingTitles() {
         try {
-            const db = require('../sqlite/database');
+            const db = require('../sqlite/initDatabase');
 
             // B-Client doesn't track visit history
             const loadingRecords = [];
@@ -547,108 +554,106 @@ class HistoryManager {
                     // B-Client doesn't track visit history
 
                     updatedCount++;
-                }
-
                 } catch (err) {
-                console.error(`Failed to update record ${record.id}:`, err);
+                    console.error(`Failed to update record ${record.id}:`, err);
+                }
             }
-        }
 
             return { updated: updatedCount, total: loadingRecords.length };
 
-    } catch(error) {
-        console.error('Failed to cleanup loading titles:', error);
-        return { updated: 0, total: 0 };
-    }
-}
-
-/**
- * Get initialization status
- */
-getInitializationStatus() {
-    return {
-        basicInitialized: this.isFullyInitialized,
-        shutdownLoggerInitialized: false, // ShutdownLogger removed
-        visitTrackerReady: this.visitTracker ? true : false,
-        databaseReady: this.historyDB ? true : false,
-        userActivityManagerReady: this.userActivityManager ? true : false
-    };
-}
-
-/**
- * Record user navigation activity
- */
-recordNavigationActivity(url, title, navigationType) {
-    try {
-        if (this.userActivityManager) {
-            return this.userActivityManager.recordNavigation(url, title, navigationType);
+        } catch (error) {
+            console.error('Failed to cleanup loading titles:', error);
+            return { updated: 0, total: 0 };
         }
-        return null;
-    } catch (error) {
-        console.error('Failed to record navigation activity:', error);
-        return null;
     }
-}
 
-/**
- * Record user tab activity
- */
-recordTabActivity(action, url = null, title = null) {
-    try {
-        if (this.userActivityManager) {
-            return this.userActivityManager.recordTabActivity(action, url, title);
-        }
-        return null;
-    } catch (error) {
-        console.error('Failed to record tab activity:', error);
-        return null;
+    /**
+     * Get initialization status
+     */
+    getInitializationStatus() {
+        return {
+            basicInitialized: this.isFullyInitialized,
+            shutdownLoggerInitialized: false, // ShutdownLogger removed
+            visitTrackerReady: this.visitTracker ? true : false,
+            databaseReady: this.historyDB ? true : false,
+            userActivityManagerReady: this.userActivityManager ? true : false
+        };
     }
-}
 
-/**
- * Get current user activities
- */
-getCurrentUserActivities(limit = 100) {
-    try {
-        if (this.userActivityManager) {
-            return this.userActivityManager.getUserActivities(null, limit);
+    /**
+     * Record user navigation activity
+     */
+    recordNavigationActivity(url, title, navigationType) {
+        try {
+            if (this.userActivityManager) {
+                return this.userActivityManager.recordNavigation(url, title, navigationType);
+            }
+            return null;
+        } catch (error) {
+            console.error('Failed to record navigation activity:', error);
+            return null;
         }
-        return [];
-    } catch (error) {
-        console.error('Failed to get current user activities:', error);
-        return [];
     }
-}
 
-/**
- * Clear current user activities
- */
-clearCurrentUserActivities() {
-    try {
-        if (this.userActivityManager) {
-            return this.userActivityManager.clearCurrentUserActivities();
+    /**
+     * Record user tab activity
+     */
+    recordTabActivity(action, url = null, title = null) {
+        try {
+            if (this.userActivityManager) {
+                return this.userActivityManager.recordTabActivity(action, url, title);
+            }
+            return null;
+        } catch (error) {
+            console.error('Failed to record tab activity:', error);
+            return null;
         }
-        return { success: false, error: 'User activity manager not available' };
-    } catch (error) {
-        console.error('Failed to clear current user activities:', error);
-        return { success: false, error: error.message };
     }
-}
 
-/**
- * Get current user activity stats
- */
-getCurrentUserActivityStats() {
-    try {
-        if (this.userActivityManager) {
-            return this.userActivityManager.getCurrentUserStats();
+    /**
+     * Get current user activities
+     */
+    getCurrentUserActivities(limit = 100) {
+        try {
+            if (this.userActivityManager) {
+                return this.userActivityManager.getUserActivities(null, limit);
+            }
+            return [];
+        } catch (error) {
+            console.error('Failed to get current user activities:', error);
+            return [];
         }
-        return { totalActivities: 0, activitiesByType: {}, totalDuration: 0 };
-    } catch (error) {
-        console.error('Failed to get current user activity stats:', error);
-        return { totalActivities: 0, activitiesByType: {}, totalDuration: 0 };
     }
-}
+
+    /**
+     * Clear current user activities
+     */
+    clearCurrentUserActivities() {
+        try {
+            if (this.userActivityManager) {
+                return this.userActivityManager.clearCurrentUserActivities();
+            }
+            return { success: false, error: 'User activity manager not available' };
+        } catch (error) {
+            console.error('Failed to clear current user activities:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Get current user activity stats
+     */
+    getCurrentUserActivityStats() {
+        try {
+            if (this.userActivityManager) {
+                return this.userActivityManager.getCurrentUserStats();
+            }
+            return { totalActivities: 0, activitiesByType: {}, totalDuration: 0 };
+        } catch (error) {
+            console.error('Failed to get current user activity stats:', error);
+            return { totalActivities: 0, activitiesByType: {}, totalDuration: 0 };
+        }
+    }
 }
 
 module.exports = HistoryManager;

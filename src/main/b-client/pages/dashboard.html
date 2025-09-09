@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B-Client Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+        }
+
+        .dashboard {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            max-width: 800px;
+            width: 90%;
+            text-align: center;
+        }
+
+        .header {
+            margin-bottom: 40px;
+            position: relative;
+        }
+
+        .title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #2d3748;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            color: #718096;
+        }
+
+        .config-button {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background: rgba(255, 255, 255, 0.9);
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 12px 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #4a5568;
+        }
+
+        .config-button:hover {
+            background: white;
+            border-color: #4299e1;
+            color: #4299e1;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(66, 153, 225, 0.2);
+        }
+
+        .config-icon {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px 20px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.12);
+        }
+
+        .stat-number {
+            font-size: 3rem;
+            font-weight: 800;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .stat-label {
+            font-size: 1rem;
+            color: #4a5568;
+            font-weight: 500;
+        }
+
+        .website-info {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+            margin-bottom: 30px;
+        }
+
+        .website-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .website-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 8px;
+            margin-right: 15px;
+            object-fit: cover;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .website-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #2d3748;
+            margin: 0;
+        }
+
+        .website-url {
+            font-size: 1rem;
+            color: #667eea;
+            text-decoration: none;
+            word-break: break-all;
+        }
+
+        .website-url:hover {
+            text-decoration: underline;
+        }
+
+        .refresh-info {
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .refresh-text {
+            font-size: 0.9rem;
+            color: #4a5568;
+        }
+
+        .loading {
+            opacity: 0.6;
+        }
+
+        .error {
+            color: #e53e3e;
+            font-size: 0.9rem;
+            margin-top: 10px;
+        }
+
+        @media (max-width: 600px) {
+            .dashboard {
+                padding: 20px;
+                margin: 20px;
+            }
+
+            .title {
+                font-size: 2rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="dashboard">
+        <div class="header">
+            <h1 class="title">B-Client Dashboard</h1>
+            <p class="subtitle">NoMorePassword Backend Service</p>
+            <button class="config-button" id="configButton">
+                <svg class="config-icon" viewBox="0 0 24 24">
+                    <path
+                        d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.22,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.22,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.68 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z" />
+                </svg>
+                Settings
+            </button>
+        </div>
+
+        <div class="website-info">
+            <div class="website-header">
+                <img class="website-icon" id="websiteIcon"
+                    src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iOCIgZmlsbD0iI0Y3RjNGNiIvPgo8cGF0aCBkPSJNMjQgMTJMMzYgMjRMMjQgMzZMMTIgMjRMMjQgMTJaIiBmaWxsPSIjNjY3RUVBIi8+Cjwvc3ZnPgo="
+                    alt="Website Icon" />
+                <div class="website-title" id="websiteTitle">Loading...</div>
+            </div>
+            <a href="#" class="website-url" id="websiteUrl" target="_blank">Loading...</a>
+            <div class="refresh-info">
+                <div class="refresh-text" id="refreshInfo">Auto-refresh: Every 30 minutes</div>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number" id="autoRefreshCount">-</div>
+                <div class="stat-label">Auto-Refresh Users</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-number" id="autoRegisterCount">-</div>
+                <div class="stat-label">Auto-Registered Users</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-number" id="totalCookiesCount">-</div>
+                <div class="stat-label">Total Cookies</div>
+            </div>
+        </div>
+
+        <div class="error" id="errorMessage" style="display: none;"></div>
+    </div>
+
+    <script>
+        class Dashboard {
+            constructor() {
+                this.apiBase = 'http://localhost:3000';
+                this.init();
+            }
+
+            async init() {
+                await this.loadDashboardData();
+                // Refresh data every 30 seconds
+                setInterval(() => this.loadDashboardData(), 30000);
+            }
+
+            async loadDashboardData() {
+                try {
+                    const [stats, config] = await Promise.all([
+                        this.fetchStats(),
+                        this.fetchConfig()
+                    ]);
+
+                    this.updateWebsiteInfo(config);
+                    this.updateStats(stats);
+                    this.hideError();
+                } catch (error) {
+                    console.error('Failed to load dashboard data:', error);
+                    this.showError('Failed to load dashboard data');
+                }
+            }
+
+            async fetchStats() {
+                const response = await fetch(`${this.apiBase}/api/stats`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return await response.json();
+            }
+
+            async fetchConfig() {
+                const response = await fetch(`${this.apiBase}/api/config`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return await response.json();
+            }
+
+            updateWebsiteInfo(config) {
+                const website = config.targetWebsites['comp639nsn.pythonanywhere.com'];
+                if (website) {
+                    // Use real title if available, otherwise fallback to configured name
+                    const title = website.realTitle || website.name;
+                    document.getElementById('websiteTitle').textContent = title;
+                    document.getElementById('websiteUrl').textContent = website.homeUrl;
+                    document.getElementById('websiteUrl').href = website.homeUrl;
+
+                    // Update website icon
+                    this.updateWebsiteIcon(website.images);
+                }
+
+                const interval = config.default.autoRefreshIntervalMinutes;
+                document.getElementById('refreshInfo').textContent = `Auto-refresh: Every ${interval} minutes`;
+            }
+
+            updateWebsiteIcon(images) {
+                const iconElement = document.getElementById('websiteIcon');
+                if (!images) return;
+
+                // Priority: favicon > logo > ogImage
+                let iconUrl = null;
+                if (images.favicon) {
+                    iconUrl = images.favicon;
+                } else if (images.logo) {
+                    iconUrl = images.logo;
+                } else if (images.ogImage) {
+                    iconUrl = images.ogImage;
+                }
+
+                if (iconUrl) {
+                    iconElement.src = iconUrl;
+                    iconElement.alt = 'Website Icon';
+                    iconElement.onerror = () => {
+                        // Fallback to default icon if image fails to load
+                        iconElement.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iOCIgZmlsbD0iI0Y3RjNGNiIvPgo8cGF0aCBkPSJNMjQgMTJMMzYgMjRMMjQgMzZMMTIgMjRMMjQgMTJaIiBmaWxsPSIjNjY3RUVBIi8+Cjwvc3ZnPgo=';
+                    };
+                }
+            }
+
+            updateStats(stats) {
+                document.getElementById('autoRefreshCount').textContent = stats.autoRefreshUsers || 0;
+                document.getElementById('autoRegisterCount').textContent = stats.autoRegisteredUsers || 0;
+                document.getElementById('totalCookiesCount').textContent = stats.totalCookies || 0;
+            }
+
+            showError(message) {
+                const errorEl = document.getElementById('errorMessage');
+                errorEl.textContent = message;
+                errorEl.style.display = 'block';
+            }
+
+            hideError() {
+                document.getElementById('errorMessage').style.display = 'none';
+            }
+        }
+
+        // Initialize dashboard when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new Dashboard();
+
+            // Add config button event listener
+            document.getElementById('configButton').addEventListener('click', async () => {
+                try {
+                    if (window.electronAPI && window.electronAPI.openConfigModal) {
+                        await window.electronAPI.openConfigModal();
+                    } else {
+                        console.log('electronAPI not available');
+                    }
+                } catch (error) {
+                    console.error('Failed to open config modal:', error);
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>

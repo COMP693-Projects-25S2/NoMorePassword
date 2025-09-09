@@ -2,11 +2,13 @@ const { ipcMain } = require('electron');
 
 // IPC handlers
 class IpcHandlers {
-    constructor(viewManager, historyManager, mainWindow = null, clientManager = null) {
+    constructor(viewManager, historyManager, mainWindow = null, clientManager = null, mainApp = null) {
         this.viewManager = viewManager;
         this.historyManager = historyManager;
         this.mainWindow = mainWindow;
         this.clientManager = clientManager;
+        this.configModal = null;
+        this.mainApp = mainApp; // Reference to main app instance
 
         this.registerHandlers();
     }
@@ -32,6 +34,9 @@ class IpcHandlers {
 
         // Client management
         this.registerClientHandlers();
+
+        // Configuration modal
+        this.registerConfigHandlers();
     }
 
     /**
@@ -514,7 +519,7 @@ class IpcHandlers {
         // Clear local users
         ipcMain.handle('clear-local-users', () => {
             try {
-                const db = require('../sqlite/database');
+                const db = require('../sqlite/initDatabase');
                 const result = db.prepare('DELETE FROM local_users').run();
                 console.log(`Cleared ${result.changes} users from local_users table`);
                 return { success: true, changes: result.changes };
@@ -618,7 +623,7 @@ class IpcHandlers {
                 console.log('User data prepared:', userData);
 
                 // Insert new user into database
-                const db = require('../sqlite/database');
+                const db = require('../sqlite/initDatabase');
 
                 // First, set all existing users to not current
                 db.prepare('UPDATE local_users SET is_current = 0').run();
@@ -659,24 +664,6 @@ class IpcHandlers {
             // The dialog will handle its own closing
         });
 
-        // Handle config modal open request
-        ipcMain.handle('open-config-modal', async (event) => {
-            try {
-                const ConfigModal = require('../configModal');
-                const configModal = new ConfigModal();
-
-                // Use the stored main window reference
-                if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                    await configModal.show(this.mainWindow);
-                    return { success: true };
-                } else {
-                    throw new Error('Main window not found');
-                }
-            } catch (error) {
-                console.error('Failed to open config modal:', error);
-                return { success: false, error: error.message };
-            }
-        });
 
         // Handle user selector modal open request
         ipcMain.handle('open-user-selector', async (event) => {
@@ -702,7 +689,7 @@ class IpcHandlers {
             try {
                 console.log('Switching to user:', userId);
 
-                const db = require('../sqlite/database');
+                const db = require('../sqlite/initDatabase');
 
                 // First, set all users to not current
                 db.prepare('UPDATE local_users SET is_current = 0').run();
@@ -880,6 +867,12 @@ class IpcHandlers {
                     return { success: false, error: 'Client manager not available' };
                 }
 
+                // Hide browser views when switching away from B-Client
+                if (targetClient !== 'b-client' && this.viewManager) {
+                    this.viewManager.hideAllViews();
+                    console.log('🔄 B-Client IPC: Hidden all browser views for client switch');
+                }
+
                 const result = this.clientManager.switchClient(targetClient);
                 return result;
             } catch (error) {
@@ -925,6 +918,35 @@ class IpcHandlers {
                 };
             } catch (error) {
                 console.error('Failed to get client info:', error);
+                return { success: false, error: error.message };
+            }
+        });
+    }
+
+    /**
+     * Register configuration modal handlers
+     */
+    registerConfigHandlers() {
+        // Open configuration modal
+        ipcMain.handle('open-config-modal', async () => {
+            try {
+                if (!this.configModal) {
+                    const ConfigModal = require('../configModal');
+                    this.configModal = new ConfigModal();
+                }
+
+                if (!this.configModal.isModalOpen()) {
+                    this.configModal.show();
+
+                    // Add to main app's modal tracking
+                    if (this.mainApp && this.mainApp.openModals) {
+                        this.mainApp.openModals.add(this.configModal);
+                    }
+                }
+
+                return { success: true };
+            } catch (error) {
+                console.error('Failed to open config modal:', error);
                 return { success: false, error: error.message };
             }
         });

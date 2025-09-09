@@ -1,11 +1,11 @@
 const UrlUtils = require('../utils/urlUtils');
-const HistoryDatabase = require('../sqlite/historyDatabase');
+const UserDatabase = require('../sqlite/userDatabase');
 const { MAX_ACTIVE_RECORDS, MERGE_THRESHOLD, WRITE_INTERVAL } = require('../config/constants');
 
 // Visit record tracker - Pure database version
 class VisitTracker {
     constructor() {
-        this.historyDB = new HistoryDatabase();
+        this.historyDB = new UserDatabase();
 
         // Remove write timer and save callback, database version saves in real-time
         this.writeTimer = null;

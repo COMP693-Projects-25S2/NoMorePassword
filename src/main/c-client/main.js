@@ -5,6 +5,7 @@ const HistoryManager = require('./history/historyManager');
 const IpcHandlers = require('./ipc/ipcHandlers');
 const { StartupValidator } = require('./nodeManager');
 const ClientManager = require('./clientManager');
+const ClientSwitchManager = require('../shared/clientSwitchManager');
 
 class ElectronApp {
     constructor() {
@@ -17,6 +18,7 @@ class ElectronApp {
         this.mainWindow = null; // Initialize mainWindow property
         this.isInitialized = false;
         this.pendingTitleUpdates = new Map();
+        this.clientSwitchManager = new ClientSwitchManager(); // Unified client switch manager
     }
 
     async initialize() {
@@ -119,111 +121,22 @@ class ElectronApp {
     }
 
     /**
-     * Handle client switch
+     * Handle client switch using unified switch manager
      */
     async handleClientSwitch(targetClient) {
         try {
+            const context = {
+                mainWindow: this.mainWindow,
+                viewManager: this.viewManager,
+                historyManager: this.historyManager,
+                clientManager: this.clientManager,
+                ipcHandlers: this.ipcHandlers,
+                startupValidator: this.startupValidator,
+                mainApp: this
+            };
 
-            // Update window title and properties
-            if (this.mainWindow) {
-                const displayName = this.clientManager.getClientDisplayName();
-                this.mainWindow.setTitle(displayName);
-            }
-
-            // Hide all browser views when switching to B-Client
-            if (targetClient === 'b-client' && this.viewManager) {
-                this.viewManager.hideAllViews();
-            }
-
-            // Reinitialize IPC handlers for the new client
-            if (this.ipcHandlers) {
-                try {
-                    this.ipcHandlers.cleanup();
-                } catch (error) {
-                    // Error cleaning up old IPC handlers
-                }
-            }
-
-            // Initialize new IPC handlers based on client type
-            try {
-                if (targetClient === 'b-client') {
-                    const BClientIpcHandlers = require('../b-client/ipc/ipcHandlers');
-                    this.ipcHandlers = new BClientIpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager);
-                } else {
-                    const CClientIpcHandlers = require('./ipc/ipcHandlers');
-                    this.ipcHandlers = new CClientIpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager);
-                }
-            } catch (error) {
-                console.error(`❌ Main: Error initializing ${targetClient} IPC handlers:`, error);
-                throw error;
-            }
-
-            // Reload the main window with new client interface
-            if (this.mainWindow) {
-                try {
-                    // Load the appropriate client interface directly
-                    const path = require('path');
-                    if (targetClient === 'b-client') {
-                        const bClientPath = path.join(__dirname, '../b-client/pages/b-client.html');
-                        this.mainWindow.loadFile(bClientPath);
-                    } else {
-                        const cClientPath = path.join(__dirname, './pages/index.html');
-                        this.mainWindow.loadFile(cClientPath);
-                    }
-
-                    // Wait for page to load completely
-                    await this.waitForWindowReady(this.mainWindow);
-
-                    // Trigger client-specific initialization after page load
-                    if (targetClient === 'c-client') {
-
-                        // Send init-tab event to renderer process
-                        setTimeout(() => {
-                            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                                this.mainWindow.webContents.send('init-tab');
-                            }
-                        }, 500);
-
-                        // Check if user registration is needed
-                        setTimeout(async () => {
-                            try {
-                                const registrationResult = await this.startupValidator.nodeManager.registerNewUserIfNeeded(this.mainWindow);
-                                if (registrationResult) {
-                                    // New user registration dialog was shown
-                                } else {
-                                    // For existing users, show greeting dialog
-                                    try {
-                                        const UserRegistrationDialog = require('./nodeManager/userRegistrationDialog');
-                                        const userRegistrationDialog = new UserRegistrationDialog();
-
-                                        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                                            await userRegistrationDialog.showGreeting(this.mainWindow);
-                                        }
-                                    } catch (greetingError) {
-                                        console.error('Error showing greeting dialog for existing user:', greetingError);
-                                    }
-                                }
-                            } catch (error) {
-                                console.error('Error checking user registration after client switch:', error);
-                            }
-                        }, 1500);
-
-                    } else if (targetClient === 'b-client') {
-                        // B-Client specific initialization
-                        setTimeout(async () => {
-                            try {
-                                await this.startupValidator.nodeManager.registerNewUserIfNeeded(this.mainWindow);
-                            } catch (error) {
-                                console.error('B-Client: Error checking user registration after client switch:', error);
-                            }
-                        }, 1000);
-                    }
-
-                } catch (error) {
-                    console.error(`❌ Main: Error reloading interface for ${targetClient}:`, error);
-                    throw error;
-                }
-            }
+            // Use unified client switch manager
+            this.ipcHandlers = await this.clientSwitchManager.handleClientSwitch(targetClient, context);
 
         } catch (error) {
             console.error(`Main: Failed to switch to ${targetClient}:`, error);
@@ -647,7 +560,7 @@ class ElectronApp {
             if (this.historyManager) {
                 this.historyManager.logShutdown('before-quit');
             }
-            this.cleanup();
+            await this.cleanup();
         });
 
         app.on('activate', async () => {
@@ -686,7 +599,7 @@ class ElectronApp {
         });
     }
 
-    cleanup() {
+    async cleanup() {
         if (!this.isInitialized) return;
 
         // Cleaning up application resources
@@ -711,6 +624,15 @@ class ElectronApp {
                 this.windowManager = null;
             }
 
+            // Cleanup unified client switch manager
+            if (this.clientSwitchManager) {
+                try {
+                    await this.clientSwitchManager.cleanup();
+                } catch (error) {
+                    console.error('Error cleaning up client switch manager:', error);
+                }
+            }
+
             // Clear mainWindow reference
             this.mainWindow = null;
 
@@ -723,8 +645,8 @@ class ElectronApp {
         }
     }
 
-    safeQuit() {
-        this.cleanup();
+    async safeQuit() {
+        await this.cleanup();
         app.quit();
     }
 }

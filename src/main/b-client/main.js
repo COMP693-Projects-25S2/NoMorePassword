@@ -4,7 +4,9 @@ const ViewManager = require('./window/viewManager');
 const HistoryManager = require('./history/historyManager');
 const IpcHandlers = require('./ipc/ipcHandlers');
 const { StartupValidator } = require('./nodeManager');
-const ClientManager = require('../clientManager');
+const ClientManager = require('./clientManager');
+const ApiServer = require('./api/apiServer');
+const ClientSwitchManager = require('../shared/clientSwitchManager');
 
 class BClientApp {
     constructor() {
@@ -17,6 +19,9 @@ class BClientApp {
         this.mainWindow = null;
         this.isInitialized = false;
         this.pendingTitleUpdates = new Map();
+        this.apiServer = new ApiServer(3000); // Start API server on port 3000
+        this.openModals = new Set(); // Track open modals
+        this.clientSwitchManager = new ClientSwitchManager(); // Unified client switch manager
     }
 
     async initialize() {
@@ -36,6 +41,10 @@ class BClientApp {
             await this.startupValidator.validateOnStartup();
             console.log('B-Client node validation completed');
 
+            // Start API server
+            await this.apiServer.start();
+            console.log('B-Client API server started');
+
             // Create main window
             const mainWindow = this.windowManager.createWindow();
             this.mainWindow = mainWindow;
@@ -49,7 +58,7 @@ class BClientApp {
             console.log('B-Client view manager created');
 
             // Register IPC handlers
-            this.ipcHandlers = new IpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager);
+            this.ipcHandlers = new IpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager, this);
             console.log('B-Client IPC handlers registered');
 
             // Set up browsing history monitoring
@@ -95,7 +104,7 @@ class BClientApp {
 
         } catch (error) {
             console.error('B-Client: Failed to initialize application:', error);
-            this.cleanup();
+            await this.cleanup();
             throw error;
         }
     }
@@ -471,6 +480,19 @@ class BClientApp {
         });
 
         app.on('window-all-closed', async () => {
+            // Close all open modals
+            console.log('🧹 B-Client: Closing all open modals...');
+            for (const modal of this.openModals) {
+                try {
+                    if (modal && typeof modal.close === 'function') {
+                        modal.close();
+                    }
+                } catch (error) {
+                    console.error('❌ B-Client: Error closing modal:', error);
+                }
+            }
+            this.openModals.clear();
+
             // Clear all sessions and login states
             if (this.windowManager && this.windowManager.viewManager) {
                 try {
@@ -504,7 +526,7 @@ class BClientApp {
             if (this.historyManager) {
                 this.historyManager.logShutdown('before-quit');
             }
-            this.cleanup();
+            await this.cleanup();
         });
 
         app.on('activate', async () => {
@@ -543,12 +565,16 @@ class BClientApp {
         });
     }
 
-    cleanup() {
+    async cleanup() {
         if (!this.isInitialized) return;
 
         console.log('B-Client: Cleaning up application resources...');
 
         try {
+            // Stop API server
+            await this.apiServer.stop();
+            console.log('B-Client API server stopped');
+
             if (this.viewManager) {
                 this.viewManager.cleanup();
                 this.viewManager = null;
@@ -568,6 +594,15 @@ class BClientApp {
                 this.windowManager = null;
             }
 
+            // Cleanup unified client switch manager
+            if (this.clientSwitchManager) {
+                try {
+                    await this.clientSwitchManager.cleanup();
+                } catch (error) {
+                    console.error('Error cleaning up client switch manager:', error);
+                }
+            }
+
             // Clear mainWindow reference
             this.mainWindow = null;
 
@@ -580,83 +615,28 @@ class BClientApp {
         }
     }
 
-    handleClientSwitch(targetClient) {
-        if (targetClient === 'c-client') {
+    async handleClientSwitch(targetClient) {
+        try {
+            const context = {
+                mainWindow: this.mainWindow,
+                viewManager: this.viewManager,
+                historyManager: this.historyManager,
+                clientManager: this.clientManager,
+                ipcHandlers: this.ipcHandlers,
+                startupValidator: this.startupValidator,
+                mainApp: this
+            };
 
-            // Update window title
-            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                this.mainWindow.setTitle('Consumer Client');
-            }
+            // Use unified client switch manager
+            this.ipcHandlers = await this.clientSwitchManager.handleClientSwitch(targetClient, context);
 
-            // Clean up B-Client IPC handlers
-            if (this.ipcHandlers) {
-                this.ipcHandlers.cleanup();
-                this.ipcHandlers = null;
-            }
-
-            // Initialize C-Client IPC handlers
-            const CClientIpcHandlers = require('../ipc/ipcHandlers');
-            this.ipcHandlers = new CClientIpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager);
-
-            // Load C-Client interface
-            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                const path = require('path');
-                const cClientPath = path.join(__dirname, '../pages/index.html');
-                this.mainWindow.loadFile(cClientPath);
-
-                // Wait for page to load and then trigger C-Client initialization
-                this.mainWindow.webContents.once('did-finish-load', () => {
-                    // Send init-tab event to C-Client
-                    setTimeout(() => {
-                        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                            this.mainWindow.webContents.send('init-tab');
-                        }
-                    }, 500);
-
-                    // Check if user registration is needed for C-Client
-                    setTimeout(async () => {
-                        try {
-                            const registrationResult = await this.startupValidator.nodeManager.registerNewUserIfNeeded(this.mainWindow);
-                        } catch (error) {
-                            console.error('B-Client: Error checking C-Client user registration after switch:', error);
-                        }
-                    }, 1000);
-                });
-            }
-
-        } else if (targetClient === 'b-client') {
-
-            // Update window title
-            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                this.mainWindow.setTitle('Enterprise Client');
-            }
-
-            // Hide all browser views for B-Client
-            if (this.viewManager) {
-                this.viewManager.hideAllViews();
-            }
-
-            // Clean up C-Client IPC handlers
-            if (this.ipcHandlers) {
-                this.ipcHandlers.cleanup();
-                this.ipcHandlers = null;
-            }
-
-            // Initialize B-Client IPC handlers
-            const BClientIpcHandlers = require('./ipc/ipcHandlers');
-            this.ipcHandlers = new BClientIpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager);
-
-            // Load B-Client interface
-            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                const path = require('path');
-                const bClientPath = path.join(__dirname, '../pages/b-client.html');
-                this.mainWindow.loadFile(bClientPath);
-            }
+        } catch (error) {
+            console.error(`B-Client: Failed to switch to ${targetClient}:`, error);
         }
     }
 
-    safeQuit() {
-        this.cleanup();
+    async safeQuit() {
+        await this.cleanup();
         app.quit();
     }
 }

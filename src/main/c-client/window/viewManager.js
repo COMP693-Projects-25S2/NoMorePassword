@@ -81,6 +81,40 @@ class ViewManager {
         this.currentViewId = null;
     }
 
+    showAllViews() {
+        const { views } = this;
+        const mainWindow = this.mainWindow;
+
+        if (!mainWindow || !mainWindow.getMainWindow) {
+            return;
+        }
+
+        const electronMainWindow = mainWindow.getMainWindow();
+
+        // Show all views by adding them back to the main window
+        Object.keys(views).forEach(viewId => {
+            const view = views[viewId];
+            if (view && !view.webContents.isDestroyed()) {
+                try {
+                    electronMainWindow.addBrowserView(view);
+                    console.log(`🔄 ViewManager: Shown view ${viewId}`);
+                } catch (error) {
+                    console.log(`⚠️ ViewManager: Error showing view ${viewId}:`, error.message);
+                }
+            }
+        });
+
+        // Set the first available view as current if no current view
+        if (!this.currentViewId && Object.keys(views).length > 0) {
+            const firstViewId = Object.keys(views)[0];
+            this.currentViewId = firstViewId;
+            const firstView = views[firstViewId];
+            if (firstView && !firstView.webContents.isDestroyed()) {
+                electronMainWindow.setBrowserView(firstView);
+            }
+        }
+    }
+
     async navigateTo(url) {
         return await this.viewOperations.navigateTo(url);
     }

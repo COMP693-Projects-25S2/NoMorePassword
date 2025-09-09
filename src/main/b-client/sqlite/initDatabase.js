@@ -37,17 +37,23 @@ db.exec(`
     )
 `);
 
-// Create table: user_accounts - store user account credentials
+// Create table: user_accounts - store user account credentials with full details
 db.exec(`
-    CREATE TABLE IF NOT EXISTS user_accounts (
-        user_id     VARCHAR(50),
-        username    TEXT,
-        website     TEXT,
-        account     VARCHAR(50),
-        password    VARCHAR(50),
-        create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (user_id, username, website, account)
-    )
+        CREATE TABLE IF NOT EXISTS user_accounts (
+            user_id         VARCHAR(50),
+            username        TEXT,
+            website         TEXT,
+            account         VARCHAR(50),
+            password        TEXT,
+            email           TEXT,
+            first_name      TEXT,
+            last_name       TEXT,
+            location        TEXT,
+            registration_method VARCHAR(20) DEFAULT 'manual',
+            auto_generated  BOOLEAN DEFAULT 0,
+            create_time     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, username, website, account)
+        )
 `);
 
 // B-Client database tables created successfully
