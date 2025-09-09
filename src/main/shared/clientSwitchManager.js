@@ -56,7 +56,7 @@ class ClientSwitchManager {
                     console.log('B-Client API server started for client switch');
                 }
 
-                const BClientIpcHandlers = require('../b-client/ipc/ipcHandlers');
+                const BClientIpcHandlers = require('../b-client/ipc/bClientIpcHandlers');
                 const newIpcHandlers = new BClientIpcHandlers(viewManager, historyManager, mainWindow, clientManager, context.mainApp);
                 console.log('🔄 ClientSwitchManager: B-Client IPC handlers initialized');
 
@@ -108,7 +108,7 @@ class ClientSwitchManager {
                                 // Check if there's a current user before showing greeting
                                 const db = require('../c-client/sqlite/database');
                                 const currentUser = db.prepare('SELECT username FROM local_users WHERE is_current = 1').get();
-                                
+
                                 if (currentUser && currentUser.username) {
                                     const UserRegistrationDialog = require('../c-client/nodeManager/userRegistrationDialog');
                                     const userRegistrationDialog = new UserRegistrationDialog();

@@ -2,7 +2,7 @@ const { BrowserWindow, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
-class UserRegistrationDialog {
+class BClientUserRegistrationDialog {
     constructor() {
         this.dialogWindow = null;
         this.mainWindow = null;
@@ -834,4 +834,4 @@ class UserRegistrationDialog {
     }
 }
 
-module.exports = UserRegistrationDialog;
+module.exports = BClientUserRegistrationDialog;

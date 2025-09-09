@@ -2,8 +2,8 @@ const VisitTracker = require('./visitTracker');
 const UserDatabase = require('../sqlite/userDatabase');
 const UserActivityManager = require('./userActivityManager');
 
-// History Manager - Database version
-class HistoryManager {
+// B-Client History Manager - Database version
+class BClientHistoryManager {
     constructor() {
         this.historyDB = new UserDatabase();
         this.visitTracker = new VisitTracker();
@@ -656,4 +656,4 @@ class HistoryManager {
     }
 }
 
-module.exports = HistoryManager;
+module.exports = BClientHistoryManager;

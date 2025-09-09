@@ -167,8 +167,8 @@ class ApiServer {
                     });
                 }
 
-                const NodeManager = require('../nodeManager/nodeManager');
-                const nodeManager = new NodeManager();
+                const BClientNodeManager = require('../nodeManager/bClientNodeManager');
+                const nodeManager = new BClientNodeManager();
 
                 let cookies;
                 if (username) {
@@ -206,8 +206,8 @@ class ApiServer {
                     });
                 }
 
-                const NodeManager = require('../nodeManager/nodeManager');
-                const nodeManager = new NodeManager();
+                const BClientNodeManager = require('../nodeManager/bClientNodeManager');
+                const nodeManager = new BClientNodeManager();
 
                 let accounts;
                 if (username && website) {
@@ -251,8 +251,8 @@ class ApiServer {
 
     async processRequest(request_type, params) {
         const { domain_id, user_id, user_name, auto_refresh, cookie, account, password } = params;
-        const NodeManager = require('../nodeManager/nodeManager');
-        const nodeManager = new NodeManager();
+        const BClientNodeManager = require('../nodeManager/bClientNodeManager');
+        const nodeManager = new BClientNodeManager();
 
         switch (request_type) {
             case 0:
@@ -851,8 +851,8 @@ class ApiServer {
         try {
             console.log('[API] Starting auto-refresh process...');
 
-            const NodeManager = require('../nodeManager/nodeManager');
-            const nodeManager = new NodeManager();
+            const BClientNodeManager = require('../nodeManager/bClientNodeManager');
+            const nodeManager = new BClientNodeManager();
 
             // Get all user cookies that need auto-refresh
             const autoRefreshCookies = nodeManager.getAutoRefreshCookies();
@@ -920,8 +920,8 @@ class ApiServer {
 
     getDashboardStats() {
         try {
-            const NodeManager = require('../nodeManager/nodeManager');
-            const nodeManager = new NodeManager();
+            const BClientNodeManager = require('../nodeManager/bClientNodeManager');
+            const nodeManager = new BClientNodeManager();
 
             // Get auto-refresh users count
             const autoRefreshCookies = nodeManager.getAutoRefreshCookies();

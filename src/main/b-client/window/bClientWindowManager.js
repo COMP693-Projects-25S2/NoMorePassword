@@ -1,8 +1,8 @@
 const { BrowserWindow } = require('electron');
 const path = require('path');
 
-// Window manager
-class WindowManager {
+// B-Client Window manager
+class BClientWindowManager {
     constructor(historyManager, clientManager = null) {
         this.mainWindow = null;
         this.historyManager = historyManager;
@@ -716,4 +716,4 @@ class WindowManager {
     }
 }
 
-module.exports = WindowManager;
+module.exports = BClientWindowManager;

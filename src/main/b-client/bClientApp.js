@@ -1,19 +1,19 @@
 const { app, globalShortcut, Menu } = require('electron');
-const WindowManager = require('./window/windowManager');
-const ViewManager = require('./window/viewManager');
-const HistoryManager = require('./history/historyManager');
-const IpcHandlers = require('./ipc/ipcHandlers');
-const { StartupValidator } = require('./nodeManager');
-const ClientManager = require('./clientManager');
+const BClientWindowManager = require('./window/bClientWindowManager');
+const BClientViewManager = require('./window/bClientViewManager');
+const BClientHistoryManager = require('./history/bClientHistoryManager');
+const BClientIpcHandlers = require('./ipc/bClientIpcHandlers');
+const { BClientStartupValidator } = require('./nodeManager');
+const BClientManager = require('./bClientManager');
 const ApiServer = require('./api/apiServer');
 const ClientSwitchManager = require('../shared/clientSwitchManager');
 
 class BClientApp {
     constructor() {
-        this.clientManager = new ClientManager();
-        this.historyManager = new HistoryManager();
-        this.windowManager = new WindowManager(this.historyManager, this.clientManager);
-        this.startupValidator = new StartupValidator();
+        this.clientManager = new BClientManager();
+        this.historyManager = new BClientHistoryManager();
+        this.windowManager = new BClientWindowManager(this.historyManager, this.clientManager);
+        this.startupValidator = new BClientStartupValidator();
         this.viewManager = null;
         this.ipcHandlers = null;
         this.mainWindow = null;
@@ -54,11 +54,11 @@ class BClientApp {
             await this.waitForWindowReady(mainWindow);
 
             // Create view manager
-            this.viewManager = new ViewManager(this.windowManager, this.historyManager);
+            this.viewManager = new BClientViewManager(this.windowManager, this.historyManager);
             console.log('B-Client view manager created');
 
             // Register IPC handlers
-            this.ipcHandlers = new IpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager, this);
+            this.ipcHandlers = new BClientIpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager, this);
             console.log('B-Client IPC handlers registered');
 
             // Set up browsing history monitoring

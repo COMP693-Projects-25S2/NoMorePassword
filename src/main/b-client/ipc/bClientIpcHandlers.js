@@ -1,7 +1,7 @@
 const { ipcMain } = require('electron');
 
-// IPC handlers
-class IpcHandlers {
+// B-Client IPC handlers
+class BClientIpcHandlers {
     constructor(viewManager, historyManager, mainWindow = null, clientManager = null, mainApp = null) {
         this.viewManager = viewManager;
         this.historyManager = historyManager;
@@ -953,4 +953,4 @@ class IpcHandlers {
     }
 }
 
-module.exports = IpcHandlers;
+module.exports = BClientIpcHandlers;

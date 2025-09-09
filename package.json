@@ -6,10 +6,10 @@
   "scripts": {
     "start": "electron .",
     "start:c-client": "electron src/main/c-client/main.js --c-client",
-    "start:b-client": "electron src/main/b-client/main.js --b-client",
+    "start:b-client": "electron src/main/b-client/bClientApp.js --b-client",
     "dev": "electron . --dev",
     "dev:c-client": "electron src/main/c-client/main.js --dev --c-client",
-    "dev:b-client": "electron src/main/b-client/main.js --dev --b-client",
+    "dev:b-client": "electron src/main/b-client/bClientApp.js --dev --b-client",
     "build": "electron-builder",
     "dist": "npm run build",
     "test": "echo \"Error: no test specified\" && exit 1",

@@ -1,7 +1,7 @@
 // B-Client Node Manager - Simplified for user_cookies and user_accounts only
 const db = require('../sqlite/initDatabase');
 
-class NodeManager {
+class BClientNodeManager {
     constructor() {
         this.db = db;
     }
@@ -304,4 +304,4 @@ class NodeManager {
     }
 }
 
-module.exports = NodeManager;
+module.exports = BClientNodeManager;

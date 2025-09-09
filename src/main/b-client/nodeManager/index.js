@@ -1,8 +1,8 @@
-// /src/main/nodeManager/index.js
-const NodeManager = require('./nodeManager');
-const StartupValidator = require('./startupValidator');
+// /src/main/b-client/nodeManager/index.js
+const BClientNodeManager = require('./bClientNodeManager');
+const BClientStartupValidator = require('./bClientStartupValidator');
 
 module.exports = {
-    NodeManager,
-    StartupValidator
+    BClientNodeManager,
+    BClientStartupValidator
 };

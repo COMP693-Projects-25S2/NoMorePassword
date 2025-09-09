@@ -7,6 +7,19 @@ class UserDatabase {
         // No history tracking needed for B-Client
     }
 
+    // Database transaction methods
+    beginTransaction() {
+        return db.prepare('BEGIN TRANSACTION').run();
+    }
+
+    commitTransaction() {
+        return db.prepare('COMMIT').run();
+    }
+
+    rollbackTransaction() {
+        return db.prepare('ROLLBACK').run();
+    }
+
     // Placeholder methods for compatibility (B-Client doesn't need history tracking)
     addVisitRecord(url, title, timestamp, enterTime, viewId, domain, userId = null) {
         // B-Client doesn't track visit history
@@ -23,9 +36,44 @@ class UserDatabase {
         return null;
     }
 
+    updateRecordTimestamp(visitId, timestamp) {
+        // B-Client doesn't track visit history
+        return null;
+    }
+
     getVisitHistory(limit = null, offset = 0, userId = null) {
         // B-Client doesn't track visit history
         return [];
+    }
+
+    getActiveRecords() {
+        // B-Client doesn't track visit history
+        return [];
+    }
+
+    getRecentVisitByUrl(url, cutoffTime) {
+        // B-Client doesn't track visit history
+        return null;
+    }
+
+    addActiveRecord(visitId, url, enterTime) {
+        // B-Client doesn't track visit history
+        return null;
+    }
+
+    deleteActiveRecord(activeRecordId) {
+        // B-Client doesn't track visit history
+        return null;
+    }
+
+    clearActiveRecords() {
+        // B-Client doesn't track visit history
+        return null;
+    }
+
+    getVisitStats() {
+        // B-Client doesn't track visit history
+        return { totalVisits: 0, totalDuration: 0, uniqueDomains: 0 };
     }
 
     getVisitHistoryCount() {

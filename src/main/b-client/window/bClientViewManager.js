@@ -4,10 +4,10 @@ const path = require('path');
 // Import modular components
 const OAuthHandler = require('./oauthHandler');
 const SessionManager = require('./sessionManager');
-const ViewOperations = require('./viewOperations');
+const BClientViewOperations = require('./bClientViewOperations');
 
-// BrowserView Manager - Refactored
-class ViewManager {
+// B-Client BrowserView Manager - Refactored
+class BClientViewManager {
     constructor(mainWindow, historyManager) {
         this.mainWindow = mainWindow;
         this.historyManager = historyManager;
@@ -18,7 +18,7 @@ class ViewManager {
         // Initialize modular components
         this.oauthHandler = new OAuthHandler(this);
         this.sessionManager = new SessionManager(this);
-        this.viewOperations = new ViewOperations(this);
+        this.viewOperations = new BClientViewOperations(this);
 
         // Set window resize callbacks
         if (mainWindow && mainWindow.setResizeCallback) {
@@ -385,4 +385,4 @@ class ViewManager {
     }
 }
 
-module.exports = ViewManager;
+module.exports = BClientViewManager;

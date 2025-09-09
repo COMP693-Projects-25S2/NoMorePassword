@@ -1,9 +1,9 @@
 const { BrowserView } = require('electron');
 
 /**
- * View Operations - Handle basic view operations
+ * B-Client View Operations - Handle basic view operations
  */
-class ViewOperations {
+class BClientViewOperations {
     constructor(viewManager) {
         this.viewManager = viewManager;
     }
@@ -287,4 +287,4 @@ class ViewOperations {
     }
 }
 
-module.exports = ViewOperations;
+module.exports = BClientViewOperations;

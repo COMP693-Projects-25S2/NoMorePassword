@@ -2,7 +2,7 @@ const { app } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
-class ClientManager {
+class BClientManager {
     constructor() {
         this.currentClient = 'b-client';
         this.clientConfigFile = path.join(app.getPath('userData'), 'b-client-config.json');
@@ -144,4 +144,4 @@ class ClientManager {
     }
 }
 
-module.exports = ClientManager;
+module.exports = BClientManager;

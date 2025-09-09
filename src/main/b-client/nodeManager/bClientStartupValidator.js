@@ -1,9 +1,9 @@
-// /src/main/nodeManager/startupValidator.js
-const NodeManager = require('./nodeManager');
+// /src/main/b-client/nodeManager/bClientStartupValidator.js
+const BClientNodeManager = require('./bClientNodeManager');
 
-class StartupValidator {
+class BClientStartupValidator {
     constructor() {
-        this.nodeManager = new NodeManager();
+        this.nodeManager = new BClientNodeManager();
     }
 
     /**
@@ -67,4 +67,4 @@ class StartupValidator {
     }
 }
 
-module.exports = StartupValidator;
+module.exports = BClientStartupValidator;
