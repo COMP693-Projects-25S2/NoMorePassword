@@ -41,17 +41,34 @@ class IpcHandlers {
         // Create new tab
         ipcMain.handle('create-tab', async (_, url) => {
             try {
-                const view = await this.viewManager.createBrowserView(url);
+                console.log(`\n📝 C-Client IPC: Creating new tab with URL: ${url}`);
+
+                // Initialize URL parameter injector
+                const UrlParameterInjector = require('../utils/urlParameterInjector');
+                const urlInjector = new UrlParameterInjector();
+
+                // Process URL and inject parameters if needed
+                console.log('🔧 C-Client IPC: Processing URL for parameter injection...');
+                const processedUrl = urlInjector.processUrl(url);
+
+                console.log(`🔧 C-Client IPC: URL processing completed:`);
+                console.log(`   Input URL:  ${url}`);
+                console.log(`   Output URL: ${processedUrl}`);
+
+                const view = await this.viewManager.createBrowserView(processedUrl);
                 if (view && url && this.historyManager) {
-                    // Record visit start
+                    // Record visit start (use original URL for history)
                     const viewId = view.id || Date.now(); // Ensure viewId exists
                     const record = this.historyManager.recordVisit(url, viewId);
                     if (record) {
+                        console.log(`📊 C-Client IPC: Visit recorded for view ${viewId}`);
                     }
                 }
+
+                console.log(`✅ C-Client IPC: Tab created successfully with view ID: ${view?.id}`);
                 return view;
             } catch (error) {
-                console.error('Failed to create tab:', error);
+                console.error('❌ C-Client IPC: Failed to create tab:', error);
                 return null;
             }
         });
@@ -291,24 +308,39 @@ class IpcHandlers {
         // Navigate to specified URL
         ipcMain.handle('navigate-to', async (_, url) => {
             try {
-                await this.viewManager.navigateTo(url);
+                console.log(`\n🧭 C-Client IPC: Navigating to URL: ${url}`);
 
-                // Record new visit
+                // Initialize URL parameter injector
+                const UrlParameterInjector = require('../utils/urlParameterInjector');
+                const urlInjector = new UrlParameterInjector();
+
+                // Process URL and inject parameters if needed
+                console.log('🔧 C-Client IPC: Processing URL for parameter injection...');
+                const processedUrl = urlInjector.processUrl(url);
+
+                console.log(`🔧 C-Client IPC: URL processing completed:`);
+                console.log(`   Input URL:  ${url}`);
+                console.log(`   Output URL: ${processedUrl}`);
+
+                await this.viewManager.navigateTo(processedUrl);
+
+                // Record new visit (use original URL for history)
                 if (url && this.historyManager) {
                     const currentView = this.viewManager.getCurrentView();
                     if (currentView) {
                         const viewId = currentView.id || Date.now();
                         const record = this.historyManager.recordVisit(url, viewId);
-                        // Recorded navigation visit
+                        console.log(`📊 C-Client IPC: Navigation visit recorded for view ${viewId}`);
 
                         // Record navigation activity
                         this.historyManager.recordNavigationActivity(url, 'Loading...', 'navigate');
                     }
                 }
 
+                console.log(`✅ C-Client IPC: Navigation completed successfully`);
                 return true;
             } catch (error) {
-                console.error('Failed to navigate to URL:', error);
+                console.error('❌ C-Client IPC: Failed to navigate to URL:', error);
                 return false;
             }
         });
@@ -733,6 +765,7 @@ class IpcHandlers {
         // Handle user switch request
         ipcMain.handle('switch-user', async (event, userId) => {
             try {
+                console.log(`🔄 C-Client IPC: Switching to user: ${userId}`);
 
                 const db = require('../sqlite/database');
 
@@ -743,9 +776,21 @@ class IpcHandlers {
                 const result = db.prepare('UPDATE local_users SET is_current = 1 WHERE user_id = ?').run(userId);
 
                 if (result.changes > 0) {
-
                     // Get the new current user info
                     const newUser = db.prepare('SELECT * FROM local_users WHERE user_id = ?').get(userId);
+                    console.log(`✅ C-Client IPC: User switched to: ${newUser.username}`);
+
+                    // Close all existing tabs and create new default page
+                    if (this.viewManager) {
+                        try {
+                            console.log('🔄 C-Client IPC: Closing all tabs and creating new default page...');
+                            await this.viewManager.closeAllTabsAndCreateDefault();
+                            console.log('✅ C-Client IPC: All tabs closed and new default page created');
+                        } catch (viewError) {
+                            console.error('❌ C-Client IPC: Error managing views during user switch:', viewError);
+                            // Don't fail the user switch if view management fails
+                        }
+                    }
 
                     // Show greeting dialog for the switched user
                     try {
@@ -870,6 +915,7 @@ class IpcHandlers {
             'switch-to-client',
             'get-current-client',
             'get-client-info',
+            'get-url-injection-status',
 
         ];
 
@@ -966,6 +1012,23 @@ class IpcHandlers {
                 };
             } catch (error) {
                 console.error('Failed to get client info:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Get URL parameter injection status
+        ipcMain.handle('get-url-injection-status', async (_, url) => {
+            try {
+                const UrlParameterInjector = require('../utils/urlParameterInjector');
+                const urlInjector = new UrlParameterInjector();
+                const status = urlInjector.getInjectionStatus(url);
+
+                return {
+                    success: true,
+                    ...status
+                };
+            } catch (error) {
+                console.error('Failed to get URL injection status:', error);
                 return { success: false, error: error.message };
             }
         });

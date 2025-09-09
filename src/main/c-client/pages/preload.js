@@ -41,6 +41,9 @@ contextBridge.exposeInMainWorld(
     // Client switching
     switchToClient: (clientType) => ipcRenderer.invoke('switch-to-client', clientType),
 
+    // URL parameter injection
+    getUrlInjectionStatus: (url) => ipcRenderer.invoke('get-url-injection-status', url),
+
 
 
     // Event listeners
@@ -48,6 +51,7 @@ contextBridge.exposeInMainWorld(
     onAutoTabCreated: (callback) => ipcRenderer.on('auto-tab-created', callback),
     onInitTab: (callback) => ipcRenderer.on('init-tab', callback),
     onShowNotification: (callback) => ipcRenderer.on('show-notification', callback),
+    onCloseAllTabs: (callback) => ipcRenderer.on('close-all-tabs', callback),
 
 
     // Cleanup listeners

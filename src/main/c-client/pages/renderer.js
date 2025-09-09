@@ -286,6 +286,28 @@ document.addEventListener('DOMContentLoaded', () => {
         showNotification(notification.type, notification.message);
     });
 
+    // Handle close all tabs event (for user switching)
+    window.electronAPI.onCloseAllTabs(() => {
+        console.log('🔄 Renderer: Received close-all-tabs event, closing all tabs in UI...');
+
+        // Close all tabs in the UI
+        const tabElements = document.querySelectorAll('.tab');
+        tabElements.forEach(tabEl => {
+            tabEl.remove();
+        });
+
+        // Clear tabs object
+        Object.keys(tabs).forEach(id => {
+            delete tabs[id];
+        });
+
+        // Reset current tab
+        currentTabId = null;
+        addressBar.value = '';
+
+        console.log('✅ Renderer: All tabs closed in UI');
+    });
+
     console.log('All event listeners and initialization completed');
 
     console.log('✅ 应用初始化完成');

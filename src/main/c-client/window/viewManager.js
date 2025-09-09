@@ -115,6 +115,63 @@ class ViewManager {
         }
     }
 
+    /**
+     * Close all tabs and create a new default page
+     */
+    async closeAllTabsAndCreateDefault() {
+        console.log('🔄 ViewManager: Closing all tabs and creating new default page...');
+
+        try {
+            // Close all existing tabs
+            const viewIds = Object.keys(this.views);
+            for (const viewId of viewIds) {
+                this.closeTab(viewId);
+            }
+
+            // Clear all views
+            this.views = {};
+            this.currentViewId = null;
+            this.viewCounter = 0;
+
+            // Notify renderer process to close all tabs in UI
+            if (this.mainWindow && this.mainWindow.sendToWindow) {
+                this.mainWindow.sendToWindow('close-all-tabs');
+            }
+
+            // Create a new default tab with URL parameter injection
+            const UrlParameterInjector = require('../utils/urlParameterInjector');
+            const urlInjector = new UrlParameterInjector();
+            const processedUrl = urlInjector.processUrl('https://www.google.com');
+
+            console.log('🔧 ViewManager: Creating new default page with URL injection...');
+            console.log(`   Original URL:  https://www.google.com`);
+            console.log(`   Processed URL: ${processedUrl}`);
+
+            const defaultView = await this.createBrowserView(processedUrl);
+
+            if (defaultView) {
+                console.log('✅ ViewManager: New default page created successfully with URL injection');
+
+                // Notify renderer process to create tab UI for the new view
+                if (this.mainWindow && this.mainWindow.sendToWindow) {
+                    this.mainWindow.sendToWindow('auto-tab-created', {
+                        id: defaultView.id,
+                        title: 'Google',
+                        url: processedUrl
+                    });
+                }
+
+                return defaultView;
+            } else {
+                console.error('❌ ViewManager: Failed to create new default page');
+                return null;
+            }
+        } catch (error) {
+            console.error('❌ ViewManager: Error closing all tabs and creating default page:', error);
+            return null;
+        }
+    }
+
     async navigateTo(url) {
         return await this.viewOperations.navigateTo(url);
     }
