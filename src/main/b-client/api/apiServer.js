@@ -1,4 +1,4 @@
-// B-Client HTTP RESTful API Server
+// B-Client HTTP RESTful API Servere
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -107,7 +107,7 @@ class ApiServer {
         // Main bind endpoint
         this.app.post('/bind', async (req, res) => {
             try {
-                const { domain_id, user_id, user_name, request_type, auto_refresh, cookie } = req.body;
+                const { domain_id, user_id, user_name, request_type, auto_refresh, cookie, account, password } = req.body;
 
                 // Validate required parameters
                 if (!domain_id || !user_id || !user_name || !request_type) {
@@ -123,7 +123,9 @@ class ApiServer {
                     user_name,
                     request_type,
                     auto_refresh,
-                    cookie: cookie ? 'provided' : 'not provided'
+                    cookie: cookie ? 'provided' : 'not provided',
+                    account: account ? 'provided' : 'not provided',
+                    password: password ? 'provided' : 'not provided'
                 });
 
                 // Process request based on request_type
@@ -132,7 +134,9 @@ class ApiServer {
                     user_id,
                     user_name,
                     auto_refresh,
-                    cookie
+                    cookie,
+                    account,
+                    password
                 });
 
                 res.json({
@@ -246,7 +250,7 @@ class ApiServer {
     }
 
     async processRequest(request_type, params) {
-        const { domain_id, user_id, user_name, auto_refresh, cookie } = params;
+        const { domain_id, user_id, user_name, auto_refresh, cookie, account, password } = params;
         const NodeManager = require('../nodeManager/nodeManager');
         const nodeManager = new NodeManager();
 
@@ -270,83 +274,26 @@ class ApiServer {
 
     async handleBindExistingUser(nodeManager, user_id, user_name, domain_id, params) {
         try {
-            const { cookie, auto_refresh } = params;
+            const { account, password, auto_refresh } = params;
             console.log(`[API] Handling bind request for existing user: ${user_name} on domain: ${domain_id}, auto_refresh: ${auto_refresh}`);
 
-            // If cookie is provided directly, use it
-            if (cookie) {
-                console.log(`[API] Direct cookie provided for user: ${user_name}`);
-
-                let finalCookie = cookie;
-                let refreshResult = null;
-
-                // If auto_refresh is enabled, try to refresh the cookie
-                if (auto_refresh) {
-                    console.log(`[API] Auto-refresh enabled, attempting to refresh cookie for user: ${user_name}`);
-                    refreshResult = await this.refreshCookieOnTargetWebsite(domain_id, cookie);
-
-                    if (refreshResult.success) {
-                        finalCookie = refreshResult.sessionCookie;
-                        console.log(`[API] Cookie refreshed successfully for user: ${user_name}`);
-                    } else {
-                        console.log(`[API] Cookie refresh failed for user: ${user_name}, using original cookie`);
-                    }
-                }
-
-                // Store the cookie (refreshed or original)
-                const cookieResult = nodeManager.addUserCookie(
-                    user_id,
-                    user_name,
-                    finalCookie,
-                    auto_refresh || false, // auto_refresh
-                    new Date(Date.now() + apiConfig.default.cookieExpiryHours * 60 * 60 * 1000) // from config
-                );
-
-                // auto_refresh status is already stored in user_cookies table
-
-                return {
-                    action: 'bind_existing_user',
-                    user_id,
-                    user_name,
-                    domain_id,
-                    success: true,
-                    method: 'direct_cookie',
-                    auto_refresh_enabled: auto_refresh || false,
-                    refresh_attempted: auto_refresh || false,
-                    refresh_success: refreshResult ? refreshResult.success : null,
-                    refresh_error: refreshResult && !refreshResult.success ? refreshResult.error : null,
-                    stored_cookie: cookieResult ? 'success' : 'failed',
-                    message: auto_refresh && refreshResult && refreshResult.success ?
-                        'Successfully bound existing user with refreshed cookie' :
-                        'Successfully bound existing user with provided cookie'
-                };
-            }
-
-            // Fallback: For existing users without direct cookie, try to get session information from NSN
-            // Since we can't directly access the user's browser cookies, we need to:
-            // 1. Get user's account credentials from our database
-            // 2. Use those credentials to login and get fresh session cookie
-            // 3. Store the new session cookie
-
-            console.log(`[API] No direct cookie provided, attempting to login with stored credentials`);
-
-            // First, check if we have account information for this user
-            const existingAccount = nodeManager.getUserAccount(user_id, user_name, domain_id);
-
-            if (!existingAccount) {
+            // Validate required parameters
+            if (!account || !password) {
                 return {
                     action: 'bind_existing_user',
                     user_id,
                     user_name,
                     domain_id,
                     success: false,
-                    error: 'No account information found for this user and no cookie provided.',
-                    suggestion: 'Use request_type=0 to auto-register this user, or provide cookie parameter'
+                    error: 'account and password are required for request_type=1',
+                    suggestion: 'Provide both account and password parameters for login'
                 };
             }
 
-            // Use existing credentials to login and get fresh session cookie
-            const loginResult = await this.loginToTargetWebsite(domain_id, existingAccount.account, existingAccount.password);
+            console.log(`[API] Attempting to login with provided credentials for user: ${user_name}`);
+
+            // Use provided credentials to login and get fresh session cookie
+            const loginResult = await this.loginToTargetWebsite(domain_id, account, password);
 
             if (loginResult.success) {
                 // Store the fresh session cookie
@@ -382,7 +329,7 @@ class ApiServer {
                     user_name,
                     domain_id,
                     success: true,
-                    method: 'login_refresh',
+                    method: 'login_with_credentials',
                     login_success: true,
                     auto_refresh_enabled: auto_refresh || false,
                     refresh_attempted: auto_refresh || false,
@@ -396,8 +343,8 @@ class ApiServer {
                     },
                     stored_cookie: cookieResult ? 'success' : 'failed',
                     message: auto_refresh && refreshResult && refreshResult.success ?
-                        'Successfully bound existing user with refreshed session cookie' :
-                        'Successfully bound existing user and refreshed session cookie'
+                        'Successfully logged in with provided credentials and refreshed session cookie' :
+                        'Successfully logged in with provided credentials and stored session cookie'
                 };
             } else {
                 return {
@@ -406,9 +353,9 @@ class ApiServer {
                     user_name,
                     domain_id,
                     success: false,
-                    method: 'login_refresh',
+                    method: 'login_with_credentials',
                     login_success: false,
-                    error: 'Failed to login with existing credentials',
+                    error: 'Failed to login with provided credentials',
                     details: loginResult.error
                 };
             }
@@ -1273,7 +1220,7 @@ class ApiServer {
             port: this.port,
             endpoints: [
                 'GET /health',
-                'POST /bind (request_type: 0=auto_register, 1=bind_existing_user, 2=clear_user_cookies)',
+                'POST /bind (request_type: 0=auto_register, 1=bind_existing_user with account/password, 2=clear_user_cookies)',
                 'GET /api/stats (dashboard statistics)',
                 'GET /api/config (configuration)',
                 'GET /cookies/:user_id',

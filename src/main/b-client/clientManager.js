@@ -53,25 +53,25 @@ class ClientManager {
     switchClient(newClient) {
         if (!['c-client', 'b-client'].includes(newClient)) {
             console.error(`B-Client: Invalid client type: ${newClient}`);
-            return false;
+            return { success: false, error: 'Invalid client type' };
         }
 
         if (newClient === this.currentClient) {
             console.log(`B-Client: Already using ${newClient}`);
-            return true;
+            return { success: true, message: `Already using ${newClient}` };
         }
 
         console.log(`B-Client: Switching from ${this.currentClient} to ${newClient}`);
-        
+
         // Update current client
         this.currentClient = newClient;
         this.saveClientConfig();
-        
+
         // Emit client switch event
         const { app } = require('electron');
         app.emit('client-switch', newClient);
-        
-        return true;
+
+        return { success: true, message: `Switching to ${newClient}` };
     }
 
     /**

@@ -115,8 +115,8 @@ class ElectronApp {
     setupClientSwitchListener() {
         const { app } = require('electron');
 
-        app.on('client-switch', (targetClient) => {
-            this.handleClientSwitch(targetClient);
+        app.on('client-switch', async (targetClient) => {
+            return await this.handleClientSwitch(targetClient);
         });
     }
 
@@ -138,8 +138,11 @@ class ElectronApp {
             // Use unified client switch manager
             this.ipcHandlers = await this.clientSwitchManager.handleClientSwitch(targetClient, context);
 
+            return { success: true, message: `Successfully switched to ${targetClient}` };
+
         } catch (error) {
             console.error(`Main: Failed to switch to ${targetClient}:`, error);
+            return { success: false, error: error.message };
         }
     }
 

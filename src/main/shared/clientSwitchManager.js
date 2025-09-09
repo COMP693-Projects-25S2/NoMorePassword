@@ -101,37 +101,26 @@ class ClientSwitchManager {
                             }
                         }, 500);
 
-                        // Check if user registration is needed for C-Client
+                        // Skip user registration check during client switch
+                        // Only show greeting dialog if we have a valid current user
                         setTimeout(async () => {
                             try {
-                                if (startupValidator?.nodeManager) {
-                                    const registrationResult = await startupValidator.nodeManager.registerNewUserIfNeeded(mainWindow);
-                                    if (registrationResult) {
-                                        // New user registration dialog was shown
-                                    } else {
-                                        // For existing users, show greeting dialog only if we have a valid current user
-                                        try {
-                                            // Check if there's a current user before showing greeting
-                                            const db = require('../c-client/sqlite/database');
-                                            const currentUser = db.prepare('SELECT username FROM local_users WHERE is_current = 1').get();
+                                // Check if there's a current user before showing greeting
+                                const db = require('../c-client/sqlite/database');
+                                const currentUser = db.prepare('SELECT username FROM local_users WHERE is_current = 1').get();
+                                
+                                if (currentUser && currentUser.username) {
+                                    const UserRegistrationDialog = require('../c-client/nodeManager/userRegistrationDialog');
+                                    const userRegistrationDialog = new UserRegistrationDialog();
 
-                                            if (currentUser && currentUser.username) {
-                                                const UserRegistrationDialog = require('../c-client/nodeManager/userRegistrationDialog');
-                                                const userRegistrationDialog = new UserRegistrationDialog();
-
-                                                if (mainWindow && !mainWindow.isDestroyed()) {
-                                                    await userRegistrationDialog.showGreeting(mainWindow);
-                                                }
-                                            } else {
-                                                console.log('🔄 ClientSwitchManager: No current user found, skipping greeting dialog');
-                                            }
-                                        } catch (greetingError) {
-                                            console.error('Error showing greeting dialog for existing user:', greetingError);
-                                        }
+                                    if (mainWindow && !mainWindow.isDestroyed()) {
+                                        await userRegistrationDialog.showGreeting(mainWindow);
                                     }
+                                } else {
+                                    console.log('🔄 ClientSwitchManager: No current user found, skipping greeting dialog');
                                 }
-                            } catch (error) {
-                                console.error('Error checking user registration after client switch:', error);
+                            } catch (greetingError) {
+                                console.error('Error showing greeting dialog for existing user:', greetingError);
                             }
                         }, 1500);
                     });

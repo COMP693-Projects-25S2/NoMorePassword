@@ -474,9 +474,9 @@ class BClientApp {
 
     setupAppEvents() {
         // Listen for client switch events
-        app.on('client-switch', (targetClient) => {
+        app.on('client-switch', async (targetClient) => {
             console.log(`🔄 B-Client: Received client-switch event for: ${targetClient}`);
-            this.handleClientSwitch(targetClient);
+            return await this.handleClientSwitch(targetClient);
         });
 
         app.on('window-all-closed', async () => {
@@ -630,8 +630,11 @@ class BClientApp {
             // Use unified client switch manager
             this.ipcHandlers = await this.clientSwitchManager.handleClientSwitch(targetClient, context);
 
+            return { success: true, message: `Successfully switched to ${targetClient}` };
+
         } catch (error) {
             console.error(`B-Client: Failed to switch to ${targetClient}:`, error);
+            return { success: false, error: error.message };
         }
     }
 
