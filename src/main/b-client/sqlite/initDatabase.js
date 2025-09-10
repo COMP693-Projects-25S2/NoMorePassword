@@ -56,6 +56,15 @@ db.exec(`
         )
 `);
 
+// Create table: domain_nodes - store domain node information with IP addresses and refresh times
+db.exec(`
+    CREATE TABLE IF NOT EXISTS domain_nodes (
+        domain_id     VARCHAR(50) PRIMARY KEY,
+        ip_address    VARCHAR(20),
+        refresh_time  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+`);
+
 // B-Client database tables created successfully
 
 // Disable foreign key constraints for simpler data management

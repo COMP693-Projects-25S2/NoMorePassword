@@ -312,6 +312,7 @@ class UserDatabase {
             return [];
         }
     }
+
 }
 
 module.exports = UserDatabase;
