@@ -56,8 +56,27 @@ class ClientSwitchManager {
                     console.log('B-Client API server started for client switch');
                 }
 
+                // Create B-Client's own user manager
+                const BClientUserManager = require('../b-client/userManagement/bClientUserManager');
+                const bClientUserManager = new BClientUserManager();
+                await bClientUserManager.initialize();
+
+                // Create B-Client's own window manager
+                const BClientWindowManager = require('../b-client/window/bClientWindowManager');
+                const bClientWindowManager = new BClientWindowManager(bClientUserManager, clientManager);
+                bClientWindowManager.mainWindow = mainWindow; // Set the main window reference
+                bClientWindowManager.sendToWindow = (channel, data) => {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send(channel, data);
+                    }
+                };
+
+                // Create B-Client's own view manager with correct window manager
+                const BClientViewManager = require('../b-client/window/bClientViewManager');
+                const bClientViewManager = new BClientViewManager(bClientWindowManager, bClientUserManager);
+
                 const BClientIpcHandlers = require('../b-client/ipc/bClientIpcHandlers');
-                const newIpcHandlers = new BClientIpcHandlers(viewManager, historyManager, mainWindow, clientManager, context.mainApp);
+                const newIpcHandlers = new BClientIpcHandlers(bClientViewManager, bClientUserManager, mainWindow, clientManager, context.mainApp);
                 console.log('🔄 ClientSwitchManager: B-Client IPC handlers initialized');
 
                 // Load B-Client interface
@@ -79,14 +98,36 @@ class ClientSwitchManager {
                     console.log('B-Client API server stopped for client switch');
                 }
 
+                // Create C-Client's own history manager
+                const CClientHistoryManager = require('../c-client/history/historyManager');
+                const cClientHistoryManager = new CClientHistoryManager();
+                await cClientHistoryManager.initialize();
+
+                // Create C-Client's own window manager
+                const CClientWindowManager = require('../c-client/window/windowManager');
+                const cClientWindowManager = new CClientWindowManager(cClientHistoryManager, clientManager);
+                cClientWindowManager.mainWindow = mainWindow; // Set the main window reference
+                cClientWindowManager.sendToWindow = (channel, data) => {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send(channel, data);
+                    }
+                };
+
+                // Create C-Client's own view manager with correct window manager
+                const CClientViewManager = require('../c-client/window/viewManager');
+                const cClientViewManager = new CClientViewManager(cClientWindowManager, cClientHistoryManager);
+
                 const CClientIpcHandlers = require('../c-client/ipc/ipcHandlers');
-                const newIpcHandlers = new CClientIpcHandlers(viewManager, historyManager, mainWindow, clientManager, startupValidator?.nodeManager);
+                const newIpcHandlers = new CClientIpcHandlers(cClientViewManager, cClientHistoryManager, mainWindow, clientManager, startupValidator?.nodeManager);
                 console.log('🔄 ClientSwitchManager: C-Client IPC handlers initialized');
 
-                // Load C-Client interface
+                // Load C-Client interface using WindowManager
                 if (mainWindow && !mainWindow.isDestroyed()) {
-                    const cClientPath = path.join(__dirname, '../c-client/pages/index.html');
-                    mainWindow.loadFile(cClientPath);
+                    // Update webPreferences for C-Client
+                    const cClientPreloadPath = path.join(__dirname, '../c-client/pages/preload.js');
+                    mainWindow.webContents.session.setPreloads([cClientPreloadPath]);
+
+                    cClientWindowManager.loadClientInterface();
                     console.log('🔄 ClientSwitchManager: C-Client interface loaded');
 
                     // Wait for page to load and then trigger C-Client initialization

@@ -1,7 +1,7 @@
 const { app, globalShortcut, Menu } = require('electron');
 const BClientWindowManager = require('./window/bClientWindowManager');
 const BClientViewManager = require('./window/bClientViewManager');
-const BClientHistoryManager = require('./history/bClientHistoryManager');
+const BClientUserManager = require('./userManagement/bClientUserManager');
 const BClientIpcHandlers = require('./ipc/bClientIpcHandlers');
 const { BClientStartupValidator } = require('./nodeManager');
 const BClientManager = require('./bClientManager');
@@ -11,8 +11,8 @@ const ClientSwitchManager = require('../shared/clientSwitchManager');
 class BClientApp {
     constructor() {
         this.clientManager = new BClientManager();
-        this.historyManager = new BClientHistoryManager();
-        this.windowManager = new BClientWindowManager(this.historyManager, this.clientManager);
+        this.userManager = new BClientUserManager();
+        this.windowManager = new BClientWindowManager(this.userManager, this.clientManager);
         this.startupValidator = new BClientStartupValidator();
         this.viewManager = null;
         this.ipcHandlers = null;
@@ -34,7 +34,7 @@ class BClientApp {
 
         try {
             // Initialize history manager
-            this.historyManager.initialize();
+            this.userManager.initialize();
             console.log('B-Client history manager initialized');
 
             // Validate node status on startup
@@ -54,11 +54,11 @@ class BClientApp {
             await this.waitForWindowReady(mainWindow);
 
             // Create view manager
-            this.viewManager = new BClientViewManager(this.windowManager, this.historyManager);
+            this.viewManager = new BClientViewManager(this.windowManager, this.userManager);
             console.log('B-Client view manager created');
 
             // Register IPC handlers
-            this.ipcHandlers = new BClientIpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager, this);
+            this.ipcHandlers = new BClientIpcHandlers(this.viewManager, this.userManager, this.mainWindow, this.clientManager, this);
             console.log('B-Client IPC handlers registered');
 
             // Set up browsing history monitoring
@@ -74,7 +74,7 @@ class BClientApp {
             console.log('B-Client application menu created');
 
             // Complete initialization
-            this.historyManager.finalizeInitialization();
+            this.userManager.finalizeInitialization();
 
             // Set up periodic cleanup
             this.setupPeriodicCleanup();
@@ -131,7 +131,7 @@ class BClientApp {
                     }
 
                     const viewId = this.getViewIdFromWebContents(contents);
-                    if (viewId && this.historyManager) {
+                    if (viewId && this.userManager) {
                         setTimeout(() => {
                             try {
                                 if (contents.isDestroyed()) return;
@@ -142,10 +142,10 @@ class BClientApp {
                                     initialTitle = currentTitle;
                                 }
 
-                                const record = this.historyManager.recordVisit(url, viewId);
+                                const record = this.userManager.recordVisit(url, viewId);
                                 if (record) {
                                     if (initialTitle !== 'Loading...') {
-                                        this.historyManager.updateRecordTitle(record, initialTitle);
+                                        this.userManager.updateRecordTitle(record, initialTitle);
                                     } else {
                                         this.pendingTitleUpdates.set(`${url}-${viewId}`, {
                                             record: record,
@@ -175,7 +175,7 @@ class BClientApp {
                         return;
                     }
 
-                    if (url && this.historyManager) {
+                    if (url && this.userManager) {
                         const viewId = this.getViewIdFromWebContents(contents);
                         if (viewId) {
                             this.updateRecordTitle(url, viewId, title);
@@ -196,7 +196,7 @@ class BClientApp {
                         return;
                     }
 
-                    if (url && title && this.historyManager) {
+                    if (url && title && this.userManager) {
                         const viewId = this.getViewIdFromWebContents(contents);
                         if (viewId) {
                             this.updateRecordTitle(url, viewId, title);
@@ -261,10 +261,10 @@ class BClientApp {
 
             if (pendingUpdate) {
                 const finalTitle = title || 'Untitled Page';
-                this.historyManager.updateRecordTitle(pendingUpdate.record, finalTitle);
+                this.userManager.updateRecordTitle(pendingUpdate.record, finalTitle);
                 this.pendingTitleUpdates.delete(key);
             } else {
-                const recentRecords = this.historyManager.getHistory(10);
+                const recentRecords = this.userManager.getHistory(10);
                 const recentRecord = recentRecords.find(record =>
                     record.url === url &&
                     record.view_id === viewId &&
@@ -273,7 +273,7 @@ class BClientApp {
 
                 if (recentRecord) {
                     const finalTitle = title || 'Untitled Page';
-                    this.historyManager.updateRecordTitle(recentRecord, finalTitle);
+                    this.userManager.updateRecordTitle(recentRecord, finalTitle);
                 }
             }
         } catch (error) {
@@ -307,7 +307,7 @@ class BClientApp {
 
     cleanupLoadingRecords() {
         try {
-            if (this.historyManager) {
+            if (this.userManager) {
                 // B-Client doesn't track visit history
             }
         } catch (error) {
@@ -322,7 +322,7 @@ class BClientApp {
 
             for (const [key, pendingUpdate] of this.pendingTitleUpdates.entries()) {
                 if (pendingUpdate.timestamp < fiveMinutesAgo) {
-                    this.historyManager.updateRecordTitle(pendingUpdate.record, 'Failed to load');
+                    this.userManager.updateRecordTitle(pendingUpdate.record, 'Failed to load');
                     this.pendingTitleUpdates.delete(key);
                     cleanedCount++;
                 }
@@ -503,8 +503,8 @@ class BClientApp {
                 }
             }
 
-            if (this.historyManager) {
-                this.historyManager.logShutdown('window-all-closed');
+            if (this.userManager) {
+                this.userManager.logShutdown('window-all-closed');
             }
 
             if (process.platform !== 'darwin') {
@@ -523,8 +523,8 @@ class BClientApp {
                 }
             }
 
-            if (this.historyManager) {
-                this.historyManager.logShutdown('before-quit');
+            if (this.userManager) {
+                this.userManager.logShutdown('before-quit');
             }
             await this.cleanup();
         });
@@ -545,8 +545,8 @@ class BClientApp {
         app.on('will-quit', (event) => {
             try {
                 globalShortcut.unregisterAll();
-                if (this.historyManager) {
-                    this.historyManager.forceWrite();
+                if (this.userManager) {
+                    this.userManager.forceWrite();
                 }
             } catch (error) {
                 console.error('B-Client: Failed in will-quit handler:', error);
@@ -585,8 +585,8 @@ class BClientApp {
                 this.ipcHandlers = null;
             }
 
-            if (this.historyManager) {
-                this.historyManager.cleanup();
+            if (this.userManager) {
+                this.userManager.cleanup();
             }
 
             if (this.windowManager) {
@@ -620,7 +620,7 @@ class BClientApp {
             const context = {
                 mainWindow: this.mainWindow,
                 viewManager: this.viewManager,
-                historyManager: this.historyManager,
+                historyManager: this.userManager,
                 clientManager: this.clientManager,
                 ipcHandlers: this.ipcHandlers,
                 startupValidator: this.startupValidator,

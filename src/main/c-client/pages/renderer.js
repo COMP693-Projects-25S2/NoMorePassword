@@ -1,9 +1,34 @@
+
 let tabs = {};
 let currentTabId = null;
 let pendingTitles = {};
 
-const tabsContainer = document.getElementById('tabs');
-const addressBar = document.getElementById('address');
+let tabsContainer = null;
+let addressBar = null;
+
+// Handle close all tabs event (for user switching) - outside DOMContentLoaded
+window.electronAPI.onCloseAllTabs(() => {
+    // Ensure DOM elements are available
+    if (!tabsContainer || !addressBar) {
+        return;
+    }
+
+    // Close all tabs in the UI
+    const tabElements = document.querySelectorAll('.tab');
+    tabElements.forEach(tabEl => {
+        tabEl.remove();
+    });
+
+    // Clear tabs object
+    Object.keys(tabs).forEach(id => {
+        delete tabs[id];
+    });
+
+    // Reset current tab
+    currentTabId = null;
+    addressBar.value = '';
+});
+
 
 
 
@@ -164,7 +189,14 @@ async function showVisitHistory() {
 
 // Setup all event listeners and initialization
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('Setting up all event listeners and initialization...');
+    // Initialize DOM elements
+    tabsContainer = document.getElementById('tabs');
+    addressBar = document.getElementById('address');
+
+    if (!tabsContainer || !addressBar) {
+        return;
+    }
+
 
     // 绑定按钮事件
     document.getElementById('new-tab').onclick = () => createTab();
@@ -286,27 +318,6 @@ document.addEventListener('DOMContentLoaded', () => {
         showNotification(notification.type, notification.message);
     });
 
-    // Handle close all tabs event (for user switching)
-    window.electronAPI.onCloseAllTabs(() => {
-        console.log('🔄 Renderer: Received close-all-tabs event, closing all tabs in UI...');
-
-        // Close all tabs in the UI
-        const tabElements = document.querySelectorAll('.tab');
-        tabElements.forEach(tabEl => {
-            tabEl.remove();
-        });
-
-        // Clear tabs object
-        Object.keys(tabs).forEach(id => {
-            delete tabs[id];
-        });
-
-        // Reset current tab
-        currentTabId = null;
-        addressBar.value = '';
-
-        console.log('✅ Renderer: All tabs closed in UI');
-    });
 
     console.log('All event listeners and initialization completed');
 

@@ -1,13 +1,13 @@
-const VisitTracker = require('./visitTracker');
+const BClientVisitTracker = require('./bClientVisitTracker');
 const UserDatabase = require('../sqlite/userDatabase');
-const UserActivityManager = require('./userActivityManager');
+const BClientUserActivityManager = require('./bClientUserActivityManager');
 
-// B-Client History Manager - Database version
-class BClientHistoryManager {
+// B-Client User Manager - Enterprise user management
+class BClientUserManager {
     constructor() {
-        this.historyDB = new UserDatabase();
-        this.visitTracker = new VisitTracker();
-        this.userActivityManager = new UserActivityManager();
+        this.userDB = new UserDatabase();
+        this.visitTracker = new BClientVisitTracker();
+        this.userActivityManager = new BClientUserActivityManager();
         this.sessionStartTime = Date.now();
         this.isFullyInitialized = false;
     }
@@ -656,4 +656,4 @@ class BClientHistoryManager {
     }
 }
 
-module.exports = BClientHistoryManager;
+module.exports = BClientUserManager;

@@ -8,9 +8,9 @@ const BClientViewOperations = require('./bClientViewOperations');
 
 // B-Client BrowserView Manager - Refactored
 class BClientViewManager {
-    constructor(mainWindow, historyManager) {
+    constructor(mainWindow, userManager) {
         this.mainWindow = mainWindow;
-        this.historyManager = historyManager;
+        this.userManager = userManager;
         this.views = {};
         this.currentViewId = null;
         this.viewCounter = 0;

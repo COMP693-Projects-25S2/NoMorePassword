@@ -3,9 +3,9 @@ const path = require('path');
 
 // B-Client Window manager
 class BClientWindowManager {
-    constructor(historyManager, clientManager = null) {
+    constructor(userManager, clientManager = null) {
         this.mainWindow = null;
-        this.historyManager = historyManager;
+        this.userManager = userManager;
         this.clientManager = clientManager;
         this.resizeCallback = null;
         this.moveCallback = null;
@@ -79,8 +79,8 @@ class BClientWindowManager {
                 }
             }
 
-            if (this.historyManager) {
-                this.historyManager.logShutdown('window-close');
+            if (this.userManager) {
+                this.userManager.logShutdown('window-close');
             }
         });
 
@@ -710,7 +710,7 @@ class BClientWindowManager {
         this.destroy();
 
         // Clear history manager reference
-        this.historyManager = null;
+        this.userManager = null;
 
         console.log('WindowManager resources cleaned up');
     }

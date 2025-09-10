@@ -2,9 +2,9 @@ const { ipcMain } = require('electron');
 
 // B-Client IPC handlers
 class BClientIpcHandlers {
-    constructor(viewManager, historyManager, mainWindow = null, clientManager = null, mainApp = null) {
+    constructor(viewManager, userManager, mainWindow = null, clientManager = null, mainApp = null) {
         this.viewManager = viewManager;
-        this.historyManager = historyManager;
+        this.userManager = userManager;
         this.mainWindow = mainWindow;
         this.clientManager = clientManager;
         this.configModal = null;
@@ -47,10 +47,10 @@ class BClientIpcHandlers {
         ipcMain.handle('create-tab', async (_, url) => {
             try {
                 const view = await this.viewManager.createBrowserView(url);
-                if (view && url && this.historyManager) {
+                if (view && url && this.userManager) {
                     // Record visit start
                     const viewId = view.id || Date.now(); // Ensure viewId exists
-                    const record = this.historyManager.recordVisit(url, viewId);
+                    const record = this.userManager.recordVisit(url, viewId);
                     if (record) {
                         console.log(`Recorded initial visit for new tab: ${url}`);
                     }
@@ -82,13 +82,13 @@ class BClientIpcHandlers {
                 const result = this.viewManager.switchTab(id);
 
                 // When switching tabs, end previous tab's active records
-                if (result && this.historyManager) {
+                if (result && this.userManager) {
                     const now = Date.now();
                     // Get all views, end active records except current view
                     const allViews = this.viewManager.getAllViews();
                     Object.keys(allViews).forEach(viewId => {
                         if (parseInt(viewId) !== parseInt(id)) {
-                            this.historyManager.finishActiveRecords(parseInt(viewId), now);
+                            this.userManager.finishActiveRecords(parseInt(viewId), now);
                         }
                     });
                 }
@@ -104,8 +104,8 @@ class BClientIpcHandlers {
         ipcMain.handle('close-tab', (_, id) => {
             try {
                 // End this tab's active records
-                if (this.historyManager) {
-                    this.historyManager.finishActiveRecords(id, Date.now());
+                if (this.userManager) {
+                    this.userManager.finishActiveRecords(id, Date.now());
                 }
 
                 return this.viewManager.closeTab(id);
@@ -133,7 +133,7 @@ class BClientIpcHandlers {
         // Get visit history
         ipcMain.handle('get-visit-history', (_, limit) => {
             try {
-                return this.historyManager.getHistory(limit);
+                return this.userManager.getHistory(limit);
             } catch (error) {
                 console.error('Failed to get visit history:', error);
                 return [];
@@ -143,7 +143,7 @@ class BClientIpcHandlers {
         // Get visit statistics
         ipcMain.handle('get-visit-stats', () => {
             try {
-                return this.historyManager.getStats();
+                return this.userManager.getStats();
             } catch (error) {
                 console.error('Failed to get visit stats:', error);
                 return {
@@ -159,7 +159,7 @@ class BClientIpcHandlers {
         // Get history data (including statistics and records)
         ipcMain.handle('get-history-data', (_, limit) => {
             try {
-                return this.historyManager.getHistoryData(limit || 100);
+                return this.userManager.getHistoryData(limit || 100);
             } catch (error) {
                 console.error('Failed to get history data:', error);
                 return {
@@ -178,7 +178,7 @@ class BClientIpcHandlers {
         // Get current user
         ipcMain.handle('get-current-user', () => {
             try {
-                return this.historyManager.userActivityManager.getCurrentUser();
+                return this.userManager.userActivityManager.getCurrentUser();
             } catch (error) {
                 console.error('Failed to get current user:', error);
                 return null;
@@ -188,7 +188,7 @@ class BClientIpcHandlers {
         // Get shutdown history
         ipcMain.handle('get-shutdown-history', () => {
             try {
-                return this.historyManager.getShutdownHistory();
+                return this.userManager.getShutdownHistory();
             } catch (error) {
                 console.error('Failed to get shutdown history:', error);
                 return [];
@@ -198,7 +198,7 @@ class BClientIpcHandlers {
         // Manually trigger shutdown log (for testing)
         ipcMain.handle('trigger-shutdown-log', (_, reason) => {
             try {
-                this.historyManager.logShutdown(reason || 'manual');
+                this.userManager.logShutdown(reason || 'manual');
                 return true;
             } catch (error) {
                 console.error('Failed to trigger shutdown log:', error);
@@ -209,7 +209,7 @@ class BClientIpcHandlers {
         // Get active records information
         ipcMain.handle('get-active-records', () => {
             try {
-                return this.historyManager.getActiveRecordsInfo();
+                return this.userManager.getActiveRecordsInfo();
             } catch (error) {
                 console.error('Failed to get active records:', error);
                 return {
@@ -225,7 +225,7 @@ class BClientIpcHandlers {
             try {
                 const start = new Date(startDate);
                 const end = new Date(endDate);
-                return this.historyManager.getHistoryByDateRange(start, end);
+                return this.userManager.getHistoryByDateRange(start, end);
             } catch (error) {
                 console.error('Failed to get history by date range:', error);
                 return [];
@@ -235,7 +235,7 @@ class BClientIpcHandlers {
         // Get top domains statistics
         ipcMain.handle('get-top-domains', (_, limit) => {
             try {
-                return this.historyManager.getTopDomains(limit || 10);
+                return this.userManager.getTopDomains(limit || 10);
             } catch (error) {
                 console.error('Failed to get top domains:', error);
                 return [];
@@ -245,7 +245,7 @@ class BClientIpcHandlers {
         // Export history data
         ipcMain.handle('export-history-data', (_, limit) => {
             try {
-                return this.historyManager.exportHistoryData(limit);
+                return this.userManager.exportHistoryData(limit);
             } catch (error) {
                 console.error('Failed to export history data:', error);
                 return {
@@ -265,7 +265,7 @@ class BClientIpcHandlers {
                 if (!url || !viewId) {
                     throw new Error('URL and viewId are required');
                 }
-                const record = this.historyManager.recordVisit(url, viewId);
+                const record = this.userManager.recordVisit(url, viewId);
                 return record;
             } catch (error) {
                 console.error('Failed to record manual visit:', error);
@@ -281,7 +281,7 @@ class BClientIpcHandlers {
                 }
                 // Need to get record object first here
                 const record = { id: recordId };
-                this.historyManager.updateRecordTitle(record, title);
+                this.userManager.updateRecordTitle(record, title);
                 return true;
             } catch (error) {
                 console.error('Failed to update record title:', error);
@@ -300,17 +300,17 @@ class BClientIpcHandlers {
                 await this.viewManager.navigateTo(url);
 
                 // Record new visit
-                if (url && this.historyManager) {
+                if (url && this.userManager) {
                     const currentView = this.viewManager.getCurrentView();
                     if (currentView) {
                         const viewId = currentView.id || Date.now();
-                        const record = this.historyManager.recordVisit(url, viewId);
+                        const record = this.userManager.recordVisit(url, viewId);
                         if (record) {
                             console.log(`Recorded navigation visit: ${url}`);
                         }
 
                         // Record navigation activity
-                        this.historyManager.recordNavigationActivity(url, 'Loading...', 'navigate');
+                        this.userManager.recordNavigationActivity(url, 'Loading...', 'navigate');
                     }
                 }
 
@@ -327,17 +327,17 @@ class BClientIpcHandlers {
                 const result = this.viewManager.goBack();
 
                 // Record back navigation
-                if (result && this.historyManager) {
+                if (result && this.userManager) {
                     const currentView = this.viewManager.getCurrentView();
                     if (currentView && currentView.webContents) {
                         const url = currentView.webContents.getURL();
                         const viewId = currentView.id || Date.now();
                         if (url) {
-                            this.historyManager.recordVisit(url, viewId);
+                            this.userManager.recordVisit(url, viewId);
                             console.log(`Recorded back navigation visit: ${url}`);
 
                             // Record navigation activity
-                            this.historyManager.recordNavigationActivity(url, 'Loading...', 'back');
+                            this.userManager.recordNavigationActivity(url, 'Loading...', 'back');
                         }
                     }
                 }
@@ -355,17 +355,17 @@ class BClientIpcHandlers {
                 const result = this.viewManager.goForward();
 
                 // Record forward navigation
-                if (result && this.historyManager) {
+                if (result && this.userManager) {
                     const currentView = this.viewManager.getCurrentView();
                     if (currentView && currentView.webContents) {
                         const url = currentView.webContents.getURL();
                         const viewId = currentView.id || Date.now();
                         if (url) {
-                            this.historyManager.recordVisit(url, viewId);
+                            this.userManager.recordVisit(url, viewId);
                             console.log(`Recorded forward navigation visit: ${url}`);
 
                             // Record navigation activity
-                            this.historyManager.recordNavigationActivity(url, 'Loading...', 'forward');
+                            this.userManager.recordNavigationActivity(url, 'Loading...', 'forward');
                         }
                     }
                 }
@@ -383,17 +383,17 @@ class BClientIpcHandlers {
                 const result = this.viewManager.refresh();
 
                 // Record page refresh
-                if (result && this.historyManager) {
+                if (result && this.userManager) {
                     const currentView = this.viewManager.getCurrentView();
                     if (currentView && currentView.webContents) {
                         const url = currentView.webContents.getURL();
                         const viewId = currentView.id || Date.now();
                         if (url) {
-                            this.historyManager.recordVisit(url, viewId);
+                            this.userManager.recordVisit(url, viewId);
                             console.log(`Recorded refresh visit: ${url}`);
 
                             // Record navigation activity
-                            this.historyManager.recordNavigationActivity(url, 'Loading...', 'refresh');
+                            this.userManager.recordNavigationActivity(url, 'Loading...', 'refresh');
                         }
                     }
                 }
@@ -483,7 +483,7 @@ class BClientIpcHandlers {
         // Get database statistics
         ipcMain.handle('get-database-stats', () => {
             try {
-                return this.historyManager.getDatabaseStats();
+                return this.userManager.getDatabaseStats();
             } catch (error) {
                 console.error('Failed to get database stats:', error);
                 return {
@@ -498,7 +498,7 @@ class BClientIpcHandlers {
         ipcMain.handle('cleanup-old-data', (_, daysToKeep) => {
             try {
                 const days = daysToKeep || 30;
-                return this.historyManager.cleanupOldData(days);
+                return this.userManager.cleanupOldData(days);
             } catch (error) {
                 console.error('Failed to cleanup old data:', error);
                 return { changes: 0 };
@@ -508,7 +508,7 @@ class BClientIpcHandlers {
         // Force write data (mainly for testing)
         ipcMain.handle('force-write-data', () => {
             try {
-                this.historyManager.forceWrite();
+                this.userManager.forceWrite();
                 return true;
             } catch (error) {
                 console.error('Failed to force write data:', error);
@@ -544,8 +544,8 @@ class BClientIpcHandlers {
         // Clear current user activities
         ipcMain.handle('clear-current-user-activities', () => {
             try {
-                if (this.historyManager) {
-                    const result = this.historyManager.clearCurrentUserActivities();
+                if (this.userManager) {
+                    const result = this.userManager.clearCurrentUserActivities();
                     return result;
                 } else {
                     return { success: false, error: 'History manager not available' };
@@ -561,8 +561,8 @@ class BClientIpcHandlers {
         // Get browser session information
         ipcMain.handle('get-session-info', () => {
             try {
-                const stats = this.historyManager.getStats();
-                const activeRecords = this.historyManager.getActiveRecordsInfo();
+                const stats = this.userManager.getStats();
+                const activeRecords = this.userManager.getActiveRecordsInfo();
 
                 return {
                     totalVisits: stats.totalVisits,

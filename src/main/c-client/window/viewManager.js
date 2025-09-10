@@ -119,7 +119,6 @@ class ViewManager {
      * Close all tabs and create a new default page
      */
     async closeAllTabsAndCreateDefault() {
-        console.log('🔄 ViewManager: Closing all tabs and creating new default page...');
 
         try {
             // Close all existing tabs
@@ -135,7 +134,11 @@ class ViewManager {
 
             // Notify renderer process to close all tabs in UI
             if (this.mainWindow && this.mainWindow.sendToWindow) {
-                this.mainWindow.sendToWindow('close-all-tabs');
+                try {
+                    this.mainWindow.sendToWindow('close-all-tabs');
+                } catch (error) {
+                    console.error('❌ ViewManager: Error sending close-all-tabs event:', error);
+                }
             }
 
             // Create a new default tab with URL parameter injection
@@ -143,14 +146,9 @@ class ViewManager {
             const urlInjector = new UrlParameterInjector();
             const processedUrl = urlInjector.processUrl('https://www.google.com');
 
-            console.log('🔧 ViewManager: Creating new default page with URL injection...');
-            console.log(`   Original URL:  https://www.google.com`);
-            console.log(`   Processed URL: ${processedUrl}`);
-
             const defaultView = await this.createBrowserView(processedUrl);
 
             if (defaultView) {
-                console.log('✅ ViewManager: New default page created successfully with URL injection');
 
                 // Notify renderer process to create tab UI for the new view
                 if (this.mainWindow && this.mainWindow.sendToWindow) {

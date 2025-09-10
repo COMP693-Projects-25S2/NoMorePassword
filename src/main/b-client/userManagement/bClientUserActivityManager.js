@@ -1,10 +1,10 @@
 const db = require('../sqlite/initDatabase');
 
 /**
- * User Activity Manager
- * Records user activities based on current user
+ * B-Client User Activity Manager
+ * Records enterprise user activities based on current user
  */
-class UserActivityManager {
+class BClientUserActivityManager {
     constructor() {
         this.currentUserId = null;
         this.currentUsername = null;
@@ -271,4 +271,4 @@ class UserActivityManager {
     }
 }
 
-module.exports = UserActivityManager;
+module.exports = BClientUserActivityManager;

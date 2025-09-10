@@ -2,8 +2,8 @@ const UrlUtils = require('../utils/urlUtils');
 const UserDatabase = require('../sqlite/userDatabase');
 const { MAX_ACTIVE_RECORDS, MERGE_THRESHOLD, WRITE_INTERVAL } = require('../config/constants');
 
-// Visit record tracker - Pure database version
-class VisitTracker {
+// B-Client Visit tracker - Enterprise user activity tracking
+class BClientVisitTracker {
     constructor() {
         this.historyDB = new UserDatabase();
 
@@ -13,7 +13,7 @@ class VisitTracker {
         // In-memory cache for active records, for fast access and performance optimization
         this.activeRecordsCache = [];
 
-        console.log('VisitTracker initialized - pure database mode');
+        console.log('BClientVisitTracker initialized - enterprise user activity tracking');
     }
 
     /**
@@ -502,4 +502,4 @@ class VisitTracker {
     }
 }
 
-module.exports = VisitTracker;
+module.exports = BClientVisitTracker;
