@@ -30,6 +30,7 @@ db.exec(`
         user_id     VARCHAR(50) PRIMARY KEY,
         username    TEXT,
         domain_id   VARCHAR(50),
+        node_id     VARCHAR(50),
         ip_address  VARCHAR(20)
     )
 `);
@@ -41,6 +42,7 @@ db.exec(`
         username    TEXT,
         domain_id   VARCHAR(50),
         cluster_id  VARCHAR(50),
+        node_id     VARCHAR(50),
         ip_address  VARCHAR(20)
     )
 `);
@@ -53,23 +55,25 @@ db.exec(`
         domain_id   VARCHAR(50),
         cluster_id  VARCHAR(50),
         channel_id  VARCHAR(50),
+        node_id     VARCHAR(50),
         ip_address  VARCHAR(20)
     )
 `);
 
-// Create table: channel_users, record current channel's all nodes, for sending user activities, maximum 1000 records
+// Create table: channel_nodes, record current channel's all nodes, for sending user activities, maximum 1000 records
 db.exec(`
-    CREATE TABLE IF NOT EXISTS channel_users (
+    CREATE TABLE IF NOT EXISTS channel_nodes (
         user_id     VARCHAR(50) PRIMARY KEY,
         username    TEXT,
         domain_id   VARCHAR(50),
         cluster_id  VARCHAR(50),
         channel_id  VARCHAR(50),
+        node_id     VARCHAR(50),
         ip_address  VARCHAR(20)
     )
 `);
 
-// Create table: local_users, record local users with same structure as channel_users, maximum 1000 records
+// Create table: local_users, record local users with same structure as channel_nodes, maximum 1000 records
 db.exec(`
     CREATE TABLE IF NOT EXISTS local_users (
         user_id     VARCHAR(50) PRIMARY KEY,
@@ -77,6 +81,7 @@ db.exec(`
         domain_id   VARCHAR(50),
         cluster_id  VARCHAR(50),
         channel_id  VARCHAR(50),
+        node_id     VARCHAR(50),
         ip_address  VARCHAR(20),
         is_current  INTEGER DEFAULT 0
     )

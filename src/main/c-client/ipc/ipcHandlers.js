@@ -540,9 +540,9 @@ class IpcHandlers {
         // Clear local users
         ipcMain.handle('clear-local-users', () => {
             try {
-                const db = require('../sqlite/database');
-                const result = db.prepare('DELETE FROM local_users').run();
-                return { success: true, changes: result.changes };
+                const DatabaseManager = require('../sqlite/databaseManager');
+                const result = DatabaseManager.clearAllLocalUsers();
+                return result;
             } catch (error) {
                 console.error('Error clearing local_users table:', error);
                 return { success: false, error: error.message };
@@ -564,12 +564,9 @@ class IpcHandlers {
         // Clear current user activities
         ipcMain.handle('clear-current-user-activities', () => {
             try {
-                if (this.historyManager) {
-                    const result = this.historyManager.clearCurrentUserActivities();
-                    return result;
-                } else {
-                    return { success: false, error: 'History manager not available' };
-                }
+                const DatabaseManager = require('../sqlite/databaseManager');
+                const result = DatabaseManager.clearCurrentUserActivities();
+                return result;
             } catch (error) {
                 console.error('Error clearing current user activities:', error);
                 return { success: false, error: error.message };
@@ -641,27 +638,23 @@ class IpcHandlers {
 
                 // User data prepared
 
-                // Insert new user into database
-                const db = require('../sqlite/database');
+                // Insert new user into database using DatabaseManager
+                const DatabaseManager = require('../sqlite/databaseManager');
 
                 // First, set all existing users to not current
+                const db = require('../sqlite/database');
                 db.prepare('UPDATE local_users SET is_current = 0').run();
 
-                // Then insert the new user as current
-                const insertStmt = db.prepare(`
-                    INSERT INTO local_users (
-                        user_id, username, domain_id, cluster_id, channel_id, ip_address, is_current
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                `);
-
-                const result = insertStmt.run(
+                // Then insert the new user as current using DatabaseManager (which handles node_id consistency)
+                const result = DatabaseManager.addLocalUser(
                     userData.userId,
                     userData.username,
                     userData.domainId,
                     userData.clusterId,
                     userData.channelId,
+                    null, // nodeId will be handled by addLocalUser method
                     userData.ipAddress,
-                    userData.isCurrent
+                    1 // isCurrent = 1
                 );
 
                 if (result.changes > 0) {
@@ -767,55 +760,61 @@ class IpcHandlers {
             try {
                 console.log(`🔄 C-Client IPC: Switching to user: ${userId}`);
 
-                const db = require('../sqlite/database');
+                const DatabaseManager = require('../sqlite/databaseManager');
 
                 // First, set all users to not current
-                db.prepare('UPDATE local_users SET is_current = 0').run();
+                const clearResult = DatabaseManager.clearAllCurrentUsers();
+                if (!clearResult.success) {
+                    throw new Error(`Failed to clear current users: ${clearResult.error}`);
+                }
 
                 // Then set the selected user as current
-                const result = db.prepare('UPDATE local_users SET is_current = 1 WHERE user_id = ?').run(userId);
-
-                if (result.changes > 0) {
-                    // Get the new current user info
-                    const newUser = db.prepare('SELECT * FROM local_users WHERE user_id = ?').get(userId);
-                    console.log(`✅ C-Client IPC: User switched to: ${newUser.username}`);
-
-                    // Close all existing tabs and create new default page
-                    if (this.viewManager) {
-                        try {
-                            console.log('🔄 C-Client IPC: Closing all tabs and creating new default page...');
-                            await this.viewManager.closeAllTabsAndCreateDefault();
-                            console.log('✅ C-Client IPC: All tabs closed and new default page created');
-                        } catch (viewError) {
-                            console.error('❌ C-Client IPC: Error managing views during user switch:', viewError);
-                            // Don't fail the user switch if view management fails
-                        }
-                    }
-
-                    // Show greeting dialog for the switched user
-                    try {
-                        const UserRegistrationDialog = require('../nodeManager/userRegistrationDialog');
-                        const greetingDialog = new UserRegistrationDialog();
-
-                        // Use the stored main window reference instead of event.sender
-                        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                            await greetingDialog.showGreeting(this.mainWindow);
-                        } else {
-                            console.warn('Main window not available for greeting dialog');
-                        }
-                    } catch (greetingError) {
-                        console.error('Error showing greeting dialog:', greetingError);
-                        // Don't fail the user switch if greeting fails
-                    }
-
-                    return {
-                        success: true,
-                        user: newUser,
-                        message: `Switched to user: ${newUser.username}`
-                    };
-                } else {
-                    throw new Error('User not found or switch failed');
+                const updateResult = DatabaseManager.updateLocalUserWithCurrent(userId, null, null, null, null, null, null, 1);
+                if (!updateResult.success) {
+                    throw new Error(`Failed to update user: ${updateResult.error}`);
                 }
+
+                // Get the new current user info
+                const newUser = DatabaseManager.getLocalUserById(userId);
+                if (!newUser) {
+                    throw new Error('User not found after switch');
+                }
+
+                console.log(`✅ C-Client IPC: User switched to: ${newUser.username}`);
+
+                // Close all existing tabs and create new default page
+                if (this.viewManager) {
+                    try {
+                        console.log('🔄 C-Client IPC: Closing all tabs and creating new default page...');
+                        await this.viewManager.closeAllTabsAndCreateDefault();
+                        console.log('✅ C-Client IPC: All tabs closed and new default page created');
+                    } catch (viewError) {
+                        console.error('❌ C-Client IPC: Error managing views during user switch:', viewError);
+                        // Don't fail the user switch if view management fails
+                    }
+                }
+
+                // Show greeting dialog for the switched user
+                try {
+                    const UserRegistrationDialog = require('../nodeManager/userRegistrationDialog');
+                    const greetingDialog = new UserRegistrationDialog();
+
+                    // Use the stored main window reference instead of event.sender
+                    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                        await greetingDialog.showGreeting(this.mainWindow);
+                    } else {
+                        console.warn('Main window not available for greeting dialog');
+                    }
+                } catch (greetingError) {
+                    console.error('Error showing greeting dialog:', greetingError);
+                    // Don't fail the user switch if greeting fails
+                }
+
+                return {
+                    success: true,
+                    user: newUser,
+                    message: `Switched to user: ${newUser.username}`
+                };
             } catch (error) {
                 console.error('Error switching user:', error);
                 return { success: false, error: error.message };

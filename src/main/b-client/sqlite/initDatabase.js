@@ -60,6 +60,7 @@ db.exec(`
 db.exec(`
     CREATE TABLE IF NOT EXISTS domain_nodes (
         domain_id     VARCHAR(50) PRIMARY KEY,
+        node_id       VARCHAR(50),
         ip_address    VARCHAR(20),
         refresh_time  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )

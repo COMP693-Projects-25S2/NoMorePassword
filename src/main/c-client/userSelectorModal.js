@@ -101,8 +101,8 @@ class UserSelectorModal {
 
     async getAllLocalUsers() {
         try {
-            const db = require('./sqlite/database');
-            const users = db.prepare('SELECT user_id, username, is_current FROM local_users ORDER BY username').all();
+            const DatabaseManager = require('./sqlite/databaseManager');
+            const users = DatabaseManager.getAllLocalUsers();
             return users;
         } catch (error) {
             console.error('Error getting local users:', error);
