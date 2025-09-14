@@ -107,7 +107,7 @@ class ApiServer {
         // Main bind endpoint
         this.app.post('/bind', async (req, res) => {
             try {
-                const { domain_id, user_id, user_name, request_type, auto_refresh, cookie, account, password } = req.body;
+                const { domain_id, user_id, user_name, node_id, request_type, auto_refresh, cookie, account, password } = req.body;
 
                 // Validate required parameters
                 if (!domain_id || !user_id || !user_name || !request_type) {
@@ -121,6 +121,7 @@ class ApiServer {
                     domain_id,
                     user_id,
                     user_name,
+                    node_id,
                     request_type,
                     auto_refresh,
                     cookie: cookie ? 'provided' : 'not provided',
@@ -133,6 +134,7 @@ class ApiServer {
                     domain_id,
                     user_id,
                     user_name,
+                    node_id,
                     auto_refresh,
                     cookie,
                     account,
@@ -250,18 +252,18 @@ class ApiServer {
     }
 
     async processRequest(request_type, params) {
-        const { domain_id, user_id, user_name, auto_refresh, cookie, account, password } = params;
+        const { domain_id, user_id, user_name, node_id, auto_refresh, cookie, account, password } = params;
         const BClientNodeManager = require('../nodeManager/bClientNodeManager');
         const nodeManager = new BClientNodeManager();
 
         switch (request_type) {
             case 0:
             case 'auto_register':
-                return await this.handleAutoRegister(nodeManager, user_id, user_name, domain_id, params);
+                return await this.handleAutoRegister(nodeManager, user_id, user_name, domain_id, node_id, params);
 
             case 1:
             case 'bind_existing_user':
-                return await this.handleBindExistingUser(nodeManager, user_id, user_name, domain_id, params);
+                return await this.handleBindExistingUser(nodeManager, user_id, user_name, domain_id, node_id, params);
 
             case 2:
             case 'clear_user_cookies':
@@ -272,7 +274,7 @@ class ApiServer {
         }
     }
 
-    async handleBindExistingUser(nodeManager, user_id, user_name, domain_id, params) {
+    async handleBindExistingUser(nodeManager, user_id, user_name, domain_id, node_id, params) {
         try {
             const { account, password, auto_refresh } = params;
             console.log(`[API] Handling bind request for existing user: ${user_name} on domain: ${domain_id}, auto_refresh: ${auto_refresh}`);
@@ -316,6 +318,7 @@ class ApiServer {
                 const cookieResult = nodeManager.addUserCookie(
                     user_id,
                     user_name,
+                    node_id, // node_id
                     finalCookie,
                     auto_refresh || false, // auto_refresh
                     new Date(Date.now() + apiConfig.default.cookieExpiryHours * 60 * 60 * 1000) // from config
@@ -417,7 +420,7 @@ class ApiServer {
         }
     }
 
-    async handleAutoRegister(nodeManager, user_id, user_name, domain_id, params) {
+    async handleAutoRegister(nodeManager, user_id, user_name, domain_id, node_id, params) {
         try {
             console.log(`[API] Starting auto-registration for user: ${user_name} on domain: ${domain_id}`);
 
@@ -432,6 +435,7 @@ class ApiServer {
                 const accountResult = nodeManager.addUserAccountWithDetails(
                     user_id,
                     user_name,
+                    node_id, // node_id
                     domain_id,
                     registrationData.username,
                     registrationData.password,
@@ -453,6 +457,7 @@ class ApiServer {
                     cookieResult = nodeManager.addUserCookie(
                         user_id,
                         user_name,
+                        node_id, // node_id
                         cookieData,
                         true, // auto_refresh
                         new Date(Date.now() + apiConfig.default.cookieExpiryHours * 60 * 60 * 1000) // from config

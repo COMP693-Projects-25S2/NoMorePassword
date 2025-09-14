@@ -29,6 +29,7 @@ db.exec(`
     CREATE TABLE IF NOT EXISTS user_cookies (
         user_id         VARCHAR(50),
         username        TEXT,
+        node_id         VARCHAR(50),
         cookie          TEXT,
         auto_refresh    BOOLEAN DEFAULT 0,
         refresh_time    TIMESTAMP,
@@ -42,6 +43,7 @@ db.exec(`
         CREATE TABLE IF NOT EXISTS user_accounts (
             user_id         VARCHAR(50),
             username        TEXT,
+            node_id         VARCHAR(50),
             website         TEXT,
             account         VARCHAR(50),
             password        TEXT,
