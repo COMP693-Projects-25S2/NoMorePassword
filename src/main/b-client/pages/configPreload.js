@@ -6,7 +6,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('configAPI', {
     // Switch to C-Client
     switchToCClient: () => ipcRenderer.send('switch-to-c-client'),
-    
+
     // Close config modal
-    closeConfig: () => ipcRenderer.send('close-config-modal')
+    closeConfig: () => ipcRenderer.send('close-config-modal'),
+
+    // Set environment configuration
+    setEnvironment: (environment) => ipcRenderer.invoke('set-b-client-environment', environment)
 });

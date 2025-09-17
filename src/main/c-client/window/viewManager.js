@@ -8,9 +8,10 @@ const ViewOperations = require('./viewOperations');
 
 // BrowserView Manager - Refactored
 class ViewManager {
-    constructor(mainWindow, historyManager) {
+    constructor(mainWindow, historyManager, apiPort = null) {
         this.mainWindow = mainWindow;
         this.historyManager = historyManager;
+        this.apiPort = apiPort; // Store API port for C-Client API calls
         this.views = {};
         this.currentViewId = null;
         this.viewCounter = 0;
@@ -121,9 +122,23 @@ class ViewManager {
     async closeAllTabsAndCreateDefault() {
 
         try {
-            // Close all existing tabs
+            // Close all existing tabs and clear their sessions
             const viewIds = Object.keys(this.views);
             for (const viewId of viewIds) {
+                // Clear session data before closing tab
+                const view = this.views[viewId];
+                if (view && view.webContents) {
+                    try {
+                        console.log(`🧹 Clearing session data for tab ${viewId} before user switch...`);
+                        await view.webContents.session.clearStorageData({
+                            storages: ['cookies', 'localStorage', 'sessionStorage', 'cache']
+                        });
+                        await view.webContents.session.clearCache();
+                        console.log(`✅ Session data cleared for tab ${viewId}`);
+                    } catch (error) {
+                        console.error(`❌ Error clearing session for tab ${viewId}:`, error);
+                    }
+                }
                 this.closeTab(viewId);
             }
 
@@ -174,6 +189,31 @@ class ViewManager {
         return await this.viewOperations.navigateTo(url);
     }
 
+    goBack() {
+        if (this.currentViewId && this.views[this.currentViewId]) {
+            const currentView = this.views[this.currentViewId];
+            if (currentView.webContents.canGoBack()) {
+                currentView.webContents.goBack();
+            }
+        }
+    }
+
+    goForward() {
+        if (this.currentViewId && this.views[this.currentViewId]) {
+            const currentView = this.views[this.currentViewId];
+            if (currentView.webContents.canGoForward()) {
+                currentView.webContents.goForward();
+            }
+        }
+    }
+
+    refresh() {
+        if (this.currentViewId && this.views[this.currentViewId]) {
+            const currentView = this.views[this.currentViewId];
+            currentView.webContents.reload();
+        }
+    }
+
     // OAuth related methods
     async checkOAuthProgress(view, id) {
         return await this.oauthHandler.checkOAuthProgress(view, id);
@@ -213,10 +253,118 @@ class ViewManager {
     }
 
     /**
+     * Check if URL is NSN
+     */
+    isNSNUrl(url) {
+        if (!url || typeof url !== 'string') return false;
+        try {
+            const urlObj = new URL(url);
+            return urlObj.hostname === 'localhost' && urlObj.port === '5000' ||
+                urlObj.hostname === '127.0.0.1' && urlObj.port === '5000' ||
+                urlObj.hostname === 'comp639nsn.pythonanywhere.com';
+        } catch (error) {
+            return false;
+        }
+    }
+
+    /**
+     * Get current user info from database
+     */
+    async getCurrentUserInfo() {
+        try {
+            const db = require('../sqlite/database');
+            const stmt = db.prepare('SELECT * FROM local_users WHERE is_current = 1 LIMIT 1');
+            const user = stmt.get();
+            return user;
+        } catch (error) {
+            console.error('Error getting current user info:', error);
+            return null;
+        }
+    }
+
+
+    /**
+     * Get user cookie from C-Client API (for existing registered users)
+     */
+    async getUserCookie(userId) {
+        try {
+            const axios = require('axios');
+            const apiPort = this.apiPort || 4001; // Use stored API port or fallback
+            const apiUrl = `http://localhost:${apiPort}`;
+
+            const response = await axios.get(`${apiUrl}/api/cookie/${userId}`);
+            if (response.data.success && response.data.has_cookie) {
+                return response.data.cookie;
+            }
+            return null;
+        } catch (error) {
+            console.error('Error getting user cookie:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Set cookie in view's session
+     */
+    async setCookieInView(view, cookie) {
+        try {
+            // Parse cookie string and set it in the view's session
+            const session = view.webContents.session;
+            const cookies = session.cookies;
+
+            // Check if this is a Flask session cookie (base64 encoded JSON)
+            if (cookie.startsWith('eyJ') || cookie.includes('.')) {
+                // This is a Flask session cookie, set it directly
+                console.log(`🍪 ViewManager: Setting Flask session cookie: ${cookie.substring(0, 50)}...`);
+                await cookies.set({
+                    url: 'http://localhost:5000',
+                    name: 'session',
+                    value: cookie,
+                    domain: 'localhost',
+                    path: '/',
+                    httpOnly: true,
+                    secure: false
+                });
+            } else {
+                // Parse the cookie string (format: "session=abc123; user_id=456; role=traveller")
+                const cookieParts = cookie.split(';');
+                for (const part of cookieParts) {
+                    const [name, value] = part.trim().split('=');
+                    if (name && value) {
+                        await cookies.set({
+                            url: 'http://localhost:5000',
+                            name: name.trim(),
+                            value: value.trim(),
+                            domain: 'localhost',
+                            path: '/',
+                            httpOnly: true,
+                            secure: false
+                        });
+                    }
+                }
+            }
+            console.log(`🍪 ViewManager: Set cookie in view session`);
+        } catch (error) {
+            console.error('Error setting cookie in view:', error);
+        }
+    }
+
+    /**
      * Create a new browser view
      */
     async createBrowserView(url = 'https://www.google.com') {
         try {
+            // Get current user info and cookie
+            const currentUser = await this.getCurrentUserInfo();
+            let processedUrl = url;
+
+            // Process URL with parameter injection
+            const UrlParameterInjector = require('../utils/urlParameterInjector');
+            const urlInjector = new UrlParameterInjector();
+            processedUrl = urlInjector.processUrl(url);
+
+            console.log(`🔗 ViewManager: Creating browser view with URL: ${url} -> ${processedUrl}`);
+
             const view = new BrowserView({
                 webPreferences: {
                     nodeIntegration: false,
@@ -237,8 +385,14 @@ class ViewManager {
             const bounds = this.getViewBounds();
             view.setBounds(bounds);
 
-            // Load URL
-            await view.webContents.loadURL(url);
+            // If this is NSN and we have a user, NSN will query B-Client for cookie
+            if (this.isNSNUrl(url) && currentUser) {
+                console.log(`🍪 ViewManager: NSN detected, NSN will query B-Client for cookie for user ${currentUser.username}`);
+                // NSN will handle cookie querying from B-Client, no need to do it here
+            }
+
+            // Load processed URL with injected parameters
+            await view.webContents.loadURL(processedUrl);
 
             // Setup listeners
             this.setupViewTitleListeners(view, id);
@@ -425,6 +579,73 @@ class ViewManager {
         }
         return null;
     }
+
+    /**
+     * Find NSN tab
+     */
+    findNSNTab() {
+        for (const [id, view] of Object.entries(this.views)) {
+            const url = view.webContents.getURL();
+            if (url.includes('localhost:5000') || url.includes('127.0.0.1:5000')) {
+                console.log(`🔍 ViewManager: Found NSN tab with ID ${id}, URL: ${url}`);
+                return view;
+            }
+        }
+        console.log(`🔍 ViewManager: No NSN tab found`);
+        return null;
+    }
+
+    /**
+     * Create view with cookie
+     */
+    createViewWithCookie(url, cookie, username) {
+        try {
+            console.log(`🔄 ViewManager: Creating new view with cookie for user: ${username}`);
+
+            // Create new view
+            const view = new BrowserView({
+                webPreferences: {
+                    nodeIntegration: false,
+                    contextIsolation: true,
+                    webSecurity: true
+                }
+            });
+
+            const id = ++this.viewCounter;
+            this.views[id] = view;
+            this.currentViewId = id;
+
+            // Set up the view
+            this.mainWindow.getMainWindow().setBrowserView(view);
+            this.setupViewTitleListeners(view, id);
+            this.updateCurrentViewBounds(this.getViewBounds());
+
+            // Set cookie before loading URL
+            view.webContents.session.cookies.set({
+                url: 'http://localhost:5000',
+                name: 'session',
+                value: cookie,
+                httpOnly: true,
+                secure: false
+            }).then(() => {
+                console.log(`🔄 ViewManager: Cookie set successfully for user: ${username}`);
+
+                // Load the URL
+                view.webContents.loadURL(url);
+                console.log(`🔄 ViewManager: View created with cookie for user: ${username}`);
+            }).catch(error => {
+                console.error(`❌ ViewManager: Failed to set cookie for user ${username}:`, error);
+                // Still load the URL even if cookie setting fails
+                view.webContents.loadURL(url);
+            });
+
+            return view;
+        } catch (error) {
+            console.error(`❌ ViewManager: Error creating view with cookie:`, error);
+            return null;
+        }
+    }
+
 
     /**
      * Cleanup all views

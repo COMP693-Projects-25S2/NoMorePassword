@@ -27,63 +27,211 @@ try {
 // Create table: domain_main_nodes, record all domain's current main nodes, maximum 1000 records
 db.exec(`
     CREATE TABLE IF NOT EXISTS domain_main_nodes (
-        user_id     VARCHAR(50) PRIMARY KEY,
-        username    TEXT,
-        domain_id   VARCHAR(50),
-        node_id     VARCHAR(50),
-        ip_address  VARCHAR(20)
+        user_id         VARCHAR(50) PRIMARY KEY,
+        username        TEXT,
+        domain_id       VARCHAR(50),
+        node_id         VARCHAR(50),
+        ip_address      VARCHAR(20),
+        port            INTEGER DEFAULT 3000,
+        status          VARCHAR(20) DEFAULT 'active',
+        is_main_node    INTEGER DEFAULT 0,
+        last_heartbeat  INTEGER DEFAULT (strftime('%s', 'now')),
+        created_at      INTEGER DEFAULT (strftime('%s', 'now')),
+        updated_at      INTEGER DEFAULT (strftime('%s', 'now')),
+        priority        INTEGER DEFAULT 0,
+        capabilities    TEXT,
+        metadata        TEXT
+    )
+`);
+
+// Create table: current_domain_main_node - store current domain main node info for this C-Client
+db.exec(`
+    CREATE TABLE IF NOT EXISTS current_domain_main_node (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        node_id         VARCHAR(50) UNIQUE,
+        username        TEXT,
+        domain_id       VARCHAR(50),
+        ip_address      VARCHAR(20),
+        port            INTEGER DEFAULT 3000,
+        status          VARCHAR(20) DEFAULT 'active',
+        last_heartbeat  INTEGER DEFAULT (strftime('%s', 'now')),
+        updated_at      INTEGER DEFAULT (strftime('%s', 'now')),
+        priority        INTEGER DEFAULT 0,
+        capabilities    TEXT,
+        metadata        TEXT
     )
 `);
 
 // Create table: cluster_main_nodes, record current domain's all cluster main nodes, maximum 1000 records
 db.exec(`
     CREATE TABLE IF NOT EXISTS cluster_main_nodes (
-        user_id     VARCHAR(50) PRIMARY KEY,
-        username    TEXT,
-        domain_id   VARCHAR(50),
-        cluster_id  VARCHAR(50),
-        node_id     VARCHAR(50),
-        ip_address  VARCHAR(20)
+        user_id         VARCHAR(50) PRIMARY KEY,
+        username        TEXT,
+        domain_id       VARCHAR(50),
+        cluster_id      VARCHAR(50),
+        node_id         VARCHAR(50),
+        ip_address      VARCHAR(20),
+        port            INTEGER DEFAULT 3001,
+        status          VARCHAR(20) DEFAULT 'active',
+        is_main_node    INTEGER DEFAULT 0,
+        last_heartbeat  INTEGER DEFAULT (strftime('%s', 'now')),
+        created_at      INTEGER DEFAULT (strftime('%s', 'now')),
+        updated_at      INTEGER DEFAULT (strftime('%s', 'now')),
+        priority        INTEGER DEFAULT 0,
+        capabilities    TEXT,
+        metadata        TEXT
+    )
+`);
+
+// Create table: current_cluster_main_node - store current cluster main node info for this C-Client
+db.exec(`
+    CREATE TABLE IF NOT EXISTS current_cluster_main_node (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        node_id         VARCHAR(50) UNIQUE,
+        username        TEXT,
+        domain_id       VARCHAR(50),
+        cluster_id      VARCHAR(50),
+        ip_address      VARCHAR(20),
+        port            INTEGER DEFAULT 3001,
+        status          VARCHAR(20) DEFAULT 'active',
+        last_heartbeat  INTEGER DEFAULT (strftime('%s', 'now')),
+        updated_at      INTEGER DEFAULT (strftime('%s', 'now')),
+        priority        INTEGER DEFAULT 0,
+        capabilities    TEXT,
+        metadata        TEXT
     )
 `);
 
 // Create table: channel_main_nodes, record current cluster's all channel main nodes, maximum 1000 records
 db.exec(`
     CREATE TABLE IF NOT EXISTS channel_main_nodes (
-        user_id     VARCHAR(50) PRIMARY KEY,
-        username    TEXT,
-        domain_id   VARCHAR(50),
-        cluster_id  VARCHAR(50),
-        channel_id  VARCHAR(50),
-        node_id     VARCHAR(50),
-        ip_address  VARCHAR(20)
+        user_id         VARCHAR(50) PRIMARY KEY,
+        username        TEXT,
+        domain_id       VARCHAR(50),
+        cluster_id      VARCHAR(50),
+        channel_id      VARCHAR(50),
+        node_id         VARCHAR(50),
+        ip_address      VARCHAR(20),
+        port            INTEGER DEFAULT 3002,
+        status          VARCHAR(20) DEFAULT 'active',
+        is_main_node    INTEGER DEFAULT 0,
+        last_heartbeat  INTEGER DEFAULT (strftime('%s', 'now')),
+        created_at      INTEGER DEFAULT (strftime('%s', 'now')),
+        updated_at      INTEGER DEFAULT (strftime('%s', 'now')),
+        priority        INTEGER DEFAULT 0,
+        capabilities    TEXT,
+        metadata        TEXT
+    )
+`);
+
+// Create table: current_channel_main_node - store current channel main node info for this C-Client
+db.exec(`
+    CREATE TABLE IF NOT EXISTS current_channel_main_node (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        node_id         VARCHAR(50) UNIQUE,
+        username        TEXT,
+        domain_id       VARCHAR(50),
+        cluster_id      VARCHAR(50),
+        channel_id      VARCHAR(50),
+        ip_address      VARCHAR(20),
+        port            INTEGER DEFAULT 3002,
+        status          VARCHAR(20) DEFAULT 'active',
+        last_heartbeat  INTEGER DEFAULT (strftime('%s', 'now')),
+        updated_at      INTEGER DEFAULT (strftime('%s', 'now')),
+        priority        INTEGER DEFAULT 0,
+        capabilities    TEXT,
+        metadata        TEXT
     )
 `);
 
 // Create table: channel_nodes, record current channel's all nodes, for sending user activities, maximum 1000 records
 db.exec(`
     CREATE TABLE IF NOT EXISTS channel_nodes (
-        user_id     VARCHAR(50) PRIMARY KEY,
-        username    TEXT,
-        domain_id   VARCHAR(50),
-        cluster_id  VARCHAR(50),
-        channel_id  VARCHAR(50),
-        node_id     VARCHAR(50),
-        ip_address  VARCHAR(20)
+        user_id         VARCHAR(50) PRIMARY KEY,
+        username        TEXT,
+        domain_id       VARCHAR(50),
+        cluster_id      VARCHAR(50),
+        channel_id      VARCHAR(50),
+        node_id         VARCHAR(50),
+        ip_address      VARCHAR(20),
+        port            INTEGER DEFAULT 3003,
+        status          VARCHAR(20) DEFAULT 'active',
+        is_main_node    INTEGER DEFAULT 0,
+        last_heartbeat  INTEGER DEFAULT (strftime('%s', 'now')),
+        created_at      INTEGER DEFAULT (strftime('%s', 'now')),
+        updated_at      INTEGER DEFAULT (strftime('%s', 'now')),
+        priority        INTEGER DEFAULT 0,
+        capabilities    TEXT,
+        metadata        TEXT
     )
 `);
 
 // Create table: local_users, record local users with same structure as channel_nodes, maximum 1000 records
 db.exec(`
     CREATE TABLE IF NOT EXISTS local_users (
-        user_id     VARCHAR(50) PRIMARY KEY,
-        username    TEXT,
-        domain_id   VARCHAR(50),
-        cluster_id  VARCHAR(50),
-        channel_id  VARCHAR(50),
-        node_id     VARCHAR(50),
-        ip_address  VARCHAR(20),
-        is_current  INTEGER DEFAULT 0
+        user_id         VARCHAR(50) PRIMARY KEY,
+        username        TEXT,
+        domain_id       VARCHAR(50),
+        cluster_id      VARCHAR(50),
+        channel_id      VARCHAR(50),
+        node_id         VARCHAR(50),
+        ip_address      VARCHAR(20),
+        port            INTEGER DEFAULT 3004,
+        status          VARCHAR(20) DEFAULT 'active',
+        is_main_node    INTEGER DEFAULT 0,
+        last_heartbeat  INTEGER DEFAULT (strftime('%s', 'now')),
+        created_at      INTEGER DEFAULT (strftime('%s', 'now')),
+        updated_at      INTEGER DEFAULT (strftime('%s', 'now')),
+        priority        INTEGER DEFAULT 0,
+        capabilities    TEXT,
+        metadata        TEXT,
+        is_current      INTEGER DEFAULT 0
+    )
+`);
+
+// Create table: node_heartbeats - track all node heartbeats for health monitoring
+db.exec(`
+    CREATE TABLE IF NOT EXISTS node_heartbeats (
+        node_id         VARCHAR(50) PRIMARY KEY,
+        node_type       VARCHAR(20),
+        domain_id       VARCHAR(50),
+        cluster_id      VARCHAR(50),
+        channel_id      VARCHAR(50),
+        ip_address      VARCHAR(20),
+        port            INTEGER,
+        last_heartbeat  INTEGER DEFAULT (strftime('%s', 'now')),
+        status          VARCHAR(20) DEFAULT 'active',
+        created_at      INTEGER DEFAULT (strftime('%s', 'now'))
+    )
+`);
+
+// Create table: node_elections - track main node elections and transitions
+db.exec(`
+    CREATE TABLE IF NOT EXISTS node_elections (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        node_type       VARCHAR(20),
+        domain_id       VARCHAR(50),
+        cluster_id      VARCHAR(50),
+        channel_id      VARCHAR(50),
+        old_main_node   VARCHAR(50),
+        new_main_node   VARCHAR(50),
+        election_reason VARCHAR(50),
+        election_time   INTEGER DEFAULT (strftime('%s', 'now')),
+        status          VARCHAR(20) DEFAULT 'completed'
+    )
+`);
+
+// Create table: node_messages - store inter-node communication messages
+db.exec(`
+    CREATE TABLE IF NOT EXISTS node_messages (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        from_node_id    VARCHAR(50),
+        to_node_id      VARCHAR(50),
+        message_type    VARCHAR(50),
+        message_data    TEXT,
+        status          VARCHAR(20) DEFAULT 'pending',
+        created_at      INTEGER DEFAULT (strftime('%s', 'now')),
+        processed_at    INTEGER
     )
 `);
 

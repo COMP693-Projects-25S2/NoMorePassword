@@ -13,19 +13,15 @@ class BClientUserActivityManager {
 
     /**
      * Update current user information
+     * B-Client doesn't use local_users table - it's an enterprise server
      */
     updateCurrentUser() {
         try {
-            const currentUser = db.prepare('SELECT user_id, username FROM local_users WHERE is_current = 1').get();
-            if (currentUser) {
-                this.currentUserId = currentUser.user_id;
-                this.currentUsername = currentUser.username;
-                console.log(`UserActivityManager: Current user updated to ${this.currentUsername} (${this.currentUserId})`);
-            } else {
-                this.currentUserId = null;
-                this.currentUsername = null;
-                console.log('UserActivityManager: No current user found');
-            }
+            // B-Client is an enterprise server, it doesn't have local users
+            // It manages user_cookies and user_accounts instead
+            this.currentUserId = null;
+            this.currentUsername = null;
+            console.log('UserActivityManager: B-Client is an enterprise server, no local users');
         } catch (error) {
             console.error('Error updating current user:', error);
             this.currentUserId = null;

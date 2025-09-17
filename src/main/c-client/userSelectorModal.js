@@ -35,7 +35,7 @@ class UserSelectorModal {
             // Calculate modal position (center of main window)
             const mainBounds = mainWindow.getBounds();
             const modalWidth = 320;
-            const modalHeight = Math.min(540, 168 + (users.length * 72)); // Dynamic height based on user count, increased by 20%
+            const modalHeight = Math.min(600, 168 + (users.length * 72)); // Dynamic height based on user count, max 600px
 
             // Position modal at center of main window
             const x = mainBounds.x + (mainBounds.width - modalWidth) / 2;
@@ -111,9 +111,9 @@ class UserSelectorModal {
     }
 
     async loadHTMLContent(users) {
-        const maxDisplayUsers = 5;
-        const displayUsers = users.slice(0, maxDisplayUsers);
-        const hasMoreUsers = users.length > maxDisplayUsers;
+        // Display all users without limit
+        const displayUsers = users;
+        const hasMoreUsers = false;
 
         const htmlContent = `
 <!DOCTYPE html>
@@ -180,7 +180,7 @@ class UserSelectorModal {
             padding: 16px 0;
             flex: 1;
             overflow-y: auto;
-            max-height: ${maxDisplayUsers * 72}px;
+            max-height: 400px;
         }
 
         .user-list {
@@ -312,7 +312,6 @@ class UserSelectorModal {
                     </li>
                 `).join('')}
             </ul>
-            ${hasMoreUsers ? `<div class="more-users-notice">Showing first ${maxDisplayUsers} users (${users.length} total)</div>` : ''}
         </div>
 
         <div class="modal-footer">
@@ -334,6 +333,12 @@ class UserSelectorModal {
             const userRadios = document.querySelectorAll('input[name="user"]');
 
             let selectedUserId = null;
+
+            // Listen for close message from main process
+            ipcRenderer.on('close-user-selector-modal', () => {
+                console.log('Received close message from main process');
+                window.close();
+            });
 
             // Handle close button click
             closeBtn.addEventListener('click', () => {

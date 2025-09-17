@@ -2,12 +2,17 @@
 // Automatically injects user parameters when navigating to specific websites
 
 class UrlParameterInjector {
-    constructor() {
+    constructor(apiPort = null) {
+        this.apiPort = apiPort;
         // Target websites that should receive user parameters
+        // Note: Now injecting parameters to ALL websites for universal tracking
         this.targetWebsites = [
             'comp639nsn.pythonanywhere.com',
             'localhost:3000', // B-Client API
-            'localhost:3001'  // B-Client API (alternative port)
+            'localhost:3001', // B-Client API (alternative port)
+            'localhost:5000', // NSN development server
+            '127.0.0.1:5000', // NSN development server (alternative)
+            // Add more specific targets as needed, but by default inject to all
         ];
 
         // Parameter names to inject
@@ -15,7 +20,13 @@ class UrlParameterInjector {
             user_id: 'nmp_user_id',
             username: 'nmp_username',
             client_type: 'nmp_client_type',
-            timestamp: 'nmp_timestamp'
+            timestamp: 'nmp_timestamp',
+            injected: 'nmp_injected',  // New field to identify C-Client injection
+            node_id: 'nmp_node_id',    // Current node ID
+            domain_id: 'nmp_domain_id', // Current domain ID
+            cluster_id: 'nmp_cluster_id', // Current cluster ID
+            channel_id: 'nmp_channel_id',  // Current channel ID
+            api_port: 'nmp_api_port'   // C-Client API port for B-Client communication
         };
     }
 
@@ -31,13 +42,19 @@ class UrlParameterInjector {
 
         try {
             const urlObj = new URL(url);
-            const hostname = urlObj.hostname;
 
-            // Always inject parameters for any valid URL (except localhost and file://)
-            if (hostname === 'localhost' || hostname === '127.0.0.1' || url.startsWith('file://')) {
+            // Skip file:// URLs and data: URLs
+            if (url.startsWith('file://') || url.startsWith('data:')) {
                 return false;
             }
 
+            // Skip chrome:// and other browser internal URLs
+            if (url.startsWith('chrome://') || url.startsWith('about:')) {
+                return false;
+            }
+
+            // Inject parameters to ALL other websites for universal tracking
+            console.log(`🔗 URLParameterInjector: Injecting parameters to: ${urlObj.hostname}`);
             return true;
         } catch (error) {
             console.error('Error parsing URL for parameter injection:', error);
@@ -46,8 +63,8 @@ class UrlParameterInjector {
     }
 
     /**
-     * Get current user information
-     * @returns {Object|null} - User information or null
+     * Get current user information and node information
+     * @returns {Object|null} - User and node information or null
      */
     getCurrentUserInfo() {
         try {
@@ -66,17 +83,23 @@ class UrlParameterInjector {
             // First check if database is accessible
             console.log('🔍 URLParameterInjector: Database connection established');
 
-            // Query for current user
+            // Query for current user with node information
             const currentUser = db.prepare(
-                'SELECT user_id, username FROM local_users WHERE is_current = 1'
+                'SELECT user_id, username, node_id, domain_id, cluster_id, channel_id FROM local_users WHERE is_current = 1'
             ).get();
 
             console.log('🔍 URLParameterInjector: Query result:', currentUser);
+            console.log('🔍 URLParameterInjector: Current user ID:', currentUser?.user_id);
+            console.log('🔍 URLParameterInjector: Current username:', currentUser?.username);
 
             if (currentUser) {
                 const userInfo = {
                     user_id: currentUser.user_id,
-                    username: currentUser.username
+                    username: currentUser.username,
+                    node_id: currentUser.node_id || 'unknown',
+                    domain_id: currentUser.domain_id || 'default-domain',
+                    cluster_id: currentUser.cluster_id || 'default-cluster',
+                    channel_id: currentUser.channel_id || 'default-channel'
                 };
                 console.log('✅ URLParameterInjector: User info retrieved:', userInfo);
                 return userInfo;
@@ -122,12 +145,50 @@ class UrlParameterInjector {
             urlObj.searchParams.set(this.parameterNames.username, userInfo.username);
             urlObj.searchParams.set(this.parameterNames.client_type, 'c-client');
             urlObj.searchParams.set(this.parameterNames.timestamp, Date.now().toString());
+            urlObj.searchParams.set(this.parameterNames.injected, 'true');  // Mark as injected by C-Client
+
+            // Add node information parameters
+            urlObj.searchParams.set(this.parameterNames.node_id, userInfo.node_id);
+            urlObj.searchParams.set(this.parameterNames.domain_id, userInfo.domain_id);
+            urlObj.searchParams.set(this.parameterNames.cluster_id, userInfo.cluster_id);
+            urlObj.searchParams.set(this.parameterNames.channel_id, userInfo.channel_id);
+
+            // Add API port information
+            if (this.apiPort) {
+                urlObj.searchParams.set(this.parameterNames.api_port, this.apiPort.toString());
+            }
 
             return urlObj.toString();
         } catch (error) {
             console.error('Error injecting parameters into URL:', error);
             return url;
         }
+    }
+
+    /**
+     * Convert HTTPS to HTTP for local development servers
+     * @param {string} url - Original URL
+     * @returns {string} - URL with corrected protocol
+     */
+    fixLocalProtocol(url) {
+        try {
+            const urlObj = new URL(url);
+            const hostname = urlObj.hostname;
+            const port = urlObj.port;
+
+            // Convert HTTPS to HTTP for local development servers
+            if (urlObj.protocol === 'https:' &&
+                (hostname === 'localhost' || hostname === '127.0.0.1') &&
+                (port === '5000' || port === '3000' || port === '3001')) {
+                urlObj.protocol = 'http:';
+                console.log(`🔧 URLParameterInjector: Converting HTTPS to HTTP for local development: ${url} -> ${urlObj.toString()}`);
+                return urlObj.toString();
+            }
+        } catch (error) {
+            console.error('Error fixing local protocol:', error);
+        }
+
+        return url;
     }
 
     /**
@@ -138,9 +199,15 @@ class UrlParameterInjector {
     processUrl(url) {
         console.log(`\n🔗 URLParameterInjector: Processing URL: ${url}`);
 
-        if (!this.shouldInjectParameters(url)) {
-            console.log('ℹ️ URLParameterInjector: URL is localhost or file://, skipping injection');
-            return url;
+        // First, fix protocol for local development
+        const fixedUrl = this.fixLocalProtocol(url);
+        if (fixedUrl !== url) {
+            console.log(`🔧 URLParameterInjector: Protocol fixed: ${url} -> ${fixedUrl}`);
+        }
+
+        if (!this.shouldInjectParameters(fixedUrl)) {
+            console.log('ℹ️ URLParameterInjector: URL is not a target website, skipping injection');
+            return fixedUrl;
         }
 
         console.log('✅ URLParameterInjector: URL is valid for parameter injection, proceeding...');
@@ -148,13 +215,14 @@ class UrlParameterInjector {
         const userInfo = this.getCurrentUserInfo();
         if (!userInfo) {
             console.log('⚠️ URLParameterInjector: No current user found, skipping parameter injection');
-            return url;
+            return fixedUrl;
         }
 
         console.log('✅ URLParameterInjector: User info available, injecting NMP parameters...');
-        const processedUrl = this.injectParameters(url, userInfo);
+        const processedUrl = this.injectParameters(fixedUrl, userInfo);
         console.log(`🔗 URLParameterInjector: NMP parameter injection completed:`);
         console.log(`   Original:  ${url}`);
+        console.log(`   Fixed:     ${fixedUrl}`);
         console.log(`   Processed: ${processedUrl}`);
 
         // Parse and display injected parameters

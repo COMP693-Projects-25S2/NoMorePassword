@@ -6,9 +6,19 @@ const IpcHandlers = require('./ipc/ipcHandlers');
 const { StartupValidator } = require('./nodeManager');
 const ClientManager = require('./clientManager');
 const ClientSwitchManager = require('../shared/clientSwitchManager');
+const DistributedNodeManager = require('./nodeManager/distributedNodeManager');
+const DistributedApiClient = require('./api/distributedApiClient');
+const DatabaseManager = require('./sqlite/databaseManager');
+const PortManager = require('../utils/portManager');
+const CClientApiServer = require('./api/cClientApiServer');
 
 class ElectronApp {
     constructor() {
+        // Get C-Client ID from environment variable or generate one
+        this.clientId = process.env.C_CLIENT_ID || `c-client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        this.portManager = new PortManager();
+        this.clientPort = null; // Will be set during initialization
+
         this.clientManager = new ClientManager();
         this.historyManager = new HistoryManager();
         this.windowManager = new WindowManager(this.historyManager, this.clientManager);
@@ -19,37 +29,350 @@ class ElectronApp {
         this.isInitialized = false;
         this.pendingTitleUpdates = new Map();
         this.clientSwitchManager = new ClientSwitchManager(); // Unified client switch manager
+
+        // Distributed node management
+        this.distributedNodeManager = null;
+        this.distributedApiClient = null;
+        this.databaseManager = DatabaseManager;
+
+        // C-Client API server
+        this.apiServer = null;
+        this.reloadCheckInterval = null;
+
+        console.log(`🚀 Starting C-Client: ${this.clientId} (port will be assigned during initialization)`);
+    }
+
+    /**
+     * Get client port using port manager
+     */
+    async getClientPort() {
+        try {
+            this.clientPort = await this.portManager.findAvailableCClientPort();
+            console.log(`🔌 C-Client: Assigned port ${this.clientPort}`);
+            return this.clientPort;
+        } catch (error) {
+            console.error('❌ C-Client: Failed to find available port:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Start C-Client API server
+     */
+    startApiServer() {
+        try {
+            // Use a different port for API server (clientPort + 1000)
+            const apiPort = this.clientPort + 1000;
+            this.apiServer = new CClientApiServer(apiPort, this.mainWindow);
+            this.apiServer.start();
+            console.log(`🌐 C-Client: API server started on port ${apiPort}`);
+
+            // Start checking for reload requests
+            this.startReloadChecker();
+        } catch (error) {
+            console.error('❌ C-Client: Failed to start API server:', error);
+            // Don't fail initialization if API server fails to start
+        }
+    }
+
+    /**
+     * Start checking for reload requests from API server
+     */
+    startReloadChecker() {
+        if (this.reloadCheckInterval) {
+            clearInterval(this.reloadCheckInterval);
+        }
+
+        this.reloadCheckInterval = setInterval(() => {
+            if (this.apiServer && this.apiServer.pendingReload) {
+                const reloadData = this.apiServer.pendingReload;
+                console.log(`🔄 C-Client: Processing pending reload for user: ${reloadData.username}`);
+
+                // Clear the pending reload
+                this.apiServer.pendingReload = null;
+
+                // Handle the reload
+                this.handleCookieReload(reloadData);
+            }
+        }, 1000); // Check every second
+
+        console.log(`🔄 C-Client: Reload checker started`);
+    }
+
+    // Old setupCookieReloadListener method removed - using the new version below
+    // Old handleCookieReload method removed - using the new version below
+
+    /**
+     * Initialize distributed node management system
+     */
+    async initializeDistributedNodeManagement() {
+        try {
+            console.log('🔧 Initializing distributed node management...');
+
+            // Set C-Client environment configuration
+            if (!process.env.C_CLIENT_ENVIRONMENT) {
+                process.env.C_CLIENT_ENVIRONMENT = 'local'; // Default to local for development
+                console.log('C-Client: Set default environment to local');
+            } else {
+                console.log(`C-Client: Using environment from env: ${process.env.C_CLIENT_ENVIRONMENT}`);
+            }
+
+            // Update apiConfig with current environment
+            const apiConfig = require('./config/apiConfig');
+            apiConfig.setCurrentEnvironment(process.env.C_CLIENT_ENVIRONMENT);
+            console.log(`C-Client: Updated apiConfig environment to: ${apiConfig.currentEnvironment}`);
+
+            // Get B-Client API configuration based on environment
+            const bClientConfig = apiConfig.getCurrentBClientApi();
+            console.log(`C-Client: Using B-Client API: ${bClientConfig.name} (${bClientConfig.url})`);
+
+            // Initialize distributed node manager
+            this.distributedNodeManager = new DistributedNodeManager(this.databaseManager, {
+                heartbeatInterval: 30000,
+                electionTimeout: 10000
+            });
+
+            // Initialize API client for B-Client communication
+            this.distributedApiClient = new DistributedApiClient({
+                bClientApiUrl: bClientConfig.url,
+                timeout: 10000
+            });
+
+            // Register current c-client as a channel node
+            const nodeInfo = {
+                nodeType: 'channel',
+                domainId: 'default-domain',
+                clusterId: 'default-cluster',
+                channelId: 'default-channel',
+                username: this.clientId,
+                ipAddress: '127.0.0.1',
+                port: this.clientPort,
+                capabilities: {
+                    browser: true,
+                    oauth: true,
+                    history: true,
+                    localUsers: true
+                },
+                metadata: {
+                    version: '1.0.0',
+                    platform: process.platform,
+                    arch: process.arch,
+                    type: 'c-client',
+                    clientId: this.clientId,
+                    port: this.clientPort
+                }
+            };
+
+            // Register node locally
+            const localResult = await this.distributedNodeManager.registerNode(nodeInfo);
+            if (localResult.success) {
+                console.log('✅ C-Client node registered locally:', localResult.nodeId);
+            }
+
+            // Check if there are existing domain nodes through B-Client
+            console.log('🔍 Checking for existing domain nodes through B-Client...');
+            const domainNodesResult = await this.distributedApiClient.getDomainNodes();
+
+            if (domainNodesResult.success && domainNodesResult.data && domainNodesResult.data.length > 0) {
+                console.log('🌐 Found existing domain nodes, connecting to domain system...');
+                // There are existing domain nodes, connect to them
+                // TODO: Implement connection to existing domain nodes
+                console.log('📡 Domain nodes found:', domainNodesResult.data);
+            } else {
+                console.log('🏆 No existing domain nodes found, becoming main node for all levels...');
+
+                // No existing domain nodes, become main node for all levels
+                await this.distributedNodeManager.setMainNode('domain', localResult.nodeId);
+                console.log('👑 Set as Domain Main Node');
+
+                await this.distributedNodeManager.setMainNode('cluster', localResult.nodeId);
+                console.log('👑 Set as Cluster Main Node');
+
+                await this.distributedNodeManager.setMainNode('channel', localResult.nodeId);
+                console.log('👑 Set as Channel Main Node');
+            }
+
+            // Note: Local user registration is handled by user registration dialog
+            // No automatic user creation - users must register manually
+
+            // C-Client communicates with B-Client through NSN, not directly
+            // No direct registration with B-Client needed
+            console.log('✅ C-Client ready for communication through NSN');
+
+            // Setup event handlers
+            this.setupDistributedNodeEventHandlers();
+
+            console.log('✅ Distributed node management initialized');
+        } catch (error) {
+            console.error('❌ Error initializing distributed node management:', error);
+        }
+    }
+
+    /**
+     * Setup distributed node event handlers
+     */
+    setupDistributedNodeEventHandlers() {
+        if (this.distributedNodeManager) {
+            this.distributedNodeManager.on('mainNodeElected', (electionInfo) => {
+                console.log('👑 Main node elected:', electionInfo);
+                // Handle main node election
+                this.handleMainNodeElection(electionInfo);
+            });
+
+            this.distributedNodeManager.on('mainNodeChanged', (messageData) => {
+                console.log('📢 Main node changed notification received:', messageData);
+                // Handle main node change notification
+                this.handleMainNodeChanged(messageData);
+            });
+
+            this.distributedNodeManager.on('nodeOffline', (nodeId) => {
+                console.log('⚠️ Node went offline:', nodeId);
+                // Handle node going offline
+                this.handleNodeOffline(nodeId);
+            });
+
+            this.distributedNodeManager.on('nodeOfflineNotification', (messageData) => {
+                console.log('📢 Node offline notification received:', messageData);
+                // Handle node offline notification
+                this.handleNodeOfflineNotification(messageData);
+            });
+
+            this.distributedNodeManager.on('localUserRegistered', (userInfo) => {
+                console.log('👤 Local user registered:', userInfo);
+                // Handle local user registration
+                this.handleLocalUserRegistered(userInfo);
+            });
+        }
+
+        if (this.distributedApiClient) {
+            this.distributedApiClient.on('channelRegistered', (registrationInfo) => {
+                console.log('✅ Channel registration completed:', registrationInfo);
+                // Handle channel registration completion
+                this.handleChannelRegistration(registrationInfo);
+            });
+        }
+    }
+
+    /**
+     * Handle main node election
+     */
+    handleMainNodeElection(electionInfo) {
+        // Notify UI about main node election
+        if (this.mainWindow && this.mainWindow.webContents) {
+            this.mainWindow.webContents.send('main-node-elected', electionInfo);
+        }
+    }
+
+    /**
+     * Handle main node changed notification
+     */
+    handleMainNodeChanged(messageData) {
+        // Notify UI about main node change
+        if (this.mainWindow && this.mainWindow.webContents) {
+            this.mainWindow.webContents.send('main-node-changed', messageData);
+        }
+    }
+
+    /**
+     * Handle node going offline
+     */
+    handleNodeOffline(nodeId) {
+        // Notify UI about node going offline
+        if (this.mainWindow && this.mainWindow.webContents) {
+            this.mainWindow.webContents.send('node-offline', { nodeId });
+        }
+    }
+
+    /**
+     * Handle node offline notification
+     */
+    handleNodeOfflineNotification(messageData) {
+        // Notify UI about node offline notification
+        if (this.mainWindow && this.mainWindow.webContents) {
+            this.mainWindow.webContents.send('node-offline-notification', messageData);
+        }
+    }
+
+    /**
+     * Handle local user registered
+     */
+    handleLocalUserRegistered(userInfo) {
+        // Notify UI about local user registration
+        if (this.mainWindow && this.mainWindow.webContents) {
+            this.mainWindow.webContents.send('local-user-registered', userInfo);
+        }
+    }
+
+    /**
+     * Handle channel registration completion
+     */
+    handleChannelRegistration(registrationInfo) {
+        // Notify UI about channel registration
+        if (this.mainWindow && this.mainWindow.webContents) {
+            this.mainWindow.webContents.send('channel-registered', registrationInfo);
+        }
     }
 
     async initialize() {
         if (this.isInitialized) {
+            console.log(`🔄 C-Client: Already initialized, skipping...`);
             return;
         }
 
-
         try {
+            console.log(`🔄 C-Client: Starting initialization...`);
+
+            // Get client port using port manager
+            console.log(`🔄 C-Client: Getting client port...`);
+            await this.getClientPort();
+
             // Initialize history manager
+            console.log(`🔄 C-Client: Initializing history manager...`);
             this.historyManager.initialize();
 
+            // Initialize distributed node management
+            console.log(`🔄 C-Client: Initializing distributed node management...`);
+            await this.initializeDistributedNodeManagement();
+
             // Validate node status on startup
+            console.log(`🔄 C-Client: Validating node status on startup...`);
             await this.startupValidator.validateOnStartup();
 
             // Create main window
             const mainWindow = this.windowManager.createWindow();
             this.mainWindow = mainWindow; // Store reference to main window
 
-
             // Wait for window to be ready
             await this.waitForWindowReady(mainWindow);
+
+            // Start C-Client API server (after main window is ready)
+            this.startApiServer();
 
             // Show the window
             mainWindow.show();
 
+            // Calculate API port
+            const apiPort = this.clientPort + 1000; // API port is clientPort + 1000
+
             // Create view manager
-            this.viewManager = new ViewManager(this.windowManager, this.historyManager);
+            this.viewManager = new ViewManager(this.windowManager, this.historyManager, apiPort);
 
             // Register IPC handlers
-            this.ipcHandlers = new IpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager, this.startupValidator.nodeManager);
+            this.ipcHandlers = new IpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager, this.distributedNodeManager, this.startupValidator, apiPort);
+
+            // Set up IPC listeners for cookie reload requests
+            console.log(`🔄 C-Client: About to set up cookie reload listener...`);
+            this.setupCookieReloadListener();
+            console.log(`🔄 C-Client: Cookie reload listener setup completed`);
+
+            // Set up IPC listeners for user registration
+            console.log(`🔄 C-Client: About to set up user registration listeners...`);
+            this.setupUserRegistrationListeners();
+            console.log(`🔄 C-Client: User registration listeners setup completed`);
+
+            // Set up global reference for API server to access main process
+            global.cClientMainProcess = this;
+            console.log(`🔄 C-Client: Global main process reference set for API server`);
 
             // Set up browsing history monitoring
             this.setupHistoryRecording();
@@ -627,6 +950,30 @@ class ElectronApp {
                 this.windowManager = null;
             }
 
+            // Cleanup distributed node manager
+            if (this.distributedNodeManager) {
+                try {
+                    console.log('🧹 Cleaning up distributed node manager...');
+                    await this.distributedNodeManager.shutdown();
+                    this.distributedNodeManager = null;
+                    console.log('✅ Distributed node manager cleaned up');
+                } catch (error) {
+                    console.error('❌ Error cleaning up distributed node manager:', error);
+                }
+            }
+
+            // Cleanup distributed API client
+            if (this.distributedApiClient) {
+                try {
+                    console.log('🧹 Cleaning up distributed API client...');
+                    await this.distributedApiClient.shutdown();
+                    this.distributedApiClient = null;
+                    console.log('✅ Distributed API client cleaned up');
+                } catch (error) {
+                    console.error('❌ Error cleaning up distributed API client:', error);
+                }
+            }
+
             // Cleanup unified client switch manager
             if (this.clientSwitchManager) {
                 try {
@@ -645,6 +992,209 @@ class ElectronApp {
 
         } catch (error) {
             console.error('Error during cleanup:', error);
+        }
+    }
+
+    /**
+     * Setup IPC listener for cookie reload requests
+     */
+    setupCookieReloadListener() {
+        try {
+            console.log(`🔄 C-Client: Setting up cookie reload listener...`);
+            const { ipcMain } = require('electron');
+
+            ipcMain.on('cookie-reload-request', (event, reloadData) => {
+                console.log(`🔄 C-Client: Received cookie reload request for user: ${reloadData.username}`);
+                this.handleCookieReload(reloadData);
+            });
+
+            console.log(`🔄 C-Client: Cookie reload listener set up successfully`);
+        } catch (error) {
+            console.error(`❌ C-Client: Error setting up cookie reload listener:`, error);
+        }
+    }
+
+    /**
+     * Setup IPC listeners for user registration
+     */
+    setupUserRegistrationListeners() {
+        try {
+            console.log(`🔄 C-Client: Setting up user registration listeners...`);
+            const { ipcMain } = require('electron');
+
+            // Handle user registration dialog close request
+            ipcMain.on('close-user-registration-dialog', (event) => {
+                try {
+                    console.log('🔄 C-Client: Closing user registration dialog');
+
+                    // Find and close the registration dialog window
+                    const { BrowserWindow } = require('electron');
+                    const allWindows = BrowserWindow.getAllWindows();
+
+                    for (const window of allWindows) {
+                        if (window.webContents && window.webContents.getURL().includes('data:text/html')) {
+                            // This is likely the registration dialog (it uses data URL)
+                            console.log('🔄 C-Client: Found registration dialog, closing...');
+                            window.close();
+                            break;
+                        }
+                    }
+                } catch (error) {
+                    console.error('❌ C-Client: Error closing user registration dialog:', error);
+                }
+            });
+
+            console.log(`🔄 C-Client: User registration listeners set up successfully`);
+        } catch (error) {
+            console.error(`❌ C-Client: Error setting up user registration listeners:`, error);
+        }
+    }
+
+    /**
+     * Close user registration dialog
+     */
+    closeUserRegistrationDialog() {
+        try {
+            console.log('🔄 C-Client: Closing user registration dialog');
+
+            // Find and close the registration dialog window
+            const { BrowserWindow } = require('electron');
+            const allWindows = BrowserWindow.getAllWindows();
+
+            for (const window of allWindows) {
+                if (window.webContents && window.webContents.getURL().includes('data:text/html')) {
+                    // This is likely the registration dialog (it uses data URL)
+                    console.log('🔄 C-Client: Found registration dialog, closing...');
+                    window.close();
+                    break;
+                }
+            }
+        } catch (error) {
+            console.error('❌ C-Client: Error closing registration dialog:', error);
+        }
+    }
+
+    /**
+     * Handle cookie reload with complete session data
+     */
+    async handleCookieReload(reloadData) {
+        try {
+            const { user_id, username, cookie, complete_session_data } = reloadData;
+            console.log(`🔄 C-Client: Handling cookie reload for user: ${username}`);
+
+            if (complete_session_data) {
+                console.log(`🔄 C-Client: Using complete session data for login:`, {
+                    nsn_user_id: complete_session_data.nsn_user_id,
+                    nsn_username: complete_session_data.nsn_username,
+                    nsn_role: complete_session_data.nsn_role,
+                    has_nsn_session: !!complete_session_data.nsn_session_data
+                });
+
+                // Use complete session data to set up login state
+                if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                    console.log(`🔄 C-Client: Setting up session login using complete session data`);
+
+                    // Use complete session data to set up login state
+                    const nsnSessionData = complete_session_data.nsn_session_data;
+                    if (nsnSessionData && nsnSessionData.loggedin) {
+                        console.log(`🔄 C-Client: Using complete session data for login:`, {
+                            loggedin: nsnSessionData.loggedin,
+                            user_id: nsnSessionData.user_id,
+                            username: nsnSessionData.username,
+                            role: nsnSessionData.role,
+                            nmp_user_id: user_id
+                        });
+
+                        // Store complete session data for NSN access
+                        // C-Client will use this data to make authenticated requests to NSN
+                        try {
+                            // Store the complete session data in a way that can be accessed by the browser
+                            // We'll use a custom header or localStorage to pass this data to NSN
+                            const completeSessionForNSN = {
+                                ...nsnSessionData, // loggedin, user_id, username, role
+                                nmp_user_id: user_id, // Add NMP user_id for NSN recognition
+                                nmp_username: username, // Add NMP username
+                                nmp_node_id: complete_session_data.nmp_node_id || 'unknown',
+                                nmp_domain_id: complete_session_data.nmp_domain_id || 'default-domain',
+                                nmp_cluster_id: complete_session_data.nmp_cluster_id || 'default-cluster',
+                                nmp_channel_id: complete_session_data.nmp_channel_id || 'default-channel'
+                            };
+
+                            console.log(`🔄 C-Client: Storing complete session data for NSN access:`, {
+                                has_nsn_data: !!completeSessionForNSN.loggedin,
+                                nsn_user_id: completeSessionForNSN.user_id,
+                                nsn_username: completeSessionForNSN.username,
+                                nsn_role: completeSessionForNSN.role,
+                                nmp_user_id: completeSessionForNSN.nmp_user_id
+                            });
+
+                            // Store session data in a way that can be accessed by the browser
+                            // We need to set the cookie in the current view's session, not the main window's session
+                            const cookieUrl = 'http://localhost:5000'; // NSN URL
+
+                            // Set a custom cookie with complete session data
+                            const cookieValue = JSON.stringify(completeSessionForNSN);
+                            console.log(`🔄 C-Client: Setting nmp_session_data cookie with value:`, cookieValue);
+
+                            // Get the current view's session
+                            let targetSession = null;
+                            if (this.viewManager && this.viewManager.currentViewId) {
+                                const currentView = this.viewManager.views[this.viewManager.currentViewId];
+                                if (currentView && currentView.webContents) {
+                                    targetSession = currentView.webContents.session;
+                                    console.log(`🔄 C-Client: Using current view's session for cookie setting`);
+                                }
+                            }
+
+                            // Fallback to main window session if no current view
+                            if (!targetSession) {
+                                targetSession = this.mainWindow.webContents.session;
+                                console.log(`🔄 C-Client: Using main window's session for cookie setting`);
+                            }
+
+                            await targetSession.cookies.set({
+                                url: cookieUrl,
+                                name: 'nmp_session_data',
+                                value: cookieValue,
+                                httpOnly: false, // Allow JavaScript access
+                                secure: false,
+                                sameSite: 'lax'
+                            });
+
+                            console.log(`🔄 C-Client: Complete session data cookie set successfully for user ${complete_session_data.nsn_username}`);
+
+                            // Close any open registration dialog
+                            console.log(`🔄 C-Client: Closing user registration dialog after successful registration`);
+                            this.closeUserRegistrationDialog();
+
+                            // Navigate to NSN root path to trigger auto-login with the new cookie
+                            if (this.viewManager && this.viewManager.currentViewId) {
+                                console.log(`🔄 C-Client: Navigating to NSN root path to trigger auto-login`);
+                                const currentView = this.viewManager.views[this.viewManager.currentViewId];
+                                if (currentView && currentView.webContents) {
+                                    // Navigate to NSN root path with NMP parameters to trigger auto-login
+                                    const nsnUrl = 'http://localhost:5000/';
+                                    console.log(`🔄 C-Client: Loading NSN URL: ${nsnUrl}`);
+                                    currentView.webContents.loadURL(nsnUrl);
+                                }
+                            } else {
+                                console.log(`🔄 C-Client: No current view to navigate, session cookie is set`);
+                            }
+                        } catch (error) {
+                            console.error(`❌ C-Client: Error generating Flask session cookie:`, error);
+                            console.error(`❌ C-Client: Cannot proceed without valid session data`);
+                        }
+                    } else {
+                        console.log(`❌ C-Client: No valid NSN session data found in complete session data`);
+                    }
+                }
+            } else {
+                console.log(`❌ C-Client: No complete session data available, cannot proceed with login`);
+                console.log(`❌ C-Client: Expected complete_session_data with nsn_session_data`);
+            }
+
+        } catch (error) {
+            console.error(`❌ C-Client: Error handling cookie reload:`, error);
         }
     }
 
@@ -674,6 +1224,14 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // Initialize when application is ready
+// Add command line switches to fix cache and GPU issues
+app.commandLine.appendSwitch('--disable-gpu-sandbox');
+app.commandLine.appendSwitch('--disable-software-rasterizer');
+app.commandLine.appendSwitch('--disable-gpu');
+app.commandLine.appendSwitch('--no-sandbox');
+app.commandLine.appendSwitch('--disable-web-security');
+app.commandLine.appendSwitch('--disable-features', 'VizDisplayCompositor');
+
 app.whenReady().then(async () => {
     try {
         await electronApp.initialize();

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -27,7 +28,7 @@
             padding: 30px;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
             width: 90%;
-            max-width: 350px;
+            max-width: 450px;
             text-align: center;
         }
 
@@ -52,33 +53,33 @@
         }
 
         .option-group {
-            margin-bottom: 20px;
+            margin-bottom: 25px;
         }
 
         .option-label {
             display: block;
-            font-size: 14px;
-            font-weight: 500;
-            color: #4a5568;
+            font-size: 15px;
+            font-weight: 600;
+            color: #2d3748;
             margin-bottom: 8px;
             text-align: left;
         }
 
         .option-description {
-            font-size: 12px;
+            font-size: 13px;
             color: #718096;
-            margin-bottom: 12px;
+            margin-bottom: 15px;
             text-align: left;
             line-height: 1.4;
         }
 
         .switch-button {
             width: 100%;
-            padding: 12px 20px;
+            padding: 14px 20px;
             background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
             color: white;
             border: none;
-            border-radius: 8px;
+            border-radius: 10px;
             font-size: 14px;
             font-weight: 500;
             cursor: pointer;
@@ -98,18 +99,20 @@
 
         .close-button {
             width: 100%;
-            padding: 10px 20px;
+            padding: 12px 20px;
             background: #e2e8f0;
             color: #4a5568;
             border: none;
-            border-radius: 6px;
-            font-size: 13px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
             cursor: pointer;
             transition: all 0.2s ease;
         }
 
         .close-button:hover {
             background: #cbd5e0;
+            transform: translateY(-1px);
         }
 
         .client-info {
@@ -132,8 +135,80 @@
             color: #718096;
             line-height: 1.4;
         }
+
+        .env-options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+
+        .env-button {
+            width: 100%;
+            padding: 16px 20px;
+            background: #f7fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #4a5568;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 12px;
+            text-align: left;
+        }
+
+        .env-button:hover {
+            background: #edf2f7;
+            border-color: #cbd5e0;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .env-button.active {
+            background: #e6fffa;
+            border-color: #38a169;
+            color: #38a169;
+            box-shadow: 0 2px 8px rgba(56, 161, 105, 0.2);
+        }
+
+        .env-icon {
+            font-size: 18px;
+            min-width: 20px;
+        }
+
+        .env-text {
+            flex: 1;
+        }
+
+        .env-description {
+            font-size: 12px;
+            color: #718096;
+            margin-top: 2px;
+        }
+
+        /* Responsive design */
+        @media (max-width: 480px) {
+            .config-container {
+                max-width: 95%;
+                padding: 20px;
+            }
+
+            .env-button {
+                padding: 14px 16px;
+                font-size: 13px;
+            }
+
+            .env-icon {
+                font-size: 16px;
+            }
+        }
     </style>
 </head>
+
 <body>
     <div class="config-container">
         <div class="config-header">
@@ -149,6 +224,29 @@
         </div>
 
         <div class="config-options">
+            <div class="option-group">
+                <div class="option-label">Environment</div>
+                <div class="option-description">
+                    Choose between local development or production NSN website.
+                </div>
+                <div class="env-options">
+                    <button class="env-button" id="localEnv" data-env="local">
+                        <span class="env-icon">🏠</span>
+                        <div class="env-text">
+                            <div>Local Development</div>
+                            <div class="env-description">localhost:5000</div>
+                        </div>
+                    </button>
+                    <button class="env-button" id="productionEnv" data-env="production">
+                        <span class="env-icon">🌐</span>
+                        <div class="env-text">
+                            <div>Production</div>
+                            <div class="env-description">comp639nsn.pythonanywhere.com</div>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
             <div class="option-group">
                 <div class="option-label">Switch Client</div>
                 <div class="option-description">
@@ -166,6 +264,58 @@
     </div>
 
     <script>
+        // Initialize environment selection
+        document.addEventListener('DOMContentLoaded', () => {
+            // Get current environment from localStorage or default to production
+            const currentEnv = localStorage.getItem('bclient-environment') || 'production';
+            updateEnvironmentUI(currentEnv);
+        });
+
+        // Environment button event listeners
+        document.getElementById('localEnv').addEventListener('click', () => {
+            setEnvironment('local');
+        });
+
+        document.getElementById('productionEnv').addEventListener('click', () => {
+            setEnvironment('production');
+        });
+
+        async function setEnvironment(env) {
+            // Save to localStorage for UI consistency
+            localStorage.setItem('bclient-environment', env);
+            updateEnvironmentUI(env);
+
+            // Save to file system for API server access
+            if (window.configAPI && window.configAPI.setEnvironment) {
+                try {
+                    const result = await window.configAPI.setEnvironment(env);
+                    if (result.success) {
+                        console.log(`Environment configuration saved: ${env}`);
+                    } else {
+                        console.error('Failed to save environment configuration:', result.error);
+                    }
+                } catch (error) {
+                    console.error('Error saving environment configuration:', error);
+                }
+            }
+        }
+
+        function updateEnvironmentUI(env) {
+            const localBtn = document.getElementById('localEnv');
+            const productionBtn = document.getElementById('productionEnv');
+
+            // Remove active class from all buttons
+            localBtn.classList.remove('active');
+            productionBtn.classList.remove('active');
+
+            // Add active class to selected button
+            if (env === 'local') {
+                localBtn.classList.add('active');
+            } else {
+                productionBtn.classList.add('active');
+            }
+        }
+
         document.getElementById('switchToCClient').addEventListener('click', () => {
             if (window.configAPI) {
                 window.configAPI.switchToCClient();
@@ -188,4 +338,5 @@
         });
     </script>
 </body>
+
 </html>

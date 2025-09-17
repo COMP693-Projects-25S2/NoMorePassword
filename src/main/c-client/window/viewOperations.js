@@ -270,7 +270,14 @@ class ViewOperations {
         }
 
         try {
-            await currentView.webContents.loadURL(url);
+            // Process URL with parameter injection
+            const UrlParameterInjector = require('../utils/urlParameterInjector');
+            const urlInjector = new UrlParameterInjector();
+            const processedUrl = urlInjector.processUrl(url);
+
+            console.log(`🔗 ViewOperations: Navigating to URL: ${url} -> ${processedUrl}`);
+
+            await currentView.webContents.loadURL(processedUrl);
             return true;
         } catch (error) {
             console.error(`Error navigating to ${url}:`, error);

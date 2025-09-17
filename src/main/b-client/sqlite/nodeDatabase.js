@@ -117,6 +117,38 @@ class NodeDatabase {
         }
     }
 
+    // Main node info methods for distributed system
+    getDomainMainNode() {
+        try {
+            // B-Client doesn't store main node info, it's just a relay
+            // Return null to indicate no main node info available
+            return null;
+        } catch (error) {
+            console.error('Error getting domain main node:', error);
+            return null;
+        }
+    }
+
+    getClusterMainNode() {
+        try {
+            // B-Client doesn't store main node info, it's just a relay
+            return null;
+        } catch (error) {
+            console.error('Error getting cluster main node:', error);
+            return null;
+        }
+    }
+
+    getChannelMainNode() {
+        try {
+            // B-Client doesn't store main node info, it's just a relay
+            return null;
+        } catch (error) {
+            console.error('Error getting channel main node:', error);
+            return null;
+        }
+    }
+
     updateDomainNodeRefreshTime(domainId, refreshTime = null) {
         try {
             const stmt = db.prepare(`

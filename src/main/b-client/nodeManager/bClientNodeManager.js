@@ -219,12 +219,24 @@ class BClientNodeManager {
 
     getAllUserCookies(userId) {
         try {
+            console.log(`[BClientNodeManager] getAllUserCookies called with userId: "${userId}" (type: ${typeof userId})`);
+            
             const stmt = this.db.prepare(`
                 SELECT * FROM user_cookies 
                 WHERE user_id = ?
                 ORDER BY create_time DESC
             `);
-            return stmt.all(userId);
+            
+            const results = stmt.all(userId);
+            console.log(`[BClientNodeManager] SQL query returned ${results.length} results for userId: "${userId}"`);
+            
+            if (results.length > 0) {
+                results.forEach((cookie, index) => {
+                    console.log(`[BClientNodeManager]   Result ${index + 1}: user_id="${cookie.user_id}" (type: ${typeof cookie.user_id}), username=${cookie.username}`);
+                });
+            }
+            
+            return results;
         } catch (error) {
             console.error('Error getting all user cookies:', error);
             return [];

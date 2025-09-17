@@ -2,12 +2,14 @@ const { ipcMain } = require('electron');
 
 // IPC handlers
 class IpcHandlers {
-    constructor(viewManager, historyManager, mainWindow = null, clientManager = null, nodeManager = null) {
+    constructor(viewManager, historyManager, mainWindow = null, clientManager = null, nodeManager = null, startupValidator = null, apiPort = null) {
         this.viewManager = viewManager;
         this.historyManager = historyManager;
         this.mainWindow = mainWindow; // Store reference to main window
         this.clientManager = clientManager; // Store reference to client manager
         this.nodeManager = nodeManager; // Store reference to node manager
+        this.startupValidator = startupValidator; // Store reference to startup validator
+        this.apiPort = apiPort; // Store API port for C-Client API calls
         this.registerHandlers();
     }
 
@@ -32,6 +34,95 @@ class IpcHandlers {
 
         // Client management
         this.registerClientHandlers();
+
+        // Cookie reload handling
+        this.registerCookieReloadHandlers();
+    }
+
+    /**
+     * Register cookie reload handlers
+     */
+    registerCookieReloadHandlers() {
+        // Cookie reload handling is done in main.js setupCookieReloadListener()
+        // No need to duplicate the listener here
+        console.log(`🔄 C-Client IPC: Cookie reload handlers registration skipped (handled in main.js)`);
+    }
+
+    /**
+     * Handle reload with cookie
+     */
+    handleReloadWithCookie(data) {
+        try {
+            const { user_id, username, cookie } = data;
+            console.log(`🔄 C-Client IPC: Handling reload with cookie for user: ${username}`);
+
+            // Find the current NSN tab and reload it with the cookie
+            if (this.viewManager) {
+                const nsnTab = this.viewManager.findNSNTab();
+                if (nsnTab) {
+                    console.log(`🔄 C-Client IPC: Found NSN tab, reloading with cookie for user: ${username}`);
+
+                    // Extract the actual cookie value from the session cookie string
+                    // The cookie might be in format: "session=eyJ..." or just "eyJ..."
+                    let cookieValue = cookie;
+                    if (cookie.startsWith('session=')) {
+                        // Extract just the session value part
+                        cookieValue = cookie.split('session=')[1].split(';')[0];
+                    }
+
+                    console.log(`🔄 C-Client IPC: Setting cookie value: ${cookieValue.substring(0, 50)}...`);
+
+                    // Set cookie in the browser session
+                    nsnTab.webContents.session.cookies.set({
+                        url: 'http://localhost:5000',
+                        name: 'session',
+                        value: cookieValue,
+                        httpOnly: true,
+                        secure: false
+                    }).then(() => {
+                        console.log(`🔄 C-Client IPC: Cookie set successfully for user: ${username}`);
+
+                        // Reload the NSN tab
+                        nsnTab.webContents.reload();
+                        console.log(`🔄 C-Client IPC: NSN tab reloaded with cookie for user: ${username}`);
+                    }).catch(error => {
+                        console.error(`❌ C-Client IPC: Failed to set cookie for user ${username}:`, error);
+                    });
+                } else {
+                    console.log(`🔄 C-Client IPC: No NSN tab found, creating new tab with cookie for user: ${username}`);
+
+                    // Create new NSN tab with cookie
+                    this.viewManager.createViewWithCookie('http://localhost:5000', cookie, username);
+                }
+            } else {
+                console.error(`❌ C-Client IPC: ViewManager not available for reload with cookie`);
+            }
+        } catch (error) {
+            console.error(`❌ C-Client IPC: Error handling reload with cookie:`, error);
+        }
+    }
+
+    /**
+     * Safely register an IPC handler, removing any existing one first
+     */
+    safeRegisterHandler(channel, handler) {
+        try {
+            ipcMain.removeHandler(channel);
+        } catch (error) {
+            // Handler might not exist, ignore error
+        }
+        ipcMain.handle(channel, handler);
+    }
+
+    /**
+     * Get C-Client API port (clientPort + 1000)
+     */
+    getApiPort() {
+        if (this.apiPort) {
+            return this.apiPort;
+        }
+        // Fallback to default port if not set
+        return 4001;
     }
 
     /**
@@ -39,13 +130,13 @@ class IpcHandlers {
      */
     registerTabHandlers() {
         // Create new tab
-        ipcMain.handle('create-tab', async (_, url) => {
+        this.safeRegisterHandler('create-tab', async (_, url) => {
             try {
                 console.log(`\n📝 C-Client IPC: Creating new tab with URL: ${url}`);
 
                 // Initialize URL parameter injector
                 const UrlParameterInjector = require('../utils/urlParameterInjector');
-                const urlInjector = new UrlParameterInjector();
+                const urlInjector = new UrlParameterInjector(this.apiPort);
 
                 // Process URL and inject parameters if needed
                 console.log('🔧 C-Client IPC: Processing URL for parameter injection...');
@@ -76,7 +167,7 @@ class IpcHandlers {
 
 
         // Create history tab
-        ipcMain.handle('create-history-tab', async () => {
+        this.safeRegisterHandler('create-history-tab', async () => {
             try {
                 return await this.viewManager.createHistoryView();
             } catch (error) {
@@ -88,7 +179,7 @@ class IpcHandlers {
 
 
         // Switch tab
-        ipcMain.handle('switch-tab', (_, id) => {
+        this.safeRegisterHandler('switch-tab', (_, id) => {
             try {
                 const result = this.viewManager.switchTab(id);
 
@@ -112,7 +203,7 @@ class IpcHandlers {
         });
 
         // Close tab
-        ipcMain.handle('close-tab', (_, id) => {
+        this.safeRegisterHandler('close-tab', (_, id) => {
             try {
                 // End this tab's active records
                 if (this.historyManager) {
@@ -127,7 +218,7 @@ class IpcHandlers {
         });
 
         // Get tab info
-        ipcMain.handle('get-tab-info', (_, id) => {
+        this.safeRegisterHandler('get-tab-info', (_, id) => {
             try {
                 return this.viewManager.getTabInfo(id);
             } catch (error) {
@@ -142,7 +233,7 @@ class IpcHandlers {
      */
     registerHistoryHandlers() {
         // Get visit history
-        ipcMain.handle('get-visit-history', (_, limit) => {
+        this.safeRegisterHandler('get-visit-history', (_, limit) => {
             try {
                 return this.historyManager.getHistory(limit);
             } catch (error) {
@@ -152,7 +243,7 @@ class IpcHandlers {
         });
 
         // Get visit statistics
-        ipcMain.handle('get-visit-stats', () => {
+        this.safeRegisterHandler('get-visit-stats', () => {
             try {
                 return this.historyManager.getStats();
             } catch (error) {
@@ -168,7 +259,7 @@ class IpcHandlers {
         });
 
         // Get history data (including statistics and records)
-        ipcMain.handle('get-history-data', (_, limit) => {
+        this.safeRegisterHandler('get-history-data', (_, limit) => {
             try {
                 return this.historyManager.getHistoryData(limit || 100);
             } catch (error) {
@@ -187,7 +278,7 @@ class IpcHandlers {
         });
 
         // Get current user
-        ipcMain.handle('get-current-user', () => {
+        this.safeRegisterHandler('get-current-user', () => {
             try {
                 return this.historyManager.userActivityManager.getCurrentUser();
             } catch (error) {
@@ -197,7 +288,7 @@ class IpcHandlers {
         });
 
         // Get shutdown history
-        ipcMain.handle('get-shutdown-history', () => {
+        this.safeRegisterHandler('get-shutdown-history', () => {
             try {
                 return this.historyManager.getShutdownHistory();
             } catch (error) {
@@ -207,7 +298,7 @@ class IpcHandlers {
         });
 
         // Manually trigger shutdown log (for testing)
-        ipcMain.handle('trigger-shutdown-log', (_, reason) => {
+        this.safeRegisterHandler('trigger-shutdown-log', (_, reason) => {
             try {
                 this.historyManager.logShutdown(reason || 'manual');
                 return true;
@@ -218,7 +309,7 @@ class IpcHandlers {
         });
 
         // Get active records information
-        ipcMain.handle('get-active-records', () => {
+        this.safeRegisterHandler('get-active-records', () => {
             try {
                 return this.historyManager.getActiveRecordsInfo();
             } catch (error) {
@@ -232,7 +323,7 @@ class IpcHandlers {
         });
 
         // Get history by date range
-        ipcMain.handle('get-history-by-date-range', (_, startDate, endDate) => {
+        this.safeRegisterHandler('get-history-by-date-range', (_, startDate, endDate) => {
             try {
                 const start = new Date(startDate);
                 const end = new Date(endDate);
@@ -244,7 +335,7 @@ class IpcHandlers {
         });
 
         // Get top domains statistics
-        ipcMain.handle('get-top-domains', (_, limit) => {
+        this.safeRegisterHandler('get-top-domains', (_, limit) => {
             try {
                 return this.historyManager.getTopDomains(limit || 10);
             } catch (error) {
@@ -254,7 +345,7 @@ class IpcHandlers {
         });
 
         // Export history data
-        ipcMain.handle('export-history-data', (_, limit) => {
+        this.safeRegisterHandler('export-history-data', (_, limit) => {
             try {
                 return this.historyManager.exportHistoryData(limit);
             } catch (error) {
@@ -271,7 +362,7 @@ class IpcHandlers {
         });
 
         // Manually record visit (for testing or special cases)
-        ipcMain.handle('record-manual-visit', (_, url, viewId) => {
+        this.safeRegisterHandler('record-manual-visit', (_, url, viewId) => {
             try {
                 if (!url || !viewId) {
                     throw new Error('URL and viewId are required');
@@ -285,7 +376,7 @@ class IpcHandlers {
         });
 
         // Update record title (for frontend manual update)
-        ipcMain.handle('update-record-title', (_, recordId, title) => {
+        this.safeRegisterHandler('update-record-title', (_, recordId, title) => {
             try {
                 if (!recordId || !title) {
                     throw new Error('Record ID and title are required');
@@ -306,13 +397,13 @@ class IpcHandlers {
      */
     registerNavigationHandlers() {
         // Navigate to specified URL
-        ipcMain.handle('navigate-to', async (_, url) => {
+        this.safeRegisterHandler('navigate-to', async (_, url) => {
             try {
                 console.log(`\n🧭 C-Client IPC: Navigating to URL: ${url}`);
 
                 // Initialize URL parameter injector
                 const UrlParameterInjector = require('../utils/urlParameterInjector');
-                const urlInjector = new UrlParameterInjector();
+                const urlInjector = new UrlParameterInjector(this.apiPort);
 
                 // Process URL and inject parameters if needed
                 console.log('🔧 C-Client IPC: Processing URL for parameter injection...');
@@ -346,7 +437,7 @@ class IpcHandlers {
         });
 
         // Go back
-        ipcMain.handle('go-back', () => {
+        this.safeRegisterHandler('go-back', () => {
             try {
                 const result = this.viewManager.goBack();
 
@@ -373,7 +464,7 @@ class IpcHandlers {
         });
 
         // Go forward
-        ipcMain.handle('go-forward', () => {
+        this.safeRegisterHandler('go-forward', () => {
             try {
                 const result = this.viewManager.goForward();
 
@@ -400,7 +491,7 @@ class IpcHandlers {
         });
 
         // Refresh page
-        ipcMain.handle('refresh', () => {
+        this.safeRegisterHandler('refresh', () => {
             try {
                 const result = this.viewManager.refresh();
 
@@ -432,7 +523,7 @@ class IpcHandlers {
      */
     registerViewHandlers() {
         // Hide current BrowserView
-        ipcMain.handle('hide-browser-view', () => {
+        this.safeRegisterHandler('hide-browser-view', () => {
             try {
                 return this.viewManager.hideBrowserView();
             } catch (error) {
@@ -442,7 +533,7 @@ class IpcHandlers {
         });
 
         // Show current BrowserView
-        ipcMain.handle('show-browser-view', () => {
+        this.safeRegisterHandler('show-browser-view', () => {
             try {
                 return this.viewManager.showBrowserView();
             } catch (error) {
@@ -452,7 +543,7 @@ class IpcHandlers {
         });
 
         // Get current view information
-        ipcMain.handle('get-current-view-info', () => {
+        this.safeRegisterHandler('get-current-view-info', () => {
             try {
                 const currentView = this.viewManager.getCurrentView();
                 if (currentView && currentView.webContents) {
@@ -472,7 +563,7 @@ class IpcHandlers {
         });
 
         // Get all views information
-        ipcMain.handle('get-all-views-info', () => {
+        this.safeRegisterHandler('get-all-views-info', () => {
             try {
                 const allViews = this.viewManager.getAllViews();
                 const viewsInfo = {};
@@ -502,7 +593,7 @@ class IpcHandlers {
      */
     registerDatabaseHandlers() {
         // Get database statistics
-        ipcMain.handle('get-database-stats', () => {
+        this.safeRegisterHandler('get-database-stats', () => {
             try {
                 return this.historyManager.getDatabaseStats();
             } catch (error) {
@@ -516,7 +607,7 @@ class IpcHandlers {
         });
 
         // Clean up old data
-        ipcMain.handle('cleanup-old-data', (_, daysToKeep) => {
+        this.safeRegisterHandler('cleanup-old-data', (_, daysToKeep) => {
             try {
                 const days = daysToKeep || 30;
                 return this.historyManager.cleanupOldData(days);
@@ -527,7 +618,7 @@ class IpcHandlers {
         });
 
         // Force write data (mainly for testing)
-        ipcMain.handle('force-write-data', () => {
+        this.safeRegisterHandler('force-write-data', () => {
             try {
                 this.historyManager.forceWrite();
                 return true;
@@ -538,7 +629,7 @@ class IpcHandlers {
         });
 
         // Clear local users
-        ipcMain.handle('clear-local-users', () => {
+        this.safeRegisterHandler('clear-local-users', () => {
             try {
                 const DatabaseManager = require('../sqlite/databaseManager');
                 const result = DatabaseManager.clearAllLocalUsers();
@@ -550,7 +641,7 @@ class IpcHandlers {
         });
 
         // Exit application
-        ipcMain.handle('exit-app', () => {
+        this.safeRegisterHandler('exit-app', () => {
             try {
                 const { app } = require('electron');
                 app.quit();
@@ -562,7 +653,7 @@ class IpcHandlers {
         });
 
         // Clear current user activities
-        ipcMain.handle('clear-current-user-activities', () => {
+        this.safeRegisterHandler('clear-current-user-activities', () => {
             try {
                 const DatabaseManager = require('../sqlite/databaseManager');
                 const result = DatabaseManager.clearCurrentUserActivities();
@@ -576,7 +667,7 @@ class IpcHandlers {
 
 
         // Get browser session information
-        ipcMain.handle('get-session-info', () => {
+        this.safeRegisterHandler('get-session-info', () => {
             try {
                 const stats = this.historyManager.getStats();
                 const activeRecords = this.historyManager.getActiveRecordsInfo();
@@ -605,7 +696,7 @@ class IpcHandlers {
         });
 
         // User registration
-        ipcMain.handle('submit-username', async (event, username) => {
+        this.safeRegisterHandler('submit-username', async (event, username) => {
             try {
 
                 if (!username || username.trim() === '') {
@@ -626,6 +717,7 @@ class IpcHandlers {
                     console.error('Failed to get public IP:', byteError);
                 }
 
+                // Store user data locally and register via B-Client
                 const userData = {
                     username: username.trim(),
                     userId: userId,
@@ -635,8 +727,6 @@ class IpcHandlers {
                     ipAddress: ipAddress,
                     isCurrent: 1
                 };
-
-                // User data prepared
 
                 // Insert new user into database using DatabaseManager
                 const DatabaseManager = require('../sqlite/databaseManager');
@@ -657,14 +747,61 @@ class IpcHandlers {
                     1 // isCurrent = 1
                 );
 
+                // User will be registered to third-party websites only when they click "signup with NMP"
+
                 if (result.changes > 0) {
+                    console.log(`✅ C-Client IPC: Successfully created local user ${username}`);
+                    console.log(`ℹ️ C-Client IPC: User will be registered to NSN on first visit`);
                     // Registration successful, close any open registration dialog first
                     try {
-                        if (this.nodeManager && this.nodeManager.userRegistrationDialog) {
+                        console.log('🔄 C-Client IPC: Attempting to close registration dialog...');
+
+                        // Try to close dialog from startupValidator.nodeManager first
+                        if (this.startupValidator && this.startupValidator.nodeManager && this.startupValidator.nodeManager.userRegistrationDialog) {
+                            console.log('🔄 C-Client IPC: Closing dialog from startupValidator.nodeManager');
+                            this.startupValidator.nodeManager.userRegistrationDialog.closeFromExternalRequest();
+                        }
+                        // Also try the current nodeManager as fallback
+                        else if (this.nodeManager && this.nodeManager.userRegistrationDialog) {
+                            console.log('🔄 C-Client IPC: Closing dialog from current nodeManager');
                             this.nodeManager.userRegistrationDialog.closeFromExternalRequest();
                         }
+
+                        // Also try to close any dialog windows directly
+                        const { BrowserWindow } = require('electron');
+                        const allWindows = BrowserWindow.getAllWindows();
+                        for (const window of allWindows) {
+                            if (window.webContents && window.webContents.getURL().includes('data:text/html')) {
+                                console.log('🔄 C-Client IPC: Found registration dialog window, closing directly');
+                                window.close();
+                                break;
+                            }
+                        }
+
+                        console.log('✅ C-Client IPC: Registration dialog close attempt completed');
                     } catch (closeError) {
-                        console.error('Error closing registration dialog:', closeError);
+                        console.error('❌ C-Client IPC: Error closing registration dialog:', closeError);
+                    }
+
+                    // Close all existing tabs and create new default page (same as user switch)
+                    if (this.viewManager) {
+                        try {
+                            console.log('🔄 C-Client IPC: Closing all tabs after user registration...');
+                            console.log('🔍 C-Client IPC: ViewManager available:', !!this.viewManager);
+                            console.log('🔍 C-Client IPC: closeAllTabsAndCreateDefault method available:', typeof this.viewManager.closeAllTabsAndCreateDefault);
+
+                            await this.viewManager.closeAllTabsAndCreateDefault();
+                            console.log('✅ C-Client IPC: All tabs closed and new default page created after registration');
+                        } catch (viewError) {
+                            console.error('❌ C-Client IPC: Error managing views after user registration:', viewError);
+                            console.error('❌ C-Client IPC: ViewError details:', {
+                                message: viewError.message,
+                                stack: viewError.stack
+                            });
+                            // Don't fail the registration if view management fails
+                        }
+                    } else {
+                        console.error('❌ C-Client IPC: ViewManager not available after user registration');
                     }
 
                     // Then show greeting dialog
@@ -718,7 +855,7 @@ class IpcHandlers {
         });
 
         // Handle config modal open request
-        ipcMain.handle('open-config-modal', async (event) => {
+        this.safeRegisterHandler('open-config-modal', async (event) => {
             try {
                 const ConfigModal = require('../configModal');
                 const configModal = new ConfigModal();
@@ -736,8 +873,163 @@ class IpcHandlers {
             }
         });
 
+        // Handle node status modal open request
+        this.safeRegisterHandler('open-node-status-modal', async (event) => {
+            try {
+                console.log('🔍 IPC: open-node-status-modal handler called');
+                const NodeStatusModal = require('../nodeStatusModal');
+                const nodeStatusModal = new NodeStatusModal();
+
+                // Try to get main window from different sources
+                let mainWindow = this.mainWindow;
+
+                if (!mainWindow || mainWindow.isDestroyed()) {
+                    // Try to get main window from the event sender
+                    if (event && event.sender && event.sender.getOwnerBrowserWindow) {
+                        mainWindow = event.sender.getOwnerBrowserWindow();
+                    }
+
+                    // If still no main window, try to get it from the main app
+                    if (!mainWindow || mainWindow.isDestroyed()) {
+                        const mainApp = require('../main');
+                        if (mainApp && mainApp.mainWindow && !mainApp.mainWindow.isDestroyed()) {
+                            mainWindow = mainApp.mainWindow;
+                        }
+                    }
+
+                    // If still no main window, try to get it from the client switch manager context
+                    if (!mainWindow || mainWindow.isDestroyed()) {
+                        // Try to get the current main window from BrowserWindow.getAllWindows()
+                        const { BrowserWindow } = require('electron');
+                        const allWindows = BrowserWindow.getAllWindows();
+                        if (allWindows.length > 0) {
+                            mainWindow = allWindows[0]; // Use the first available window
+                        }
+                    }
+                }
+
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    console.log('🔍 IPC: Main window found, showing node status modal...');
+                    await nodeStatusModal.show(mainWindow);
+                    console.log('🔍 IPC: Node status modal shown successfully');
+                    return { success: true };
+                } else {
+                    console.log('🔍 IPC: Main window not found or destroyed');
+                    throw new Error('Main window not found or destroyed');
+                }
+            } catch (error) {
+                console.error('Failed to open node status modal:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Handle get node status request
+        this.safeRegisterHandler('get-node-status', async (event) => {
+            try {
+                console.log('🔍 Getting node status...');
+
+                // Get current node info from distributed node manager
+                let currentNode = null;
+                let mainNodes = {};
+                let hierarchy = [];
+
+                // Get distributed node manager from main app
+                const mainApp = require('../main');
+                const distributedNodeManager = mainApp.distributedNodeManager;
+
+                if (distributedNodeManager) {
+                    // Get current node info
+                    const nodeInfo = distributedNodeManager.currentNode;
+                    if (nodeInfo) {
+                        currentNode = {
+                            nodeId: nodeInfo.nodeId,
+                            username: nodeInfo.username,
+                            ipAddress: nodeInfo.ipAddress,
+                            port: nodeInfo.port,
+                            status: nodeInfo.status || 'active',
+                            priority: nodeInfo.priority || 50,
+                            nodeType: nodeInfo.nodeType
+                        };
+                    }
+
+                    // Get main node info for all levels from local database
+                    try {
+                        const DatabaseManager = require('../sqlite/databaseManager');
+
+                        // Get current main nodes from local database
+                        const domainMainNode = DatabaseManager.getCurrentDomainMainNode();
+                        if (domainMainNode) {
+                            mainNodes.domain = domainMainNode;
+                        }
+
+                        const clusterMainNode = DatabaseManager.getCurrentClusterMainNode();
+                        if (clusterMainNode) {
+                            mainNodes.cluster = clusterMainNode;
+                        }
+
+                        const channelMainNode = DatabaseManager.getCurrentChannelMainNode();
+                        if (channelMainNode) {
+                            mainNodes.channel = channelMainNode;
+                        }
+
+                        // Check if current node is main node for any level
+                        const isDomainMain = domainMainNode && domainMainNode.node_id === currentNode?.nodeId;
+                        const isClusterMain = clusterMainNode && clusterMainNode.node_id === currentNode?.nodeId;
+                        const isChannelMain = channelMainNode && channelMainNode.node_id === currentNode?.nodeId;
+
+                        // Build hierarchy showing current node's roles
+                        hierarchy = [
+                            {
+                                type: 'Domain',
+                                nodeId: domainMainNode ? domainMainNode.node_id : 'None',
+                                isMainNode: isDomainMain,
+                                isCurrentNode: isDomainMain
+                            },
+                            {
+                                type: 'Cluster',
+                                nodeId: clusterMainNode ? clusterMainNode.node_id : 'None',
+                                isMainNode: isClusterMain,
+                                isCurrentNode: isClusterMain
+                            },
+                            {
+                                type: 'Channel',
+                                nodeId: channelMainNode ? channelMainNode.node_id : 'None',
+                                isMainNode: isChannelMain,
+                                isCurrentNode: isChannelMain
+                            },
+                            {
+                                type: 'Local',
+                                nodeId: currentNode?.nodeId || 'None',
+                                isMainNode: true, // Current node is always local main
+                                isCurrentNode: true
+                            }
+                        ];
+
+                    } catch (error) {
+                        console.warn('Error getting main node info from local database:', error);
+                    }
+                }
+
+                return {
+                    success: true,
+                    data: {
+                        currentNode,
+                        mainNodes,
+                        hierarchy
+                    }
+                };
+
+            } catch (error) {
+                console.error('Error getting node status:', error);
+                return {
+                    success: false,
+                    error: error.message
+                };
+            }
+        });
+
         // Handle user selector modal open request
-        ipcMain.handle('open-user-selector', async (event) => {
+        this.safeRegisterHandler('open-user-selector', async (event) => {
             try {
                 const UserSelectorModal = require('../userSelectorModal');
                 const userSelectorModal = new UserSelectorModal();
@@ -756,7 +1048,7 @@ class IpcHandlers {
         });
 
         // Handle user switch request
-        ipcMain.handle('switch-user', async (event, userId) => {
+        this.safeRegisterHandler('switch-user', async (event, userId) => {
             try {
                 console.log(`🔄 C-Client IPC: Switching to user: ${userId}`);
 
@@ -786,12 +1078,32 @@ class IpcHandlers {
                 if (this.viewManager) {
                     try {
                         console.log('🔄 C-Client IPC: Closing all tabs and creating new default page...');
+                        console.log('🔍 C-Client IPC: ViewManager available:', !!this.viewManager);
+                        console.log('🔍 C-Client IPC: closeAllTabsAndCreateDefault method available:', typeof this.viewManager.closeAllTabsAndCreateDefault);
+
                         await this.viewManager.closeAllTabsAndCreateDefault();
                         console.log('✅ C-Client IPC: All tabs closed and new default page created');
                     } catch (viewError) {
                         console.error('❌ C-Client IPC: Error managing views during user switch:', viewError);
+                        console.error('❌ C-Client IPC: ViewError details:', {
+                            message: viewError.message,
+                            stack: viewError.stack
+                        });
                         // Don't fail the user switch if view management fails
                     }
+                } else {
+                    console.error('❌ C-Client IPC: ViewManager not available for user switch');
+                }
+
+                // Close user selector modal if it exists
+                try {
+                    // Send message to close any open user selector modal
+                    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                        this.mainWindow.webContents.send('close-user-selector-modal');
+                    }
+                } catch (modalCloseError) {
+                    console.error('Error closing user selector modal:', modalCloseError);
+                    // Don't fail the user switch if modal close fails
                 }
 
                 // Show greeting dialog for the switched user
@@ -822,7 +1134,7 @@ class IpcHandlers {
         });
 
         // Handle new user registration request
-        ipcMain.handle('open-user-registration', async (event) => {
+        this.safeRegisterHandler('open-user-registration', async (event) => {
             try {
                 const UserRegistrationDialog = require('../nodeManager/userRegistrationDialog');
                 const userRegistrationDialog = new UserRegistrationDialog();
@@ -856,6 +1168,8 @@ class IpcHandlers {
      * Clean up all IPC handlers
      */
     cleanup() {
+        console.log('🧹 C-Client IPC: Starting cleanup of all handlers...');
+
         // Remove all registered handlers
         const handlers = [
             // Tab related
@@ -902,6 +1216,8 @@ class IpcHandlers {
             // User registration related
             'submit-username',
             'open-config-modal',
+            'open-node-status-modal',
+            'get-node-status',
             'open-user-selector',
             'switch-user',
             'open-user-registration',
@@ -915,18 +1231,22 @@ class IpcHandlers {
             'get-current-client',
             'get-client-info',
             'get-url-injection-status',
+            'manual-connect-to-bclient',
 
         ];
 
+        let removedCount = 0;
         handlers.forEach(handler => {
             try {
                 ipcMain.removeHandler(handler);
+                removedCount++;
             } catch (error) {
                 // Warning: Failed to remove handler
+                console.warn(`⚠️ C-Client IPC: Failed to remove handler '${handler}':`, error.message);
             }
         });
 
-        // IPC handlers cleaned up
+        console.log(`🧹 C-Client IPC: Cleanup completed, removed ${removedCount}/${handlers.length} handlers`);
     }
 
     /**
@@ -934,7 +1254,7 @@ class IpcHandlers {
      */
     registerClientHandlers() {
         // Switch client (show selector modal)
-        ipcMain.handle('switch-client', async () => {
+        this.safeRegisterHandler('switch-client', async () => {
             try {
                 if (!this.clientManager) {
                     return { success: false, error: 'Client manager not available' };
@@ -953,7 +1273,7 @@ class IpcHandlers {
         });
 
         // Switch to specific client
-        ipcMain.handle('switch-to-client', async (_, targetClient) => {
+        this.safeRegisterHandler('switch-to-client', async (_, targetClient) => {
             try {
                 if (!this.clientManager) {
                     console.error('C-Client IPC: Client manager not available');
@@ -966,7 +1286,52 @@ class IpcHandlers {
                     console.log('🔄 C-Client IPC: Hidden all browser views for client switch');
                 }
 
+                // If switching to B-Client, stop the API server to prevent interference
+                if (targetClient === 'b-client') {
+                    try {
+                        // Get the main app instance to access the API server
+                        const mainApp = require('../main');
+                        if (mainApp && mainApp.apiServer) {
+                            console.log('🔄 C-Client IPC: Switching to B-Client, stopping API server...');
+                            mainApp.apiServer.stop();
+                            console.log('✅ C-Client IPC: API server stopped successfully');
+                        }
+                    } catch (apiError) {
+                        console.error('❌ C-Client IPC: Error stopping API server:', apiError);
+                        // Don't fail the client switch if API server stop fails
+                    }
+                }
+
+                // If switching back to C-Client, restart the API server
+                if (targetClient === 'c-client') {
+                    try {
+                        // Get the main app instance to restart the API server
+                        const mainApp = require('../main');
+                        if (mainApp && !mainApp.apiServer) {
+                            console.log('🔄 C-Client IPC: Switching back to C-Client, restarting API server...');
+                            mainApp.startApiServer();
+                            console.log('✅ C-Client IPC: API server restarted successfully');
+                        }
+                    } catch (apiError) {
+                        console.error('❌ C-Client IPC: Error restarting API server:', apiError);
+                        // Don't fail the client switch if API server restart fails
+                    }
+                }
+
                 const result = this.clientManager.switchClient(targetClient);
+
+                // If switching back to C-Client, create default page with URL parameter injection
+                if (targetClient === 'c-client' && this.viewManager) {
+                    try {
+                        console.log('🔄 C-Client IPC: Switching back to C-Client, creating default page...');
+                        await this.viewManager.closeAllTabsAndCreateDefault();
+                        console.log('✅ C-Client IPC: Default page created with URL parameter injection');
+                    } catch (viewError) {
+                        console.error('❌ C-Client IPC: Error creating default page after client switch:', viewError);
+                        // Don't fail the client switch if view management fails
+                    }
+                }
+
                 return result;
             } catch (error) {
                 console.error('C-Client IPC: Exception during switch to specific client:', error);
@@ -974,8 +1339,22 @@ class IpcHandlers {
             }
         });
 
+        // Manual connect to B-Client (through NSN)
+        this.safeRegisterHandler('manual-connect-to-bclient', async () => {
+            try {
+                console.log('🔗 C-Client IPC: Manual connect to B-Client through NSN requested');
+
+                // C-Client communicates with B-Client through NSN, not directly
+                console.log('✅ C-Client IPC: Ready to communicate with B-Client through NSN');
+                return { success: true, message: 'C-Client ready to communicate with B-Client through NSN' };
+            } catch (error) {
+                console.error('❌ C-Client IPC: Exception during manual connect:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
         // Get current client
-        ipcMain.handle('get-current-client', async () => {
+        this.safeRegisterHandler('get-current-client', async () => {
             try {
                 if (!this.clientManager) {
                     return { success: false, error: 'Client manager not available' };
@@ -994,7 +1373,7 @@ class IpcHandlers {
         });
 
         // Get client info
-        ipcMain.handle('get-client-info', async () => {
+        this.safeRegisterHandler('get-client-info', async () => {
             try {
                 if (!this.clientManager) {
                     return { success: false, error: 'Client manager not available' };
@@ -1016,10 +1395,10 @@ class IpcHandlers {
         });
 
         // Get URL parameter injection status
-        ipcMain.handle('get-url-injection-status', async (_, url) => {
+        this.safeRegisterHandler('get-url-injection-status', async (_, url) => {
             try {
                 const UrlParameterInjector = require('../utils/urlParameterInjector');
-                const urlInjector = new UrlParameterInjector();
+                const urlInjector = new UrlParameterInjector(this.apiPort);
                 const status = urlInjector.getInjectionStatus(url);
 
                 return {

@@ -19,7 +19,7 @@ class BClientApp {
         this.mainWindow = null;
         this.isInitialized = false;
         this.pendingTitleUpdates = new Map();
-        this.apiServer = new ApiServer(3000); // Start API server on port 3000
+        this.apiServer = new ApiServer(3000); // Start API server on fixed port 3000
         this.openModals = new Set(); // Track open modals
         this.clientSwitchManager = new ClientSwitchManager(); // Unified client switch manager
     }
@@ -31,6 +31,19 @@ class BClientApp {
         }
 
         console.log('Initializing B-Client (Enterprise) application...');
+
+        // Set environment variable for B-Client if not already set
+        if (!process.env.B_CLIENT_ENVIRONMENT) {
+            process.env.B_CLIENT_ENVIRONMENT = 'local'; // Default to local for development
+            console.log('B-Client: Set default environment to local');
+        } else {
+            console.log(`B-Client: Using environment from env: ${process.env.B_CLIENT_ENVIRONMENT}`);
+        }
+
+        // Update apiConfig with current environment
+        const apiConfig = require('./config/apiConfig');
+        apiConfig.setCurrentEnvironment(process.env.B_CLIENT_ENVIRONMENT);
+        console.log(`B-Client: Updated apiConfig environment to: ${apiConfig.currentEnvironment}`);
 
         try {
             // Initialize history manager

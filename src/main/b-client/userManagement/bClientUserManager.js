@@ -13,14 +13,12 @@ class BClientUserManager {
     }
 
     /**
-     * Initialize history manager
+     * Initialize B-Client user manager (no history functionality needed)
      */
     initialize() {
         try {
-            this.visitTracker.loadActiveRecords();
-            const totalRecords = this.historyDB.getVisitHistoryCount();
+            // B-Client only manages cookies and forwards requests, no history tracking needed
             this.isFullyInitialized = true;
-            this.autoCleanupOnStartup();
             return true;
         } catch (error) {
             console.error('Failed to initialize history manager:', error);

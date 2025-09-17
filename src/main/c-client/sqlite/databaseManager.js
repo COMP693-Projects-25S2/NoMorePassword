@@ -20,10 +20,119 @@ class DatabaseManager {
         return stmt.run(userId, username, domainId, nodeId, ipAddress);
     }
 
+    // ===================== Current Main Node Info Management =====================
+
+    // Update current domain main node info
+    static updateCurrentDomainMainNode(nodeInfo) {
+        const stmt = db.prepare(`
+            INSERT OR REPLACE INTO current_domain_main_node 
+            (node_id, username, domain_id, ip_address, port, status, last_heartbeat, 
+             updated_at, priority, capabilities, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        return stmt.run(
+            nodeInfo.nodeId,
+            nodeInfo.username,
+            nodeInfo.domainId,
+            nodeInfo.ipAddress,
+            nodeInfo.port || 3000,
+            nodeInfo.status || 'active',
+            nodeInfo.lastHeartbeat || Math.floor(Date.now() / 1000),
+            Math.floor(Date.now() / 1000),
+            nodeInfo.priority || 0,
+            nodeInfo.capabilities || '{}',
+            nodeInfo.metadata || '{}'
+        );
+    }
+
+    // Get current domain main node info
+    static getCurrentDomainMainNode() {
+        return db.prepare(`SELECT * FROM current_domain_main_node LIMIT 1`).get();
+    }
+
+    // Update current cluster main node info
+    static updateCurrentClusterMainNode(nodeInfo) {
+        const stmt = db.prepare(`
+            INSERT OR REPLACE INTO current_cluster_main_node 
+            (node_id, username, domain_id, cluster_id, ip_address, port, status, last_heartbeat, 
+             updated_at, priority, capabilities, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        return stmt.run(
+            nodeInfo.nodeId,
+            nodeInfo.username,
+            nodeInfo.domainId,
+            nodeInfo.clusterId,
+            nodeInfo.ipAddress,
+            nodeInfo.port || 3001,
+            nodeInfo.status || 'active',
+            nodeInfo.lastHeartbeat || Math.floor(Date.now() / 1000),
+            Math.floor(Date.now() / 1000),
+            nodeInfo.priority || 0,
+            nodeInfo.capabilities || '{}',
+            nodeInfo.metadata || '{}'
+        );
+    }
+
+    // Get current cluster main node info
+    static getCurrentClusterMainNode() {
+        return db.prepare(`SELECT * FROM current_cluster_main_node LIMIT 1`).get();
+    }
+
+    // Update current channel main node info
+    static updateCurrentChannelMainNode(nodeInfo) {
+        const stmt = db.prepare(`
+            INSERT OR REPLACE INTO current_channel_main_node 
+            (node_id, username, domain_id, cluster_id, channel_id, ip_address, port, status, last_heartbeat, 
+             updated_at, priority, capabilities, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        return stmt.run(
+            nodeInfo.nodeId,
+            nodeInfo.username,
+            nodeInfo.domainId,
+            nodeInfo.clusterId,
+            nodeInfo.channelId,
+            nodeInfo.ipAddress,
+            nodeInfo.port || 3002,
+            nodeInfo.status || 'active',
+            nodeInfo.lastHeartbeat || Math.floor(Date.now() / 1000),
+            Math.floor(Date.now() / 1000),
+            nodeInfo.priority || 0,
+            nodeInfo.capabilities || '{}',
+            nodeInfo.metadata || '{}'
+        );
+    }
+
+    // Get current channel main node info
+    static getCurrentChannelMainNode() {
+        return db.prepare(`SELECT * FROM current_channel_main_node LIMIT 1`).get();
+    }
+
+    // Clear all current main node info
+    static clearAllCurrentMainNodeInfo() {
+        db.prepare(`DELETE FROM current_domain_main_node`).run();
+        db.prepare(`DELETE FROM current_cluster_main_node`).run();
+        db.prepare(`DELETE FROM current_channel_main_node`).run();
+    }
+
     // Add domain main node with auto-generated UUID
-    static addDomainMainNodeAutoId(username, domainId, nodeId = null, ipAddress = null) {
-        const userId = generateUserId();
-        return this.addDomainMainNode(userId, username, domainId, nodeId, ipAddress);
+    static addDomainMainNodeAutoId(nodeData) {
+        const userId = nodeData.userId || generateUserId();
+        const stmt = db.prepare(`
+            INSERT INTO domain_main_nodes 
+            (user_id, username, domain_id, node_id, ip_address, port, status, is_main_node, 
+             last_heartbeat, created_at, updated_at, priority, capabilities, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        return stmt.run(
+            userId, nodeData.username, nodeData.domainId, nodeData.nodeId, nodeData.ipAddress,
+            nodeData.port || 3000, nodeData.status || 'active', nodeData.isMainNode || 0,
+            nodeData.lastHeartbeat || Math.floor(Date.now() / 1000),
+            nodeData.createdAt || Math.floor(Date.now() / 1000),
+            nodeData.updatedAt || Math.floor(Date.now() / 1000),
+            nodeData.priority || 0, nodeData.capabilities || '{}', nodeData.metadata || '{}'
+        );
     }
 
     // Get all domain main nodes
@@ -39,6 +148,11 @@ class DatabaseManager {
     // Get domain main node by domain ID
     static getDomainMainNodeByDomainId(domainId) {
         return db.prepare(`SELECT * FROM domain_main_nodes WHERE domain_id = ?`).get(domainId);
+    }
+
+    // Get domain main node by node ID
+    static getDomainMainNodeByNodeId(nodeId) {
+        return db.prepare(`SELECT * FROM domain_main_nodes WHERE node_id = ?`).get(nodeId);
     }
 
     // Update domain main node information
@@ -74,9 +188,22 @@ class DatabaseManager {
     }
 
     // Add cluster main node with auto-generated UUID
-    static addClusterMainNodeAutoId(username, domainId, clusterId, nodeId = null, ipAddress = null) {
-        const userId = generateUserId();
-        return this.addClusterMainNode(userId, username, domainId, clusterId, nodeId, ipAddress);
+    static addClusterMainNodeAutoId(nodeData) {
+        const userId = nodeData.userId || generateUserId();
+        const stmt = db.prepare(`
+            INSERT INTO cluster_main_nodes 
+            (user_id, username, domain_id, cluster_id, node_id, ip_address, port, status, is_main_node, 
+             last_heartbeat, created_at, updated_at, priority, capabilities, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        return stmt.run(
+            userId, nodeData.username, nodeData.domainId, nodeData.clusterId, nodeData.nodeId, nodeData.ipAddress,
+            nodeData.port || 3001, nodeData.status || 'active', nodeData.isMainNode || 0,
+            nodeData.lastHeartbeat || Math.floor(Date.now() / 1000),
+            nodeData.createdAt || Math.floor(Date.now() / 1000),
+            nodeData.updatedAt || Math.floor(Date.now() / 1000),
+            nodeData.priority || 0, nodeData.capabilities || '{}', nodeData.metadata || '{}'
+        );
     }
 
     // Get all cluster main nodes
@@ -97,6 +224,11 @@ class DatabaseManager {
     // Get cluster main node by cluster ID
     static getClusterMainNodeByClusterId(clusterId) {
         return db.prepare(`SELECT * FROM cluster_main_nodes WHERE cluster_id = ?`).get(clusterId);
+    }
+
+    // Get cluster main node by node ID
+    static getClusterMainNodeByNodeId(nodeId) {
+        return db.prepare(`SELECT * FROM cluster_main_nodes WHERE node_id = ?`).get(nodeId);
     }
 
     // Update cluster main node information
@@ -137,9 +269,22 @@ class DatabaseManager {
     }
 
     // Add channel main node with auto-generated UUID
-    static addChannelMainNodeAutoId(username, domainId, clusterId, channelId, nodeId = null, ipAddress = null) {
-        const userId = generateUserId();
-        return this.addChannelMainNode(userId, username, domainId, clusterId, channelId, nodeId, ipAddress);
+    static addChannelMainNodeAutoId(nodeData) {
+        const userId = nodeData.userId || generateUserId();
+        const stmt = db.prepare(`
+            INSERT INTO channel_main_nodes 
+            (user_id, username, domain_id, cluster_id, channel_id, node_id, ip_address, port, status, is_main_node, 
+             last_heartbeat, created_at, updated_at, priority, capabilities, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        return stmt.run(
+            userId, nodeData.username, nodeData.domainId, nodeData.clusterId, nodeData.channelId,
+            nodeData.nodeId, nodeData.ipAddress, nodeData.port || 3002, nodeData.status || 'active',
+            nodeData.isMainNode || 0, nodeData.lastHeartbeat || Math.floor(Date.now() / 1000),
+            nodeData.createdAt || Math.floor(Date.now() / 1000),
+            nodeData.updatedAt || Math.floor(Date.now() / 1000),
+            nodeData.priority || 0, nodeData.capabilities || '{}', nodeData.metadata || '{}'
+        );
     }
 
     // Get all channel main nodes
@@ -165,6 +310,11 @@ class DatabaseManager {
     // Get channel main node by channel ID
     static getChannelMainNodeByChannelId(channelId) {
         return db.prepare(`SELECT * FROM channel_main_nodes WHERE channel_id = ?`).get(channelId);
+    }
+
+    // Get channel main node by node ID
+    static getChannelMainNodeByNodeId(nodeId) {
+        return db.prepare(`SELECT * FROM channel_main_nodes WHERE node_id = ?`).get(nodeId);
     }
 
     // Update channel main node information
@@ -311,9 +461,23 @@ class DatabaseManager {
     }
 
     // Add local user with auto-generated UUID
-    static addLocalUserAutoId(username, domainId, clusterId, channelId, nodeId = null, ipAddress = null, isCurrent = 0) {
-        const userId = generateUserId();
-        return this.addLocalUser(userId, username, domainId, clusterId, channelId, nodeId, ipAddress, isCurrent);
+    static addLocalUserAutoId(nodeData) {
+        const userId = nodeData.userId || generateUserId();
+        const stmt = db.prepare(`
+            INSERT INTO local_users 
+            (user_id, username, domain_id, cluster_id, channel_id, node_id, ip_address, port, status, is_main_node, 
+             last_heartbeat, created_at, updated_at, priority, capabilities, metadata, is_current)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        return stmt.run(
+            userId, nodeData.username, nodeData.domainId, nodeData.clusterId, nodeData.channelId,
+            nodeData.nodeId, nodeData.ipAddress, nodeData.port || 3003, nodeData.status || 'active',
+            nodeData.isMainNode || 0, nodeData.lastHeartbeat || Math.floor(Date.now() / 1000),
+            nodeData.createdAt || Math.floor(Date.now() / 1000),
+            nodeData.updatedAt || Math.floor(Date.now() / 1000),
+            nodeData.priority || 0, nodeData.capabilities || '{}', nodeData.metadata || '{}',
+            nodeData.isCurrent || 0
+        );
     }
 
     // Get all local users
@@ -339,6 +503,11 @@ class DatabaseManager {
     // Get all local users by channel ID
     static getLocalUsersByChannelId(channelId) {
         return db.prepare(`SELECT * FROM local_users WHERE channel_id = ?`).all(channelId);
+    }
+
+    // Get all local users by domain, cluster, and channel ID
+    static getLocalUsersByChannel(domainId, clusterId, channelId) {
+        return db.prepare(`SELECT * FROM local_users WHERE domain_id = ? AND cluster_id = ? AND channel_id = ?`).all(domainId, clusterId, channelId);
     }
 
     // Get local user by username
@@ -658,6 +827,38 @@ class DatabaseManager {
         // Update all users with the target node_id
         this.updateAllLocalUsersNodeId(targetNodeId);
         return targetNodeId;
+    }
+
+    // Clear all current user flags
+    static clearCurrentLocalUserFlags() {
+        try {
+            const result = db.prepare('UPDATE local_users SET is_current = 0').run();
+            return { success: true, changes: result.changes };
+        } catch (error) {
+            console.error('Error clearing current local user flags:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // Set current local user
+    static setCurrentLocalUser(userId) {
+        try {
+            const result = db.prepare('UPDATE local_users SET is_current = 1 WHERE user_id = ?').run(userId);
+            return { success: true, changes: result.changes };
+        } catch (error) {
+            console.error('Error setting current local user:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // Get current local user
+    static getCurrentLocalUser() {
+        try {
+            return db.prepare('SELECT * FROM local_users WHERE is_current = 1').get();
+        } catch (error) {
+            console.error('Error getting current local user:', error);
+            return null;
+        }
     }
 }
 

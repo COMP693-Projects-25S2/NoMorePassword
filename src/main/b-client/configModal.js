@@ -10,7 +10,7 @@ class ConfigModal {
     /**
      * Show configuration modal
      */
-    show() {
+    show(mainWindow = null) {
         if (this.isOpen && this.configWindow && !this.configWindow.isDestroyed()) {
             this.configWindow.focus();
             return;
@@ -72,7 +72,7 @@ class ConfigModal {
         ipcMain.once('switch-to-c-client', () => {
             console.log('Switching to C-Client from B-Client configuration');
             this.close();
-            
+
             // Emit client switch event
             const { app } = require('electron');
             app.emit('client-switch', 'c-client');

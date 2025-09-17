@@ -33,6 +33,8 @@ contextBridge.exposeInMainWorld(
     clearLocalUsers: () => ipcRenderer.invoke('clear-local-users'),
     exitApp: () => ipcRenderer.invoke('exit-app'),
     openConfigModal: () => ipcRenderer.invoke('open-config-modal'),
+    openNodeStatusModal: () => ipcRenderer.invoke('open-node-status-modal'),
+    getNodeStatus: () => ipcRenderer.invoke('get-node-status'),
     openUserSelector: () => ipcRenderer.invoke('open-user-selector'),
     switchUser: (userId) => ipcRenderer.invoke('switch-user', userId),
     openUserRegistration: () => ipcRenderer.invoke('open-user-registration'),

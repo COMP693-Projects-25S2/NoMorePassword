@@ -516,15 +516,14 @@ class BClientIpcHandlers {
             }
         });
 
-        // Clear local users
+        // Clear local users - B-Client doesn't use local_users table
         ipcMain.handle('clear-local-users', () => {
             try {
-                const db = require('../sqlite/initDatabase');
-                const result = db.prepare('DELETE FROM local_users').run();
-                console.log(`Cleared ${result.changes} users from local_users table`);
-                return { success: true, changes: result.changes };
+                // B-Client is an enterprise server, it doesn't have local users
+                console.log('B-Client: No local users to clear (enterprise server)');
+                return { success: true, changes: 0 };
             } catch (error) {
-                console.error('Error clearing local_users table:', error);
+                console.error('Error clearing local users:', error);
                 return { success: false, error: error.message };
             }
         });
@@ -625,32 +624,9 @@ class BClientIpcHandlers {
                 // Insert new user into database
                 const db = require('../sqlite/initDatabase');
 
-                // First, set all existing users to not current
-                db.prepare('UPDATE local_users SET is_current = 0').run();
-
-                // Then insert the new user as current
-                const insertStmt = db.prepare(`
-                    INSERT INTO local_users (
-                        user_id, username, domain_id, cluster_id, channel_id, ip_address, is_current
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                `);
-
-                const result = insertStmt.run(
-                    userData.userId,
-                    userData.username,
-                    userData.domainId,
-                    userData.clusterId,
-                    userData.channelId,
-                    userData.ipAddress,
-                    userData.isCurrent
-                );
-
-                if (result.changes > 0) {
-                    console.log(`New user registered successfully: ${userData.username} (${userData.userId})`);
-                    return { success: true, userData };
-                } else {
-                    throw new Error('Failed to insert user into database');
-                }
+                // B-Client is an enterprise server, it doesn't manage local users
+                console.log('B-Client: Cannot register local user (enterprise server)');
+                return { success: false, error: 'B-Client is an enterprise server, cannot register local users' };
 
             } catch (error) {
                 console.error('Error submitting username:', error);
@@ -691,43 +667,9 @@ class BClientIpcHandlers {
 
                 const db = require('../sqlite/initDatabase');
 
-                // First, set all users to not current
-                db.prepare('UPDATE local_users SET is_current = 0').run();
-
-                // Then set the selected user as current
-                const result = db.prepare('UPDATE local_users SET is_current = 1 WHERE user_id = ?').run(userId);
-
-                if (result.changes > 0) {
-                    console.log('Successfully switched to user:', userId);
-
-                    // Get the new current user info
-                    const newUser = db.prepare('SELECT * FROM local_users WHERE user_id = ?').get(userId);
-
-                    // Show greeting dialog for the switched user
-                    try {
-                        const UserRegistrationDialog = require('../nodeManager/userRegistrationDialog');
-                        const greetingDialog = new UserRegistrationDialog();
-
-                        // Use the stored main window reference instead of event.sender
-                        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                            console.log('Showing greeting dialog for switched user:', newUser.username);
-                            await greetingDialog.showGreeting(this.mainWindow);
-                        } else {
-                            console.warn('Main window not available for greeting dialog');
-                        }
-                    } catch (greetingError) {
-                        console.error('Error showing greeting dialog:', greetingError);
-                        // Don't fail the user switch if greeting fails
-                    }
-
-                    return {
-                        success: true,
-                        user: newUser,
-                        message: `Switched to user: ${newUser.username}`
-                    };
-                } else {
-                    throw new Error('User not found or switch failed');
-                }
+                // B-Client is an enterprise server, it doesn't manage local users
+                console.log('B-Client: Cannot switch local user (enterprise server)');
+                return { success: false, error: 'B-Client is an enterprise server, cannot switch local users' };
             } catch (error) {
                 console.error('Error switching user:', error);
                 return { success: false, error: error.message };
@@ -810,6 +752,8 @@ class BClientIpcHandlers {
             // User registration related
             'submit-username',
             'open-config-modal',
+            'open-node-status-modal',
+            'get-node-status',
             'open-user-selector',
             'switch-user',
             'open-user-registration',
@@ -822,6 +766,8 @@ class BClientIpcHandlers {
             'switch-to-client',
             'get-current-client',
             'get-client-info',
+            'manual-connect-to-bclient',
+            'get-url-injection-status',
 
         ];
 
@@ -921,6 +867,30 @@ class BClientIpcHandlers {
                 return { success: false, error: error.message };
             }
         });
+
+        // Set B-Client environment configuration
+        ipcMain.handle('set-b-client-environment', async (event, environment) => {
+            try {
+                // Validate environment
+                if (!['local', 'production'].includes(environment)) {
+                    return { success: false, error: 'Invalid environment. Must be "local" or "production"' };
+                }
+
+                // Update apiConfig
+                const apiConfig = require('../config/apiConfig');
+                const success = apiConfig.setCurrentEnvironment(environment);
+
+                if (success) {
+                    console.log(`[B-Client IPC] Environment configuration updated: ${environment}`);
+                    return { success: true, message: `Environment set to ${environment}` };
+                } else {
+                    return { success: false, error: 'Failed to update environment configuration' };
+                }
+            } catch (error) {
+                console.error('Failed to update environment configuration:', error);
+                return { success: false, error: error.message };
+            }
+        });
     }
 
     /**
@@ -936,7 +906,7 @@ class BClientIpcHandlers {
                 }
 
                 if (!this.configModal.isModalOpen()) {
-                    this.configModal.show();
+                    this.configModal.show(this.mainWindow);
 
                     // Add to main app's modal tracking
                     if (this.mainApp && this.mainApp.openModals) {

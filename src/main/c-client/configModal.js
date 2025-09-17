@@ -198,6 +198,14 @@ class ConfigModal {
         </div>
 
         <div class="modal-body">
+            <div class="config-option" id="node-status">
+                <span class="config-option-icon">🌐</span>
+                <span class="config-option-text">Node Status</span>
+            </div>
+            <div class="config-option" id="manual-connect">
+                <span class="config-option-icon">🔗</span>
+                <span class="config-option-text">Manual Connect</span>
+            </div>
             <div class="config-option" id="switch-client">
                 <span class="config-option-icon">🔄</span>
                 <span class="config-option-text">Switch to B-Client</span>
@@ -231,6 +239,8 @@ class ConfigModal {
         document.addEventListener('DOMContentLoaded', () => {
 
             const closeBtn = document.getElementById('closeBtn');
+            const nodeStatusBtn = document.getElementById('node-status');
+            const manualConnectBtn = document.getElementById('manual-connect');
             const switchClientBtn = document.getElementById('switch-client');
             const newUserBtn = document.getElementById('new-user');
             const switchUserBtn = document.getElementById('switch-user');
@@ -243,6 +253,35 @@ class ConfigModal {
                 window.close();
             });
 
+            // Handle node status button click
+            nodeStatusBtn.addEventListener('click', async () => {
+                try {
+                    console.log('🔍 Node Status button clicked');
+                    const result = await ipcRenderer.invoke('open-node-status-modal');
+                    console.log('🔍 Node Status IPC result:', result);
+                    if (!result.success) {
+                        console.error('Failed to open node status modal:', result.error);
+                    }
+                } catch (error) {
+                    console.error('Error opening node status modal:', error);
+                }
+            });
+
+            // Handle manual connect button click
+            manualConnectBtn.addEventListener('click', async () => {
+                try {
+                    const result = await ipcRenderer.invoke('manual-connect-to-bclient');
+                    if (result.success) {
+                        alert('Successfully connected to B-Client!');
+                    } else {
+                        alert('Failed to connect to B-Client: ' + result.error);
+                    }
+                } catch (error) {
+                    alert('Error connecting to B-Client: ' + error.message);
+                }
+                window.close();
+            });
+
             // Handle switch client - directly switch to B-Client
             switchClientBtn.addEventListener('click', async () => {
                 try {
@@ -252,11 +291,11 @@ class ConfigModal {
                         // Switching to B-Client successful
                     } else {
                         console.error('❌ C-Client: Failed to switch to B-Client:', result.error);
-                        alert(\`Failed to switch to B-Client: \${result.error}\`);
+                        alert('Failed to switch to B-Client: ' + result.error);
                     }
                 } catch (error) {
                     console.error('❌ C-Client: Error during switch to B-Client:', error);
-                    alert(\`Error switching to B-Client: \${error.message}\`);
+                    alert('Error switching to B-Client: ' + error.message);
                 }
                 window.close();
             });
@@ -268,10 +307,10 @@ class ConfigModal {
                     if (result.success) {
                         // User registration dialog opened successfully
                     } else {
-                        alert(\`Failed to open user registration dialog: \${result.error}\`);
+                        alert('Failed to open user registration dialog: ' + result.error);
                     }
                 } catch (error) {
-                    alert(\`Error opening user registration dialog: \${error.message}\`);
+                    alert('Error opening user registration dialog: ' + error.message);
                 }
                 window.close();
             });
@@ -285,10 +324,10 @@ class ConfigModal {
                     } else if (result.cancelled) {
                         // User selection cancelled
                     } else {
-                        alert(\`Failed to switch user: \${result.error}\`);
+                        alert('Failed to switch user: ' + result.error);
                     }
                 } catch (error) {
-                    alert(\`Error opening user selector: \${error.message}\`);
+                    alert('Error opening user selector: ' + error.message);
                 }
                 window.close();
             });
@@ -298,12 +337,12 @@ class ConfigModal {
                 try {
                     const result = await ipcRenderer.invoke('clear-local-users');
                     if (result.success) {
-                        alert(\`Successfully cleared \${result.changes} users from local_users table\`);
+                        alert('Successfully cleared ' + result.changes + ' users from local_users table');
                     } else {
-                        alert(\`Failed to clear local_users table: \${result.error}\`);
+                        alert('Failed to clear local_users table: ' + result.error);
                     }
                 } catch (error) {
-                    alert(\`Error clearing local_users table: \${error.message}\`);
+                    alert('Error clearing local_users table: ' + error.message);
                 }
                 window.close();
             });
@@ -313,12 +352,12 @@ class ConfigModal {
                 try {
                     const result = await ipcRenderer.invoke('clear-current-user-activities');
                     if (result.success) {
-                        alert(\`Successfully cleared \${result.changes} activities for current user\`);
+                        alert('Successfully cleared ' + result.changes + ' activities for current user');
                     } else {
-                        alert(\`Failed to clear user activities: \${result.error}\`);
+                        alert('Failed to clear user activities: ' + result.error);
                     }
                 } catch (error) {
-                    alert(\`Error clearing user activities: \${error.message}\`);
+                    alert('Error clearing user activities: ' + error.message);
                 }
                 window.close();
             });
@@ -328,7 +367,7 @@ class ConfigModal {
                 try {
                     await ipcRenderer.invoke('exit-app');
                 } catch (error) {
-                    alert(\`Error exiting application: \${error.message}\`);
+                    alert('Error exiting application: ' + error.message);
                 }
                 window.close();
             });

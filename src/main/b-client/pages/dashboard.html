@@ -76,6 +76,7 @@
             box-shadow: 0 4px 12px rgba(66, 153, 225, 0.2);
         }
 
+
         .config-icon {
             width: 16px;
             height: 16px;
@@ -247,6 +248,8 @@
         class Dashboard {
             constructor() {
                 this.apiBase = 'http://localhost:3000';
+                // Get environment from localStorage or default to production
+                this.currentEnvironment = localStorage.getItem('bclient-environment') || 'production';
                 this.init();
             }
 
@@ -254,6 +257,14 @@
                 await this.loadDashboardData();
                 // Refresh data every 30 seconds
                 setInterval(() => this.loadDashboardData(), 30000);
+
+                // Listen for environment changes from config modal
+                window.addEventListener('storage', (e) => {
+                    if (e.key === 'bclient-environment' && e.newValue !== this.currentEnvironment) {
+                        this.currentEnvironment = e.newValue;
+                        this.loadDashboardData();
+                    }
+                });
             }
 
             async loadDashboardData() {
@@ -289,7 +300,18 @@
             }
 
             updateWebsiteInfo(config) {
-                const website = config.targetWebsites['comp639nsn.pythonanywhere.com'];
+                let website;
+
+                // Choose website based on current environment
+                if (this.currentEnvironment === 'local') {
+                    // Local development environment
+                    website = config.targetWebsites['localhost:5000'] ||
+                        config.targetWebsites['127.0.0.1:5000'];
+                } else {
+                    // Production environment
+                    website = config.targetWebsites['comp639nsn.pythonanywhere.com'];
+                }
+
                 if (website) {
                     // Use real title if available, otherwise fallback to configured name
                     const title = website.realTitle || website.name;
@@ -344,11 +366,12 @@
             hideError() {
                 document.getElementById('errorMessage').style.display = 'none';
             }
+
         }
 
         // Initialize dashboard when page loads
         document.addEventListener('DOMContentLoaded', () => {
-            new Dashboard();
+            const dashboard = new Dashboard();
 
             // Add config button event listener
             document.getElementById('configButton').addEventListener('click', async () => {
@@ -362,6 +385,7 @@
                     console.error('Failed to open config modal:', error);
                 }
             });
+
         });
     </script>
 </body>

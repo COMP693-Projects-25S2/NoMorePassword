@@ -36,17 +36,31 @@ class ClientSwitchManager {
             if (ipcHandlers) {
                 try {
                     ipcHandlers.cleanup();
+                    console.log('IPC handlers cleaned up');
                 } catch (error) {
                     console.error('Error cleaning up IPC handlers:', error);
                 }
             }
 
-            // Wait a bit to ensure cleanup is complete
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // Wait longer to ensure cleanup is complete
+            await new Promise(resolve => setTimeout(resolve, 500));
 
             // Initialize new IPC handlers based on client type
             if (targetClient === 'b-client') {
                 console.log('🔄 ClientSwitchManager: Initializing B-Client IPC handlers');
+
+                // Set B-Client environment configuration before starting API server
+                if (!process.env.B_CLIENT_ENVIRONMENT) {
+                    process.env.B_CLIENT_ENVIRONMENT = 'local'; // Default to local for development
+                    console.log('🔄 ClientSwitchManager: Set B-Client environment to local');
+                } else {
+                    console.log(`🔄 ClientSwitchManager: Using B-Client environment: ${process.env.B_CLIENT_ENVIRONMENT}`);
+                }
+
+                // Update apiConfig with current environment
+                const apiConfig = require('../b-client/config/apiConfig');
+                apiConfig.setCurrentEnvironment(process.env.B_CLIENT_ENVIRONMENT);
+                console.log(`🔄 ClientSwitchManager: Updated apiConfig environment to: ${apiConfig.currentEnvironment}`);
 
                 // Start B-Client API server if not already running
                 if (!this.bClientApiServer) {
@@ -91,6 +105,19 @@ class ClientSwitchManager {
             } else if (targetClient === 'c-client') {
                 console.log('🔄 ClientSwitchManager: Initializing C-Client IPC handlers');
 
+                // Set C-Client environment configuration
+                if (!process.env.C_CLIENT_ENVIRONMENT) {
+                    process.env.C_CLIENT_ENVIRONMENT = 'local'; // Default to local for development
+                    console.log('🔄 ClientSwitchManager: Set C-Client environment to local');
+                } else {
+                    console.log(`🔄 ClientSwitchManager: Using C-Client environment: ${process.env.C_CLIENT_ENVIRONMENT}`);
+                }
+
+                // Update C-Client apiConfig with current environment
+                const cClientApiConfig = require('../c-client/config/apiConfig');
+                cClientApiConfig.setCurrentEnvironment(process.env.C_CLIENT_ENVIRONMENT);
+                console.log(`🔄 ClientSwitchManager: Updated C-Client apiConfig environment to: ${cClientApiConfig.currentEnvironment}`);
+
                 // Stop B-Client API server when switching back to C-Client
                 if (this.bClientApiServer) {
                     await this.bClientApiServer.stop();
@@ -118,7 +145,9 @@ class ClientSwitchManager {
                 const cClientViewManager = new CClientViewManager(cClientWindowManager, cClientHistoryManager);
 
                 const CClientIpcHandlers = require('../c-client/ipc/ipcHandlers');
-                const newIpcHandlers = new CClientIpcHandlers(cClientViewManager, cClientHistoryManager, mainWindow, clientManager, startupValidator?.nodeManager);
+                // Get distributed node manager from main app context
+                const distributedNodeManager = context.mainApp?.distributedNodeManager || null;
+                const newIpcHandlers = new CClientIpcHandlers(cClientViewManager, cClientHistoryManager, mainWindow, clientManager, distributedNodeManager);
                 console.log('🔄 ClientSwitchManager: C-Client IPC handlers initialized');
 
                 // Load C-Client interface using WindowManager
