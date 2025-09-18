@@ -560,6 +560,23 @@ class ViewManager {
     }
 
     /**
+     * Get current view
+     */
+    getCurrentView() {
+        if (this.currentViewId && this.views[this.currentViewId]) {
+            const view = this.views[this.currentViewId];
+            if (!view.webContents.isDestroyed()) {
+                return {
+                    id: this.currentViewId,
+                    webContents: view.webContents,
+                    view: view
+                };
+            }
+        }
+        return null;
+    }
+
+    /**
      * Switch to tab
      */
     switchTab(id) {

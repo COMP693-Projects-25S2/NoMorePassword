@@ -29,7 +29,6 @@ db.exec(`
     CREATE TABLE IF NOT EXISTS user_cookies (
         user_id         VARCHAR(50),
         username        TEXT,
-        third_party_username TEXT,
         node_id         VARCHAR(50),
         cookie          TEXT,
         auto_refresh    BOOLEAN DEFAULT 0,

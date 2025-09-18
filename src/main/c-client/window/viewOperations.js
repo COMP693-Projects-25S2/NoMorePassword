@@ -152,6 +152,7 @@ class ViewOperations {
         });
     }
 
+
     /**
      * Update view title
      */

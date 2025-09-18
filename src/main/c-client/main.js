@@ -1152,6 +1152,7 @@ class ElectronApp {
                                 console.log(`🔄 C-Client: Using main window's session for cookie setting`);
                             }
 
+                            // Set the main session data cookie
                             await targetSession.cookies.set({
                                 url: cookieUrl,
                                 name: 'nmp_session_data',
@@ -1160,6 +1161,10 @@ class ElectronApp {
                                 secure: false,
                                 sameSite: 'lax'
                             });
+
+                            // All NMP parameters are now handled via URL injection
+                            // No need for additional cookies since URL parameters are automatically re-injected on refresh
+                            console.log(`🔄 C-Client: All NMP parameters handled via URL injection (auto-reinject on refresh)`);
 
                             console.log(`🔄 C-Client: Complete session data cookie set successfully for user ${complete_session_data.nsn_username}`);
 

@@ -363,7 +363,7 @@ class ApiServer {
                 const BClientNodeManager = require('../nodeManager/bClientNodeManager');
                 const nodeManager = new BClientNodeManager();
 
-                // Query user cookies - just get the most recent one for this user
+                // Query user cookies - get the most recent one for this user
                 console.log(`[API] Debug - Querying cookies for user_id: "${user_id}" (type: ${typeof user_id})`);
                 const cookies = nodeManager.getAllUserCookies(user_id);
                 console.log(`[API] Found ${cookies.length} cookies for user ${user_id}`);
@@ -372,7 +372,7 @@ class ApiServer {
                 if (cookies.length > 0) {
                     console.log(`[API] Debug - All cookies for user ${user_id}:`);
                     cookies.forEach((cookie, index) => {
-                        console.log(`[API]   Cookie ${index + 1}: user_id="${cookie.user_id}" (type: ${typeof cookie.user_id}), username=${cookie.username}, domain_id=${cookie.domain_id}`);
+                        console.log(`[API]   Cookie ${index + 1}: user_id="${cookie.user_id}" (type: ${typeof cookie.user_id}), username=${cookie.username}`);
                     });
                 } else {
                     console.log(`[API] Debug - No cookies found for user_id: "${user_id}"`);
@@ -400,7 +400,7 @@ class ApiServer {
                         new Date(b.create_time) - new Date(a.create_time)
                     )[0];
 
-                    console.log(`[API] ✅ Found matching cookie for user ${user_id}: ${targetCookie.cookie.substring(0, 50)}...`);
+                    console.log(`[API] ✅ Found matching cookie for user ${user_id}: username=${targetCookie.username}, cookie=${targetCookie.cookie.substring(0, 50)}...`);
 
                     // Check if cookie is in old format and needs to be updated
                     let cookieToSend = targetCookie.cookie;
@@ -780,9 +780,10 @@ class ApiServer {
                 const jsonCookieData = JSON.stringify(completeSessionData);
                 console.log(`[API] Storing JSON cookie data (first 100 chars): ${jsonCookieData.substring(0, 100)}...`);
 
-                const cookieResult = nodeManager.addUserCookie(
+                const cookieResult = nodeManager.addUserCookieWithTargetUsername(
                     user_id,
                     user_name,
+                    account, // Use the target website username
                     node_id, // node_id
                     jsonCookieData, // Store complete session data as JSON
                     auto_refresh || false, // auto_refresh
@@ -791,28 +792,53 @@ class ApiServer {
 
                 console.log(`[API] Cookie storage result:`, cookieResult ? 'success' : 'failed');
 
-                // auto_refresh status is already stored in user_cookies table
+                // Send complete session data to C-Client (same as auto-register flow)
+                console.log(`[API] Sending complete session data to C-Client for user: ${user_name}`);
+                const sendResult = await this.sendCookieToCClient(user_id, account, JSON.stringify(completeSessionData), null, completeSessionData);
 
-                return {
-                    action: 'bind_existing_user',
-                    user_id,
-                    user_name,
-                    domain_id,
-                    success: true,
-                    method: 'login_with_credentials',
-                    login_success: true,
-                    auto_refresh_enabled: auto_refresh || false,
-                    refresh_attempted: auto_refresh || false,
-                    refresh_success: refreshResult ? refreshResult.success : null,
-                    refresh_error: refreshResult && !refreshResult.success ? refreshResult.error : null,
-                    session_info: {
-                        complete_session_data: completeSessionData
-                    },
-                    stored_cookie: cookieResult ? 'success' : 'failed',
-                    message: auto_refresh && refreshResult && refreshResult.success ?
-                        'Successfully logged in with provided credentials and refreshed session cookie' :
-                        'Successfully logged in with provided credentials and stored session cookie'
-                };
+                if (sendResult) {
+                    console.log(`[API] Successfully sent complete session data to C-Client for user: ${user_name}`);
+                    return {
+                        action: 'bind_existing_user',
+                        user_id,
+                        user_name,
+                        domain_id,
+                        success: true,
+                        method: 'login_with_credentials',
+                        login_success: true,
+                        auto_refresh_enabled: auto_refresh || false,
+                        refresh_attempted: auto_refresh || false,
+                        refresh_success: refreshResult ? refreshResult.success : null,
+                        refresh_error: refreshResult && !refreshResult.success ? refreshResult.error : null,
+                        session_info: {
+                            complete_session_data: completeSessionData
+                        },
+                        stored_cookie: cookieResult ? 'success' : 'failed',
+                        message: 'Successfully logged in and sent complete session data to C-Client',
+                        c_client_notified: true
+                    };
+                } else {
+                    console.log(`[API] Failed to send complete session data to C-Client for user: ${user_name}, returning session data to NSN as fallback`);
+                    return {
+                        action: 'bind_existing_user',
+                        user_id,
+                        user_name,
+                        domain_id,
+                        success: true,
+                        method: 'login_with_credentials',
+                        login_success: true,
+                        auto_refresh_enabled: auto_refresh || false,
+                        refresh_attempted: auto_refresh || false,
+                        refresh_success: refreshResult ? refreshResult.success : null,
+                        refresh_error: refreshResult && !refreshResult.success ? refreshResult.error : null,
+                        session_info: {
+                            complete_session_data: completeSessionData
+                        },
+                        stored_cookie: cookieResult ? 'success' : 'failed',
+                        message: 'Successfully logged in and stored session data (C-Client notification failed)',
+                        c_client_notified: false
+                    };
+                }
             } else {
                 return {
                     action: 'bind_existing_user',
@@ -923,8 +949,9 @@ class ApiServer {
                 if (loginResult.success) {
                     console.log(`[API] Login successful with existing account, updating cookie for C-Client user: ${user_name}`);
                     const refreshTime = new Date(Date.now() + apiConfig.default.cookieExpiryHours * 60 * 60 * 1000);
-                    cookieResult = nodeManager.addUserCookie(
+                    cookieResult = nodeManager.addUserCookieWithTargetUsername(
                         user_id, // Use C-Client user_id as key
+                        user_name, // C-Client username
                         existingAccount.username, // Store NSN username for later lookup
                         node_id,
                         JSON.stringify(completeSessionData), // Store complete session data as JSON
@@ -1015,8 +1042,9 @@ class ApiServer {
                     console.log(`[API] Login successful, storing session data for C-Client user: ${user_name}`);
                     const refreshTime = new Date(Date.now() + apiConfig.default.cookieExpiryHours * 60 * 60 * 1000);
 
-                    cookieResult = nodeManager.addUserCookie(
+                    cookieResult = nodeManager.addUserCookieWithTargetUsername(
                         user_id, // Use C-Client user_id as key
+                        user_name, // C-Client username
                         registrationData.username, // Store NSN username for later lookup
                         node_id,
                         JSON.stringify(completeSessionData), // Store complete session data as JSON

@@ -92,6 +92,26 @@ class BClientNodeManager {
         }
     }
 
+    // Add user cookie with target website username (for compatibility with existing API calls)
+    addUserCookieWithTargetUsername(userId, cClientUsername, targetUsername, nodeId = null, cookie, autoRefresh = false, refreshTime = null) {
+        try {
+            // First, ensure the target username exists in user_accounts table
+            const accountExists = this.getUserAccountByTargetUsername(userId, cClientUsername, targetUsername);
+            if (!accountExists) {
+                console.warn(`Target username ${targetUsername} not found in user_accounts for user ${userId}`);
+            }
+
+            const stmt = this.db.prepare(`
+                INSERT OR REPLACE INTO user_cookies (user_id, username, node_id, cookie, auto_refresh, refresh_time)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `);
+            return stmt.run(userId, targetUsername, nodeId, cookie, autoRefresh ? 1 : 0, refreshTime);
+        } catch (error) {
+            console.error('Error adding user cookie with target username:', error);
+            return null;
+        }
+    }
+
     getUserCookie(userId, username) {
         try {
             const stmt = this.db.prepare(`
@@ -101,6 +121,20 @@ class BClientNodeManager {
             return stmt.get(userId, username);
         } catch (error) {
             console.error('Error getting user cookie:', error);
+            return null;
+        }
+    }
+
+    // Get user cookie by target website username
+    getUserCookieByTargetUsername(userId, targetUsername) {
+        try {
+            const stmt = this.db.prepare(`
+                SELECT * FROM user_cookies 
+                WHERE user_id = ? AND username = ?
+            `);
+            return stmt.get(userId, targetUsername);
+        } catch (error) {
+            console.error('Error getting user cookie by target username:', error);
             return null;
         }
     }
@@ -190,6 +224,22 @@ class BClientNodeManager {
         }
     }
 
+    // Get user account by target username (account field in user_accounts table)
+    getUserAccountByTargetUsername(userId, cClientUsername, targetUsername) {
+        try {
+            const stmt = this.db.prepare(`
+                SELECT * FROM user_accounts 
+                WHERE user_id = ? AND username = ? AND account = ?
+                ORDER BY create_time DESC
+                LIMIT 1
+            `);
+            return stmt.get(userId, cClientUsername, targetUsername);
+        } catch (error) {
+            console.error('Error getting user account by target username:', error);
+            return null;
+        }
+    }
+
     updateUserAccount(userId, username, website, account, password) {
         try {
             const stmt = this.db.prepare(`
@@ -220,22 +270,22 @@ class BClientNodeManager {
     getAllUserCookies(userId) {
         try {
             console.log(`[BClientNodeManager] getAllUserCookies called with userId: "${userId}" (type: ${typeof userId})`);
-            
+
             const stmt = this.db.prepare(`
                 SELECT * FROM user_cookies 
                 WHERE user_id = ?
                 ORDER BY create_time DESC
             `);
-            
+
             const results = stmt.all(userId);
             console.log(`[BClientNodeManager] SQL query returned ${results.length} results for userId: "${userId}"`);
-            
+
             if (results.length > 0) {
                 results.forEach((cookie, index) => {
                     console.log(`[BClientNodeManager]   Result ${index + 1}: user_id="${cookie.user_id}" (type: ${typeof cookie.user_id}), username=${cookie.username}`);
                 });
             }
-            
+
             return results;
         } catch (error) {
             console.error('Error getting all user cookies:', error);
