@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Travel Journal{% endblock %}</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap">
+
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+        }
+
+        /* Optimize navigation spacing for better fit */
+        .navbar-nav .nav-item {
+            margin: 0 2px; /* Reduced from 20px to 2px */
+        }
+
+        /* Responsive spacing adjustments */
+        @media (min-width: 1200px) {
+            .navbar-nav .nav-item {
+                margin: 0 4px; /* Slightly more space on larger screens */
+            }
+        }
+
+        @media (min-width: 1400px) {
+            .navbar-nav .nav-item {
+                margin: 0 8px; /* More space on extra large screens */
+            }
+        }
+
+        /* Optimize navigation link styling */
+        .navbar-nav .nav-link {
+            font-size: 13px; /* Reduced from 14px */
+            padding: 0.5rem 0.4rem; /* Reduced horizontal padding */
+            white-space: nowrap; /* Prevent text wrapping */
+        }
+
+        /* Hide less important items on medium screens */
+        @media (max-width: 1400px) {
+            .hide-on-medium {
+                display: none !important;
+            }
+        }
+
+        /* Show more dropdown on smaller screens */
+        @media (max-width: 1400px) {
+            .more-dropdown {
+                display: block !important;
+            }
+        }
+
+        .more-dropdown {
+            display: none; /* Hidden by default, shown on smaller screens */
+        }
+
+        /* Optimize user dropdown */
+        .user-dropdown .nav-link {
+            font-size: 13px;
+        }
+
+        /* Optimize message badge */
+        .message-badge {
+            font-size: 9px;
+            padding: 2px 4px;
+        }
+
+        /* Compact container for better space utilization */
+        .navbar .container {
+            max-width: 100%;
+            padding: 0 15px;
+        }
+
+        /* Optimize brand logo */
+        .navbar-brand svg {
+            width: 32px;
+            height: 32px;
+        }
+
+        .navbar-brand span {
+            font-size: 1.1rem;
+        }
+    </style>
+
+    {% block head_extras %}{% endblock %}
+</head>
+
+<body>
+
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom shadow-sm">
+        <div class="container">
+            <!-- Logo -->
+            <a class="navbar-brand d-flex align-items-center" href="{{ url_for('root') }}">
+                <svg width="32" height="32" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg"
+                    class="me-2">
+                    <path
+                        d="M20 5C11.7157 5 5 11.7157 5 20C5 28.2843 11.7157 35 20 35C28.2843 35 35 28.2843 35 20C35 11.7157 28.2843 5 20 5Z"
+                        fill="#00AA6C" />
+                    <path
+                        d="M30 15C28.3431 15 27 13.6569 27 12C27 10.3431 28.3431 9 30 9C31.6569 9 33 10.3431 33 12C33 13.6569 31.6569 15 30 15Z"
+                        fill="#34E0A1" />
+                    <path d="M12 20L16 13L21 22L25 17L29 25" stroke="white" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
+                <span class="fw-bold">TravelTales</span>
+            </a>
+
+            <!-- Toggle button for mobile view -->
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavDropdown">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <!-- Navigation links -->
+            <div class="collapse navbar-collapse" id="navbarNavDropdown">
+                <ul class="navbar-nav mx-auto align-items-center">
+                    {% if 'loggedin' in session %}
+                    
+                    <!-- Primary navigation items - always visible -->
+                    <li class="nav-item">
+                        <a class="nav-link fw-medium {% if active_page == 'dashboard' %}text-dark fw-bold{% endif %}"
+                            href="{{ url_for('dashboard') }}">Dashboard</a>
+                    </li>
+                    
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle fw-medium {% if active_page in ['private_journey', 'public_journey'] %}text-dark fw-bold{% endif %}"
+                            href="#" id="journeysDropdown" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            Journeys
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="journeysDropdown">
+                            <li><a class="dropdown-item {% if active_page == 'private_journey' %}fw-bold{% endif %}"
+                                    href="{{ url_for('private_journey') }}">My Journeys</a></li>
+                            <li><a class="dropdown-item {% if active_page == 'public_journey' %}fw-bold{% endif %}"
+                                    href="{{ url_for('public_journey') }}">Public Journeys</a></li>
+                        </ul>
+                    </li>
+
+                    <!-- Conditional departure board for premium users -->
+                    {% if 'loggedin' in session and (session.role == 'admin' or session.role == 'editor' or session.premium == 1) %}
+                    <li class="nav-item hide-on-medium">
+                        <a class="nav-link fw-medium {% if active_page == 'departure_board' %}text-dark fw-bold{% endif %}"
+                            href="{{ url_for('departure_board') }}">Departure</a>
+                    </li>
+                    {% endif %}
+
+                    <!-- User management/search -->
+                    <li class="nav-item">
+                        <a class="nav-link fw-medium {% if active_page == 'user' %}text-dark fw-bold{% endif %}"
+                            href="{{ url_for('view_users') }}">
+                            {% if session.role=='admin' %}Users{% else %}Search{% endif %}
+                        </a>
+                    </li>
+
+                    <!-- Moderation (role-based) -->
+                    {% if session.role in ['admin', 'editor', 'moderator'] %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle fw-medium {% if active_page in ['content_moderation', 'comment_moderation'] %}text-dark fw-bold{% endif %}"
+                            href="#" id="moderationDropdown" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            Moderation
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="moderationDropdown">
+                    <li class="nav-item hide-on-medium">
+                        <a class="nav-link fw-medium {% if active_page == 'content_moderation' %}text-dark fw-bold{% endif %}"
+                            href="{{ url_for('moderation_content_dashboard') }}">Content Moderation</a>
+                    </li>
+                    <li class="nav-item hide-on-medium">
+                        <a class="nav-link fw-medium {% if active_page == 'comment_moderation' %}text-dark fw-bold{% endif %}"
+                            href="{{ url_for('moderation_comment_dashboard') }}">Comment Moderation</a>
+                    </li>
+                    </ul>
+                    </li>
+                    {% endif %}
+
+                    <!-- Messages with notification badge -->
+                    <li class="nav-item">
+                        <a class="nav-link fw-medium {% if active_page == 'inbox' %}text-dark fw-bold{% endif %} position-relative"
+                            href="{{ url_for('message.inbox') }}">
+                            <i class="fas fa-envelope me-1"></i>
+                            <span class="d-none d-lg-inline">Messages</span>
+                            <span id="unread-badge"
+                                class="badge bg-danger position-absolute top-0 start-100 translate-middle message-badge"
+                                style="display: none;">0</span>
+                        </a>
+                    </li>
+
+                    <!-- Announcement - hide on small screens -->
+                    <li class="nav-item hide-on-medium">
+                        <a class="nav-link fw-medium {% if active_page == 'announcement' %}text-dark fw-bold{% endif %}"
+                            href="{{ url_for('view_announcement') }}">Announcement</a>
+                    </li>
+
+                    <!-- Premium - hide on small screens -->
+                    <li class="nav-item hide-on-medium">
+                        <a class="nav-link fw-medium {% if active_page == 'premium' %}text-dark fw-bold{% endif %}"
+                            href="{{ url_for('list_premium') }}">Premium</a>
+                    </li>
+                    {% if session.role in ['admin', 'editor', 'moderator'] %}
+                    <li class="nav-item">
+                        <a class="nav-link fw-medium {% if active_page == 'appeals' %}text-dark fw-bold{% endif %}"
+                            href="{{ url_for('appeals_queue') }}">Appeals Queue</a>
+                    </li>
+                    {% endif %}
+
+                    <!-- Help & Support dropdown - always visible -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle fw-medium {% if active_page in ['help', 'help_manage'] %}text-dark fw-bold{% endif %}"
+                            href="#" id="helpDropdown" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="fas fa-question-circle me-1"></i>
+                            <span class="d-none d-lg-inline">Help</span>
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="helpDropdown">
+                            <li><a class="dropdown-item {% if active_page == 'help' %}fw-bold{% endif %}"
+                                    href="{{ url_for('submit_help_request') }}">
+                                    <i class="fas fa-plus-circle me-2"></i>Submit Help Request</a></li>
+                            <li><a class="dropdown-item {% if active_page == 'help' %}fw-bold{% endif %}"
+                                    href="{{ url_for('my_requests') }}">
+                                    <i class="fas fa-list me-2"></i>My Requests</a></li>
+                            {% if session.role in ['admin', 'editor', 'support_tech'] %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item {% if active_page == 'help_manage' %}fw-bold{% endif %}"
+                                    href="{{ url_for('manage_requests') }}">
+                                    <i class="fas fa-cogs me-2"></i>Manage Tickets</a></li>
+                            {% endif %}
+                        </ul>
+                    </li>
+
+                    <!-- More dropdown for hidden items on smaller screens -->
+                    <li class="nav-item dropdown more-dropdown">
+                        <a class="nav-link dropdown-toggle fw-medium" href="#" id="moreDropdown" role="button" 
+                           data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-ellipsis-h"></i>
+                            <span class="d-none d-lg-inline">More</span>
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="moreDropdown">
+                            <!-- Items moved here on smaller screens -->
+                            {% if 'loggedin' in session and (session.role == 'admin' or session.role == 'editor' or session.premium == 1) %}
+                            <li><a class="dropdown-item {% if active_page == 'departure_board' %}fw-bold{% endif %}"
+                                    href="{{ url_for('departure_board') }}">
+                                    <i class="fas fa-plane-departure me-2"></i>Departure Board</a></li>
+                            {% endif %}
+                            
+                            {% if session.role in ['admin', 'editor', 'moderator'] %}
+                            <li><a class="dropdown-item {% if active_page == 'content_moderation' %}fw-bold{% endif %}"
+                                    href="{{ url_for('moderation_content_dashboard') }}">
+                                    <i class="fas fa-shield-alt me-2"></i>Content Moderation</a></li>
+
+                            <li><a class="dropdown-item {% if active_page == 'comment_moderation' %}fw-bold{% endif %}"
+                                    href="{{ url_for('moderation_comment_dashboard') }}">
+                                    <i class="fas fa-shield-alt me-2"></i>Comment Moderation</a></li>
+                            {% endif %}
+                            
+                            <li><a class="dropdown-item {% if active_page == 'announcement' %}fw-bold{% endif %}"
+                                    href="{{ url_for('view_announcement') }}">
+                                    <i class="fas fa-bullhorn me-2"></i>Announcements</a></li>
+                            
+                            <li><a class="dropdown-item {% if active_page == 'premium' %}fw-bold{% endif %}"
+                                    href="{{ url_for('list_premium') }}">
+                                    <i class="fas fa-crown me-2"></i>Premium</a></li>
+                        </ul>
+                    </li>
+
+                    {% endif %}
+                </ul>
+
+                <!-- User dropdown menu -->
+                <div class="navbar-nav user-dropdown">
+                    {% if 'loggedin' in session %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle d-flex align-items-center fw-medium {% if active_page == 'profile' %}text-dark fw-bold{% endif %}"
+                            href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-user-circle me-1" style="font-size: 18px;"></i>
+                            <span class="d-none d-md-inline">{{ session.username }}</span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                            <li><a class="dropdown-item {% if active_page == 'profile' %}fw-bold{% endif %}"
+                                    href="{{ url_for('view_profile') }}">
+                                    <i class="fas fa-user me-2"></i>My Profile</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('logout') }}">
+                                    <i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
+                        </ul>
+                    </li>
+                    {% else %}
+                    <a class="nav-link fw-medium {% if active_page == 'login' %}text-dark fw-bold{% endif %}"
+                        href="{{ url_for('login') }}">Login</a>
+                    <a class="btn btn-dark rounded-pill ms-3 {% if active_page == 'signup' %}fw-bold{% endif %}"
+                        href="{{ url_for('signup') }}">Sign Up</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show">
+            <div class="d-flex justify-content-between">
+                <div>{{ message }}</div>
+                {% if 'premium' in message %}
+                <a href="{{url_for('ignore_premium_message')}}?message_ingore=1" class="btn btn-success mt-0">ignore</a>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                {% else %}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+
+    <footer class="text-center flex-shrink-0 py-3 bg-light text-black-50 mt-5">
+        <div class="container text-center">
+            <p class="text-muted mb-0">© 2025 Travel Journal - COMP639 Studio Project NSN</p>
+        </div>
+    </footer>
+
+    {% block scripts %}{% endblock %}
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- JS for quick search location -->
+    <script src="{{ url_for('static', filename='common.js') }}"></script>
+    <script>
+        // Get unread message count
+        function updateUnreadCount() {
+            fetch('{{ url_for("message.unread_count") }}')
+                .then(response => response.json())
+                .then(data => {
+                    const navBadge = document.getElementById('unread-badge');
+                    const inboxBadge = document.getElementById('inbox-unread-badge');
+
+                    if (data.count > 0) {
+                        if (navBadge) {
+                            navBadge.textContent = data.count;
+                            navBadge.style.display = 'inline';
+                        }
+                        if (inboxBadge) {
+                            inboxBadge.textContent = data.count;
+                            inboxBadge.style.display = 'inline';
+                        }
+                    } else {
+                        if (navBadge) navBadge.style.display = 'none';
+                        if (inboxBadge) inboxBadge.style.display = 'none';
+                    }
+                })
+                .catch(error => console.error('Error fetching unread count:', error));
+        }
+
+        // Get help desk notifications
+        function updateHelpNotifications() {
+            {% if session.role in ['admin', 'editor','support_tech'] %}
+            console.log('Checking for help desk notifications...');
+            fetch('/api/help/notifications')
+                .then(response => {
+                    console.log('Notification response status:', response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Notification data:', data);
+                    // Display latest notification toast alerts
+                    if (data.notifications.length > 0) {
+                        console.log('Found notifications:', data.notifications.length);
+                        // Only show truly new notifications
+                        const lastShownId = localStorage.getItem('lastShownNotificationId');
+                        console.log('Last shown ID:', lastShownId, 'Latest ID:', data.notifications[0].id);
+                        if (!lastShownId || parseInt(lastShownId) < data.notifications[0].id) {
+                            console.log('Showing notification:', data.notifications[0]);
+                            showNotificationToast(data.notifications[0]);
+                        } else {
+                            console.log('No new notifications to show');
+                        }
+                    } else {
+                        console.log('No notifications found');
+                    }
+                })
+                .catch(error => console.error('Error fetching help notifications:', error));
+            {% endif %}
+        }
+
+        // Show notification toast
+        function showNotificationToast(notification) {
+            // Check if this notification has already been shown
+            const lastShownId = localStorage.getItem('lastShownNotificationId');
+            if (lastShownId && parseInt(lastShownId) >= notification.id) {
+                return;
+            }
+
+            // Create toast container if it doesn't exist
+            let toastContainer = document.getElementById('toast-container');
+            if (!toastContainer) {
+                toastContainer = document.createElement('div');
+                toastContainer.id = 'toast-container';
+                toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+                toastContainer.style.zIndex = '1056';
+                document.body.appendChild(toastContainer);
+            }
+
+            // Create toast HTML
+            const toastHtml = `
+                <div class="toast align-items-center text-white bg-primary border-0" role="alert" aria-live="assertive" aria-atomic="true" data-bs-autohide="true" data-bs-delay="8000" style="cursor: pointer;">
+                    <div class="d-flex">
+                        <div class="toast-body">
+                            <strong>Help Desk Notification</strong><br>
+                            ${notification.message}
+                        </div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                </div>
+            `;
+            
+            toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+            const toastElement = toastContainer.lastElementChild;
+            const toast = new bootstrap.Toast(toastElement);
+            
+            // Click toast to navigate to related request and mark as read
+            toastElement.addEventListener('click', function(e) {
+                // Don't navigate if close button was clicked
+                if (e.target.classList.contains('btn-close')) {
+                    return;
+                }
+                
+                // Mark notification as read
+                markNotificationRead(notification.id);
+                
+                // Navigate to related request
+                window.location.href = `/help/manage/${notification.request_id}`;
+            });
+            
+            // Mark as read when close button is clicked
+            const closeButton = toastElement.querySelector('.btn-close');
+            if (closeButton) {
+                closeButton.addEventListener('click', function() {
+                    markNotificationRead(notification.id);
+                });
+            }
+            
+            toast.show();
+            
+            // Record the shown notification ID
+            localStorage.setItem('lastShownNotificationId', notification.id.toString());
+            
+            // Remove element after toast is hidden
+            toastElement.addEventListener('hidden.bs.toast', function() {
+                toastElement.remove();
+            });
+        }
+
+        // Mark notification as read
+        function markNotificationRead(notificationId) {
+            {% if session.role in ['admin','editor', 'support_tech'] %}
+            fetch(`/api/help/notifications/${notificationId}/mark-read`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Notification marked as read successfully
+                    console.log('Notification marked as read');
+                }
+            })
+            .catch(error => console.error('Error marking notification as read:', error));
+            {% endif %}
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function () {
+            // Check if unread badge exists and update count
+            if (document.getElementById('unread-badge')) {
+                updateUnreadCount();
+                // Update every 5 seconds
+                setInterval(updateUnreadCount, 5000);
+            }
+            
+            // Initialize help desk notifications for staff
+            {% if session.role in ['admin', 'editor', 'support_tech'] %}
+            updateHelpNotifications();
+            // Update every 10 seconds
+            setInterval(updateHelpNotifications, 10000);
+            {% endif %}
+        });
+    </script>
+</body>
+
+</html>

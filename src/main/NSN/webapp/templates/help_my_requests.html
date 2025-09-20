@@ -1,0 +1,294 @@
+{% extends 'userbase.html' %}
+
+{% block title %}My Help Requests - TravelTales{% endblock %}
+
+{% set active_page = 'help' %}
+
+{% block content %}
+<style>
+    
+    :root {
+        --primary-dark: #212529;
+        --secondary-dark: #495057;
+        --light-gray: #f8f9fa;
+        --border-gray: #dee2e6;
+        --status-new: #64b5f6;
+        --status-open: #4dd0e1;
+        --status-stalled: #ffb74d;
+        --status-resolved: #66bb6a;
+    }
+    
+    .unified-btn {
+        background: var(--primary-dark);
+        border: none;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        letter-spacing: 0.3px;
+        transition: all 0.3s ease;
+        text-decoration: none;
+    }
+    
+    .unified-btn:hover {
+        background: var(--secondary-dark);
+        color: white;
+        transform: translateY(-1px);
+    }
+    
+    .unified-btn-outline {
+        background: transparent;
+        border: 1px solid var(--primary-dark);
+        color: var(--primary-dark);
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        text-decoration: none;
+    }
+    
+    .unified-btn-outline:hover {
+        background: var(--primary-dark);
+        color: white;
+        transform: translateY(-1px);
+    }
+    
+    .status-new {
+        background: var(--status-new);
+        color: white;
+    }
+    
+    .status-open {
+        background: var(--status-open);
+        color: white;
+    }
+    
+    .status-stalled {
+        background: var(--status-stalled);
+        color: white;
+    }
+    
+    .status-resolved {
+        background: var(--status-resolved);
+        color: white;
+    }
+    
+    .page-title {
+        color: var(--primary-dark);
+        font-weight: 600;
+        margin-left: 8px;
+    }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="page-title">
+        <i class="fas fa-ticket-alt me-2"></i>
+        My Help Requests
+    </h2>
+    <a href="{{ url_for('submit_help_request') }}" class="unified-btn">
+        <i class="fas fa-plus me-2"></i>
+        Submit New Request
+    </a>
+</div>
+
+{% if requests %}
+<div class="row">
+    {% for request in requests %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="badge 
+                    {% if request.status == 'new' %}status-new
+                    {% elif request.status == 'open' %}status-open
+                    {% elif request.status == 'stalled' %}status-stalled
+                    {% elif request.status == 'resolved' %}status-resolved
+                    {% endif %}">
+                    {{ request.status.title() }}
+                </span>
+                <small class="text-muted">
+                    #{{ request.request_id }}
+                </small>
+            </div>
+            
+            <div class="card-body">
+                <h6 class="card-title">{{ request.subject }}</h6>
+                
+                <div class="mb-2">
+                    <small class="text-muted">
+                        <i class="fas fa-tag me-1"></i>
+                        {% if request.category == 'technical_issue' %}Technical Issue
+                        {% elif request.category == 'account_help' %}Account Help
+                        {% elif request.category == 'bug_report' %}Bug Report
+                        {% elif request.category == 'feature_request' %}Feature Request
+                        {% else %}Other
+                        {% endif %}
+                    </small>
+                </div>
+                
+                <p class="card-text small text-muted">
+                    {% if request.description|length > 100 %}
+                        {{ request.description[:100] }}...
+                    {% else %}
+                        {{ request.description }}
+                    {% endif %}
+                </p>
+                
+                <div class="row text-center">
+                    <div class="col-12">
+                        <small class="text-muted">Assigned To</small>
+                        <div>
+                            {% if request.assigned_to_username %}
+                                <small class="text-primary">{{ request.assigned_to_username }}</small>
+                            {% else %}
+                                <small class="text-muted">Unassigned</small>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card-footer bg-light">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <small class="text-muted">
+                            <i class="far fa-clock me-1"></i>
+                            Created: {{ request.created_at.strftime('%m-%d %H:%M') }}
+                        </small>
+                        <br>
+                        <small class="text-muted">
+                            <i class="fas fa-sync-alt me-1"></i>
+                            Updated: {{ request.last_update.strftime('%m-%d %H:%M') }}
+                        </small>
+                    </div>
+                    <div>
+                        {% if request.resolved_at %}
+                        <small class="text-success me-3">
+                            <i class="fas fa-check me-1"></i>
+                            Resolved {{ request.resolved_at.strftime('%m-%d') }}
+                        </small>
+                        {% endif %}
+                        <a href="{{ url_for('view_request_detail', request_id=request.request_id) }}" 
+                           class="unified-btn-outline">
+                            <i class="fas fa-eye me-1"></i>View
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Request Details Modal -->
+<div class="modal fade" id="requestModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Request Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="modalContent">
+                    <!-- Content will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<div class="text-center py-5">
+    <div class="mb-4">
+        <i class="fas fa-inbox fa-4x text-muted"></i>
+    </div>
+    <h4 class="text-muted">No Help Requests Yet</h4>
+    <p class="text-muted mb-4">
+        When you encounter issues or need assistance, you can submit help requests and our support team will help you promptly.
+    </p>
+    <a href="{{ url_for('submit_help_request') }}" class="unified-btn">
+        <i class="fas fa-plus me-2"></i>
+        Submit Your First Request
+    </a>
+</div>
+{% endif %}
+
+<!-- Help Information Card -->
+<div class="card mt-5 bg-light">
+    <div class="card-body">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h6 class="mb-1">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Status Explanation
+                </h6>
+                <div class="row text-sm">
+                    <div class="col-md-3">
+                        <span class="badge status-new">New</span> - Request submitted, awaiting processing
+                    </div>
+                    <div class="col-md-3">
+                        <span class="badge status-open">Open</span> - Support team is working on your issue
+                    </div>
+                    <div class="col-md-3">
+                        <span class="badge status-stalled">Stalled</span> - Issue requires additional information
+                    </div>
+                    <div class="col-md-3">
+                        <span class="badge status-resolved">Resolved</span> - Issue has been resolved
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 text-end">
+                <small class="text-muted">
+                    Need help? <a href="{{ url_for('submit_help_request') }}">Contact us</a>
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Add click event to cards for showing details
+    const cards = document.querySelectorAll('.card');
+    cards.forEach(card => {
+        if (!card.classList.contains('bg-light')) { // Skip info card
+            card.style.cursor = 'pointer';
+            card.addEventListener('click', function(e) {
+                // Don't trigger if clicking on buttons or links
+                if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON' || e.target.closest('a') || e.target.closest('button')) {
+                    return;
+                }
+                
+                // Navigate to detailed view - get request ID from card header
+                const requestIdElement = card.querySelector('.card-header .text-muted');
+                if (requestIdElement) {
+                    const requestId = requestIdElement.textContent.replace('#', '').trim();
+                    console.log('Navigating to request:', requestId); // Debug log
+                    window.location.href = `/help/request/${requestId}`;
+                } else {
+                    console.error('Could not find request ID in card');
+                }
+            });
+        }
+    });
+    
+    // Add hover effect for cards
+    cards.forEach(card => {
+        if (!card.classList.contains('bg-light')) {
+            card.addEventListener('mouseenter', function() {
+                this.style.transform = 'translateY(-2px)';
+                this.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
+            });
+            
+            card.addEventListener('mouseleave', function() {
+                this.style.transform = 'translateY(0px)';
+                this.style.boxShadow = '';
+            });
+        }
+    });
+});
+</script>
+{% endblock %} 

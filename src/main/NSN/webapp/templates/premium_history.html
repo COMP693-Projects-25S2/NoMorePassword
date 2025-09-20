@@ -1,0 +1,421 @@
+{% extends 'userbase.html' %}
+
+{% block title %}Premium{% endblock %}
+
+{# Set the active page to be highlighted in the navigation bar. #}
+{% set active_page = 'premium' %}
+
+
+{% block content %}
+<div class="banner-image"
+    style="background-image: url('/static/ui_photos/private_journey.jpg'); background-size: cover; background-position: center; height: 300px; position: relative;">
+    <div class="banner-overlay"
+        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5);">
+        <div class="container h-100">
+            <div class="row h-100 align-items-center">
+                <div class="col-md-12 text-end">
+                    <h1 class="text-white fw-bold">Premium</h1>
+                    <p class="text-white lead">Get better experiences from now on</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<section class="container mt-4 py-5 text-center">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <h1>{{memberInfo.username}}</h1>
+            <div class="shadow-lg p-3 mb-5 mt-3 bg-body rounded">
+
+                {% for history in historyList %}
+                <div id="history" name="history" class="shadow p-3 mb-3 bg-body rounded text-secondary">
+                    <div class="d-flex mb-3 align-items-center justify-content-center" id="history_header"
+                        name="history_header" onclick="toggleSection(this)">
+
+                        <div class="row justify-content-between">
+                            <div class="col-md-2 fs-7">
+                                TransactionID: {{history.transaction_id}}
+                            </div>
+                            <div class="col-md-3 fs-7">{{history.s_name}}</div>
+                            <div class="col-md-7 fs-7">
+                                {{history.start_time}} - {{history.end_time}}
+                            </div>
+                        </div>
+                    </div>
+                    <div id="history_content" name="history_content" onclick="toggleSection(this)"
+                        style="display: none;">
+
+                        <div class="container align-items-center" id="receipt_{{history.transaction_id}}">
+                            <input type="hidden" id="transaction_id" value="{{history.transaction_id}}" />
+
+
+
+                            <div class="receipt align-items-center">
+
+                                {% if history.s_id != 1 %}
+                               <!-- Receipt Header -->
+                                <div class="receipt-header row text-md-center mb-8 ">
+                                    <div class="col-md-12 mb-8">
+                                        <div class="d-flex justify-content-center">
+                                            <svg width="40" height="40" viewBox="0 0 40 40" fill="none"
+                                                xmlns="http://www.w3.org/2000/svg" class="me-2">
+                                                <path
+                                                    d="M20 5C11.7157 5 5 11.7157 5 20C5 28.2843 11.7157 35 20 35C28.2843 35 35 28.2843 35 20C35 11.7157 28.2843 5 20 5Z"
+                                                    fill="#00AA6C" />
+                                                <path
+                                                    d="M30 15C28.3431 15 27 13.6569 27 12C27 10.3431 28.3431 9 30 9C31.6569 9 33 10.3431 33 12C33 13.6569 31.6569 15 30 15Z"
+                                                    fill="#34E0A1" />
+                                                <path d="M12 20L16 13L21 22L25 17L29 25" stroke="white" stroke-width="2"
+                                                    stroke-linecap="round" stroke-linejoin="round" />
+                                            </svg>
+
+                                            <div>
+                                                <h4 class="mb-1">TravelTales</h4>
+
+                                            </div>
+                                        </div>
+                                        <p class="mb-0 text-muted">Lincoln University, Lincoln,
+                                            Christchurch<br>ABN:
+                                            12 345 678 901</p>
+                                    </div>
+                                    <div class="col-md-12 text-md-center mt-3">
+                                        <h2 class="receipt-title">Payment Receipt</h2>
+                                        <p class="receipt-id mb-0">Receipt Number: {{history.transaction_id}}</p>
+                                        <p class="mb-0">Date: {{history.create_time}}</p>
+                                        <input type="hidden" id="receipt_num" value="{{history.transaction_id}}">
+                                    </div>
+                                </div>
+
+                                <!-- member info -->
+                                <div class="row mb-12  text-md-center mt-3">
+                                    <div class="col-md-12">
+                                        <h5>Member Info</h5>
+                                        <p>
+                                            Full Name: <strong>{{history.first_name}} {{history.last_name}}</strong><br>
+                                            Email: {{history.email}}<br>
+                                            Username: <strong>{{history.username}}</strong><br>
+                                            Country: {{history.country}}<br>
+                                            Payment: {{history.payment}}
+                                        </p>
+                                    </div>
+                                    <div class="col-md-12 text-md-center mt-3">
+                                        <h5>Subscription Details</h5>
+                                        <p>
+                                            Subscription Plan: <strong>{{history.s_name}}</strong><br>
+                                            Period: {{history.period}} days<br>
+                                            End Time: {{history.end_time}}
+                                        </p>
+                                    </div>
+                                </div>
+                                {% endif %}
+
+                                <!-- Order Details -->
+                                <h5>Order Details</h5>
+                                <div class="table-responsive p-4">
+                                    <table class="table table-striped">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Item</th>
+                                                <th>Period</th>
+                                                <th class="text-end">Price</th>
+                                                <th class="text-end">Total Amount</th>
+                                                <th class="text-end">Subtotal</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td>{{history.s_name}}</td>
+                                                <td>{{history.period}} days</td>
+                                                <td class="text-end">NZ ${{history.price}}</td>
+                                                <td class="text-end">1</td>
+                                                <td class="text-end">NZ ${{history.price}}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <!-- Amount Summary -->
+                                <div class="row justify-content-center">
+                                    <div class="col-md-4">
+                                        <table class="table">
+                                            <tr>
+                                                <td>Subtotal:</td>
+                                                <td class="text-end text-secondary fw-bold">NZ ${{history.price}}</td>
+                                            </tr>
+                                            <tr>
+                                                <td>GST ({{history.gst_rate}}%):</td>
+                                                <td class="text-end text-secondary fw-bold">NZ
+                                                    ${{history.total_amount-history.price}}
+                                                </td>
+                                            </tr>
+                                            <tr class="border-top">
+                                                <td><strong>Total:</strong></td>
+                                                <td class="text-end text-secondary fs-5 fw-bold">NZ
+                                                    ${{history.total_amount}}</td>
+                                            </tr>
+
+                                            {% if history.s_id != 1 %}
+                                            <tr>
+                                                <td colspan="2" class="text-end text-success pt-2">
+                                                    <strong>Paid</strong>
+                                                </td>
+                                            </tr>
+                                            {% endif %}
+                                        </table>
+                                    </div>
+                                </div>
+
+
+
+                                {% if history.s_id != 1 %}
+
+                               <!-- Receipt Footer -->
+                                <div class="receipt-footer row justify-content-center mt-4">
+                                    <div class="col-md-8">
+                                        <p class="mb-1"><strong>Notes:</strong></p>
+                                        <p class="mb-3">Thank you for choosing our service. This receipt can be used for
+                                            accounting and tax purposes.</p>
+                                        <p class="mb-0">If you have any questions, please contact our customer support
+                                        </p>
+                                    </div>
+                                    <div class="col-md-8 text-md-center">
+                                        <div class="bg-light d-inline-block p-2 qr-code">
+                                            <p class="text-center mb-0 small">Receipt QR code</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {% endif %}
+                            </div>
+
+                            {% if history.s_id != 1 %}
+                            <!-- print and download -->
+                            <div class="text-center mb-5 no-print">
+                                <button class="btn btn-primary me-2 print-hide-btn" onclick="window.print()">Print
+                                    Receipt</button>
+                                <button class="btn btn-success print-hide-btn"
+                                    onclick="generatePDF(document.getElementById('receipt_{{history.transaction_id}}'))">Download
+                                    PDF</button>
+                            </div>
+
+                            {% endif %}
+                        </div>
+
+                    </div>
+                </div>
+                {% endfor %}
+
+               <!-- HTML2Canvas and jsPDF for PDF export -->
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+                <!-- js for folding display -->
+                <script>
+                    function toggleSection(element) {
+                        let content = element.nextElementSibling;
+                        content.style.display = content.style.display === 'block' ? 'none' : 'block';
+                    }
+
+                    async function generatePDF(receiptEl) {
+                        // Show loading prompt
+                        const loadingDiv = document.createElement('div');
+                        loadingDiv.className = 'position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center bg-white bg-opacity-75';
+                        loadingDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>';
+                        loadingDiv.style.zIndex = '9999';
+                        document.body.appendChild(loadingDiv);
+
+                        // Stores the button element to be hidden
+                        const buttonsToHide = receiptEl.querySelectorAll('.print-hide-btn');  // Use a class selector to identify buttons to hide
+                        const originalDisplayStyles = [];
+
+                        try {
+
+                            if (!receiptEl) throw new Error("Receipt element not found");
+
+                            // Hide specific buttons
+                            buttonsToHide.forEach(button => {
+                                originalDisplayStyles.push(button.style.display);
+                                button.style.display = 'none';
+                            });
+
+                            // 等待图片加载
+                            const images = receiptEl.querySelectorAll('img');
+                            await Promise.all(Array.from(images).map(img =>
+                                img.complete ? Promise.resolve() : new Promise(resolve => {
+                                    img.onload = img.onerror = resolve;
+                                })
+                            ));
+
+                            // Add a little delay to ensure the DOM is fully rendered (especially fonts, SVG, shadows, etc.)
+                            await new Promise(resolve => setTimeout(resolve, 500));
+
+                            // Converting a Receipt to an Image Using HTML2Canvas
+                            const canvas = await window.html2canvas(receiptEl, {
+                                scale: 2, // increase resolution
+                                useCORS: true,
+                                logging: false,
+                                waitForImages: true,
+                                allowTaint: true // Allow cross-domain image rendering
+                            });
+
+                            console.log('receipt formatting')
+
+                            // Creating PDF documents using jsPDF
+                            const { jsPDF } = window.jspdf;
+                            const pdf = new jsPDF({
+                                orientation: 'p',
+                                unit: 'mm',
+                                format: 'a4',
+                                compress: true // Enable compression
+                            });
+
+                            // Get canvas and PDF dimensions
+                            const imgData = canvas.toDataURL('image/png', 1.0);
+                            if (!imgData.startsWith('data:image/png')) {
+                                throw new Error("image generating error");
+                            }
+                            const imgWidth = 210; // A4 width (mm)
+                            const pageHeight = 297; // A4 height (mm)
+                            const imgHeight = canvas.height * imgWidth / canvas.width;
+
+                            // Add images to PDF
+                            pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+
+                            // Saving PDF - Using Blob and URL.createObjectURL to avoid generating temporary files
+                            const receiptNum = receiptEl.querySelector('#transaction_id')?.value ||
+                                receiptEl.getAttribute('data-id') ||
+                                'receipt_' + new Date().getTime();
+
+                            const filename = `TravelTales_${receiptNum}.pdf`;
+                            console.log(`Saving PDF: ${filename}`);
+
+                            // Directly use pdf.save() method to save, this is the recommended way
+                            pdf.save(filename);
+
+                            console.log('PDF saved successfully');
+
+
+
+                        } catch (error) {
+                            console.error("Failed to generate PDF:", error);
+                            alert("Error generating PDF, please try again later!");
+                        } finally {
+
+                            //Remove the loading prompt (regardless of success or failure)
+                            setTimeout(() => {
+                                // Restore the display state of the button
+                                buttonsToHide.forEach((button, index) => {
+                                    button.style.display = originalDisplayStyles[index] || '';
+                                });
+
+                                if (document.body.contains(loadingDiv)) {
+                                    document.body.removeChild(loadingDiv);
+                                }
+                            }, 1000);
+
+                            console.log('receipt finally')
+                        }
+                    }
+                </script>
+
+                <ul class="pagination justify-content-center">
+                    <li class="page-item">
+                        <form action="{{url_for('premium_history')}}" method="post">
+                            <input type="hidden" name="start_tag" value="last" />
+                            <input type="hidden" name="start" value="{{start}}" />
+                            <input type="hidden" name="user_id" value="{{memberInfo.user_id}}" />
+                            <input type="submit" value="&lt; last page"
+                                class="btn btn-primary {% if last_start !=-1 %}{% else %}disabled{% endif %} btn-sm ">
+
+                        </form>
+                    </li>
+                    <li class="page-item" style="margin-left: 2%;">
+                        <form action="{{url_for('premium_history')}}" method="post">
+                            <input type="hidden" name="start_tag" value="next" />
+                            <input type="hidden" name="start" value="{{start}}" />
+                            <input type="hidden" name="user_id" value="{{memberInfo.user_id}}" />
+                            <input type="submit" value="next page &gt;"
+                                class="btn btn-primary {% if next_start != -1 %}{% else %}disabled{% endif %} btn-sm ">
+
+                        </form>
+                    </li>
+                </ul>
+
+
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+<style>
+    .receipt {
+        max-width: 60%;
+        margin: 5% auto;
+        background-color: white;
+        border-radius: 10px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        padding: 25px;
+    }
+
+    .receipt-header {
+        border-bottom: 1px solid #eee;
+        padding-bottom: 15px;
+        margin-bottom: 20px;
+    }
+
+    .company-logo {
+        height: 60px;
+        width: auto;
+    }
+
+    .receipt-title {
+        font-weight: bold;
+        color: #333;
+    }
+
+    .receipt-id {
+        color: #6c757d;
+        font-size: 14px;
+    }
+
+    .table th {
+        font-weight: 600;
+    }
+
+    .receipt-footer {
+        border-top: 1px solid #eee;
+        margin-top: 20px;
+        padding-top: 15px;
+        font-size: 14px;
+        color: #6c757d;
+    }
+
+    .summary-table {
+        width: 100%;
+        max-width: 350px;
+        margin-left: auto;
+    }
+
+    .qr-code {
+        height: 100px;
+        width: 100px;
+    }
+
+    @media print {
+        body {
+            background-color: white;
+        }
+
+        .receipt {
+            box-shadow: none;
+            margin: 0;
+            padding: 15px;
+        }
+
+        .no-print {
+            display: none;
+        }
+    }
+</style>

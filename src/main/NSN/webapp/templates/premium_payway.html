@@ -1,0 +1,250 @@
+{% extends 'userbase.html' %}
+
+{% block title %}Premium{% endblock %}
+
+{# Set the active page to be highlighted in the navigation bar. #}
+{% set active_page = 'premium' %}
+
+
+{% block content %}
+<div class="banner-image"
+    style="background-image: url('/static/ui_photos/private_journey.jpg'); background-size: cover; background-position: center; height: 300px; position: relative;">
+    <div class="banner-overlay"
+        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5);">
+        <div class="container h-100">
+            <div class="row h-100 align-items-center">
+                <div class="col-md-12 text-end">
+                    <h1 class="text-white fw-bold">Premium</h1>
+                    <p class="text-white lead">Get better experiences from now on</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div class="container mt-4 py-4">
+    <div class="payment-container mx-auto">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <h3 class="card-title text-center mb-2">Credit Card Payment</h3>
+
+                <div class="text-center mb-4">
+                    <h2 class="fw-bold">NZ ${{total_amount}}</h2>
+                </div>
+
+                <div class="text-center mb-4 card-icons">
+                    <i class="bi bi-credit-card me-2"></i>
+                </div>
+
+                <form id="payment-form" action="{{ url_for('confirm_purchase_premium') }}" method="POST">
+                    <input type="hidden" name="user_id" id="user_id" value="{{user_id}}">
+                    <input type="hidden" name="subscription_id" id="subscription_id" value="{{subscription_id}}">
+                    <input type="hidden" name="country_id" id="country_id" value="{{country_id}}">
+                    <input type="hidden" name="price" id="price" value="{{price}}">
+                    <input type="hidden" name="gst_rate" id="gst_rate" value="{{gst_rate}}">
+                    <input type="hidden" name="total_amount" id="total_amount" value="{{total_amount}}">
+                    <input type="hidden" name="payment" id="payment" value="credit">
+
+                    <div class="mb-3">
+                        <label for="card-number" class="form-label">Card Number</label>
+                        <input type="text" class="form-control" id="card-number" placeholder="1234 5678 9012 3456"
+                            value="1234 5678 9012 3456" autocomplete="cc-number" maxlength="19">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="card-name" class="form-label">Card Name</label>
+                        <input type="text" class="form-control" id="card-name" placeholder="Admin1" value="Admin1"
+                            autocomplete="cc-name">
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6 mb-3 mb-md-0">
+                            <label for="expiry-date" class="form-label">Expiry Date</label>
+                            <input type="text" class="form-control" id="expiry-date" placeholder="MM/YY" value="01/26"
+                                autocomplete="cc-exp" maxlength="5">
+                        </div>
+
+                        <div class="col-md-6">
+                            <label for="cvv" class="form-label">CVV</label>
+                            <input type="text" class="form-control" id="cvv" placeholder="123" value="123"
+                                autocomplete="cc-csc" maxlength="3">
+                        </div>
+
+                        <div class="col-md-6">
+                            <label for="address" class="form-label">Addres</label>
+                            <input type="text" class="form-control" id="address"
+                                placeholder="Lincoln University, Lincoln, Christchurch"
+                                value="Lincoln University, Lincoln, Christchurch" autocomplete="cc-csc" maxlength="3">
+                        </div>
+                    </div>
+
+                    <button type="submit" id="submit-button" class="btn btn-dark w-100 py-2 mt-2">Confirm</button>
+                </form>
+
+                <div class="text-center mt-4 secure-badge text-secondary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
+                        class="bi bi-lock-fill me-1 mb-1" viewBox="0 0 16 16">
+                        <path
+                            d="M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2zm3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z" />
+                    </svg>
+                    Payment information security encryption
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bootstrap JS Bundle (includes Popper) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+<!-- Bootstrap Icons -->
+<link rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.10.0/font/bootstrap-icons.min.css">
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const cardNumber = document.getElementById('card-number');
+        const expiryDate = document.getElementById('expiry-date');
+        const form = document.getElementById('payment-form');
+
+        // Card number formatting: add space after every 4 digits
+        cardNumber.addEventListener('input', function (e) {
+            let value = e.target.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+            let formattedValue = '';
+
+            for (let i = 0; i < value.length; i++) {
+                if (i > 0 && i % 4 === 0) {
+                    formattedValue += ' ';
+                }
+                formattedValue += value[i];
+            }
+
+            e.target.value = formattedValue;
+        });
+
+        // Expiry date formatting: MM/YY
+        expiryDate.addEventListener('input', function (e) {
+            let value = e.target.value.replace(/\D/g, '');
+
+            if (value.length > 0) {
+                if (value.length <= 2) {
+                    e.target.value = value;
+                } else {
+                    e.target.value = value.slice(0, 2) + '/' + value.slice(2, 4);
+                }
+            }
+        });
+
+        // Form submission
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            // Simple validation
+            const cardNumberValue = cardNumber.value.replace(/\s+/g, '');
+            const expiryDateValue = expiryDate.value;
+            const cvvValue = document.getElementById('cvv').value;
+            const nameValue = document.getElementById('card-name').value;
+
+            let isValid = true;
+            let errorMessage = '';
+
+            if (cardNumberValue.length < 16) {
+                isValid = false;
+                errorMessage = 'Please enter a valid card number';
+            } else if (!nameValue) {
+                isValid = false;
+                errorMessage = 'Please enter your name';
+            } else if (expiryDateValue.length < 5) {
+                isValid = false;
+                errorMessage = 'Please enter a valid date';
+            } else if (cvvValue.length < 3) {
+                isValid = false;
+                errorMessage = 'Please enter cvv';
+            }
+
+            if (isValid) {
+
+                const button = document.getElementById('submit-button');
+                button.disabled = true;
+                button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>processing...';
+
+                setTimeout(() => {
+                    const modal = document.createElement('div');
+                    modal.style.position = 'fixed';
+                    modal.style.top = '50%';
+                    modal.style.left = '50%';
+                    modal.style.transform = 'translate(-50%, -50%)';
+                    modal.style.backgroundColor = 'white';
+                    modal.style.padding = '20px';
+                    modal.style.borderRadius = '8px';
+                    modal.style.boxShadow = '0 2px 10px rgba(0, 0, 0, 0.2)';
+                    modal.style.textAlign = 'center';
+                    modal.style.zIndex = '1000';
+                    modal.innerHTML = `
+                        <p style="margin-bottom: 15px;">Payment successful</p>
+                        <button id="confirmBtn" class="btn btn-secondary w-25 me-2">OK </button>
+                    `;
+
+                    // Create overlay background
+                    const overlay = document.createElement('div');
+                    overlay.style.position = 'fixed';
+                    overlay.style.top = '0';
+                    overlay.style.left = '0';
+                    overlay.style.width = '100%';
+                    overlay.style.height = '100%';
+                    overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
+                    overlay.style.zIndex = '1000';
+
+                    // Add to DOM
+                    document.body.appendChild(overlay);
+                    document.body.appendChild(modal);
+
+                    // Add event listener to the confirm button
+                    document.getElementById('confirmBtn').addEventListener('click', function () {
+                        // Remove modal and overlay
+                        document.body.removeChild(modal);
+                        document.body.removeChild(overlay);
+                        // Submit the form
+                        document.getElementById('payment-form').submit();
+                    });
+                }, 1500);
+            } else {
+                alert(errorMessage);
+            }
+        });
+    });
+</script>
+{% endblock %}
+
+
+<!-- Import Bootstrap CSS-->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+<style>
+    body {
+        background-color: #f8f9fa;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .payment-container {
+        max-width: 450px;
+        width: 100%;
+    }
+
+    .card-icons {
+        font-size: 1.5rem;
+        color: #6c757d;
+    }
+
+    .form-label {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: #495057;
+    }
+
+    .secure-badge {
+        font-size: 0.75rem;
+    }
+</style>

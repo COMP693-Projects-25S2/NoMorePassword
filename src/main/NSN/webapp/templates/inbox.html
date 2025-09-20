@@ -1,0 +1,182 @@
+{% extends 'userbase.html' %} {% block title %}Messages{% endblock %} {# Set the
+active page to be highlighted in the navigation bar. #} {% set active_page =
+'inbox' %} {% block content %}
+<div
+  class="banner-image"
+  style="
+    background-image: url('/static/ui_photos/private_journey.jpg');
+    background-size: cover;
+    background-position: center;
+    height: 300px;
+    position: relative;
+  "
+>
+  <div
+    class="banner-overlay"
+    style="
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+    "
+  >
+    <div class="container h-100">
+      <div class="row h-100 align-items-center">
+        <div class="col-md-12">
+          <div class="d-flex flex-column align-items-end mb-3">
+            <div class="d-flex align-items-center">
+              <h1 class="text-white fw-bold mb-0">Messages</h1>
+              <span
+                id="inbox-unread-badge"
+                class="badge bg-danger ms-2"
+                style="display: none"
+                >0</span
+              >
+            </div>
+            <p class="text-white lead mb-0 mt-2" style="text-align: right">
+              Stay connected and manage all your private conversations in one
+              place.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="container mt-4">
+  <div id="conversations-container">
+    {% if conversations %} {% for convo in conversations %} {% set
+    other_username = convo.user1 if convo.user1 != session['username'] else
+    convo.user2 %}
+    <div class="card mb-2 border-0 shadow-sm">
+      <a
+        href="{{ url_for('message.conversation', conversation_id=convo.conversation_id) }}"
+        class="text-decoration-none text-dark"
+      >
+        <div class="card-body d-flex align-items-center position-relative">
+          {% if convo.has_unread %}
+          <div class="position-absolute top-0 start-0 mt-2 ms-2">
+            <span
+              class="badge bg-danger rounded-circle p-1"
+              style="width: 8px; height: 8px"
+            ></span>
+          </div>
+          {% endif %}
+
+          <div class="me-3">
+            {% if convo.other_user_avatar_url %}
+            <img
+              src="{{ convo.other_user_avatar_url }}"
+              alt="Avatar"
+              class="rounded-circle"
+              style="
+                width: 48px;
+                height: 48px;
+                object-fit: cover;
+                border: 1px solid #ccc;
+              "
+            />
+            {% else %}
+            <img
+              src="{{ url_for('static', filename='avatars/default.png') }}"
+              alt="Default Avatar"
+              class="rounded-circle"
+              style="
+                width: 48px;
+                height: 48px;
+                object-fit: cover;
+                border: 1px solid #ccc;
+              "
+            />
+            {% endif %}
+          </div>
+          <div class="flex-grow-1">
+            <div class="d-flex align-items-center">
+              <span class="fw-bold">{{ other_username }}</span>
+              {% if convo.has_unread %}
+              <i
+                class="fas fa-circle text-danger ms-2"
+                style="font-size: 8px"
+              ></i>
+              {% endif %}
+            </div>
+            <div
+              class="text-muted {% if convo.has_unread %}fw-medium{% endif %}"
+            >
+              {{ convo.last_message_preview or "No messages yet" }}
+            </div>
+          </div>
+          <small class="text-muted ms-3">
+            {{ convo.last_message_at.strftime('%Y-%m-%d %H:%M') if
+            convo.last_message_at else '' }}
+          </small>
+        </div>
+      </a>
+    </div>
+    {% endfor %} {% else %}
+    <div class="alert alert-info mt-3">You have no conversations yet.</div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  // get unread message count
+  function updateUnreadCount() {
+    fetch('{{ url_for("message.unread_count") }}')
+      .then((response) => response.json())
+      .then((data) => {
+        const navBadge = document.getElementById("unread-badge");
+        const inboxBadge = document.getElementById("inbox-unread-badge");
+
+        if (data.count > 0) {
+          if (navBadge) {
+            navBadge.textContent = data.count;
+            navBadge.style.display = "inline";
+          }
+          if (inboxBadge) {
+            inboxBadge.textContent = data.count;
+            inboxBadge.style.display = "inline";
+          }
+        } else {
+          if (navBadge) navBadge.style.display = "none";
+          if (inboxBadge) inboxBadge.style.display = "none";
+        }
+      })
+      .catch((error) => console.error("Error fetching unread count:", error));
+  }
+
+  // refresh conversations list
+  function refreshConversations() {
+    fetch('{{ url_for("message.inbox") }}')
+      .then((response) => response.text())
+      .then((html) => {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+        const newConversations = doc.querySelector("#conversations-container");
+
+        if (newConversations) {
+          document.getElementById("conversations-container").innerHTML =
+            newConversations.innerHTML;
+        }
+      })
+      .catch((error) =>
+        console.error("Error refreshing conversations:", error)
+      );
+  }
+
+  // get initial unread count and set up periodic updates
+  document.addEventListener("DOMContentLoaded", function () {
+    updateUnreadCount();
+
+    // check for new conversations every 5 seconds
+    setInterval(function () {
+      updateUnreadCount();
+      refreshConversations();
+    }, 5000);
+  });
+</script>
+
+{% endblock %}

@@ -1,0 +1,226 @@
+{% extends "userbase.html" %}
+
+{% block title %}Help Request Details - TravelTales{% endblock %}
+
+{% set active_page = 'help' %}
+
+{% block content %}
+<style>
+    
+    :root {
+        --primary-dark: #212529;
+        --secondary-dark: #495057;
+        --light-gray: #f8f9fa;
+        --border-gray: #dee2e6;
+        --status-new: #64b5f6;
+        --status-open: #4dd0e1;
+        --status-stalled: #ffb74d;
+        --status-resolved: #66bb6a;
+    }
+    
+    .unified-btn {
+        background: var(--primary-dark);
+        border: none;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        letter-spacing: 0.3px;
+        transition: all 0.3s ease;
+        text-decoration: none;
+    }
+    
+    .unified-btn:hover {
+        background: var(--secondary-dark);
+        color: white;
+        transform: translateY(-1px);
+    }
+    
+    .unified-btn-outline {
+        background: transparent;
+        border: 1px solid var(--primary-dark);
+        color: var(--primary-dark);
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        text-decoration: none;
+    }
+    
+    .unified-btn-outline:hover {
+        background: var(--primary-dark);
+        color: white;
+        transform: translateY(-1px);
+    }
+    
+    .status-new {
+        background: var(--status-new);
+        color: white;
+    }
+    
+    .status-open {
+        background: var(--status-open);
+        color: white;
+    }
+    
+    .status-stalled {
+        background: var(--status-stalled);
+        color: white;
+    }
+    
+    .status-resolved {
+        background: var(--status-resolved);
+        color: white;
+    }
+    
+    .page-title {
+        color: var(--primary-dark);
+        font-weight: 600;
+    }
+</style>
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="page-title">Help Request Details</h2>
+                <a href="{{ url_for('my_requests') }}" class="unified-btn-outline">
+                    <i class="fas fa-arrow-left me-2"></i>Back to My Requests
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Request Details Card -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Request #{{ help_request.request_id }}</h5>
+                        <div>
+                            <span class="badge 
+                                {% if help_request.status == 'new' %}status-new
+                                {% elif help_request.status == 'open' %}status-open
+                                {% elif help_request.status == 'stalled' %}status-stalled
+                                {% elif help_request.status == 'resolved' %}status-resolved
+                                {% endif %}">
+                                {{ help_request.status.title() }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h6 class="text-muted">Subject</h6>
+                            <p class="mb-3">{{ help_request.subject }}</p>
+                            
+                            <h6 class="text-muted">Description</h6>
+                            <div style="white-space: pre-wrap; word-wrap: break-word; min-height: 60px;">{{ help_request.description }}</div>
+                        </div>
+                        <div class="col-md-4">
+                            <h6 class="text-muted">Request Information</h6>
+                            <p><strong>Created:</strong> {{ help_request.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                            <p><strong>Status:</strong> {{ help_request.status.title() }}</p>
+                            {% if help_request.assigned_to_username %}
+                                <p><strong>Assigned to:</strong> {{ help_request.assigned_first_name }} {{ help_request.assigned_last_name }}</p>
+                            {% else %}
+                                <p><strong>Assigned to:</strong> <span class="text-muted">Not assigned</span></p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Conversation Section -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-comments me-2"></i>
+                        Conversation
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <!-- Original Request -->
+                    <div class="border-bottom pb-3 mb-4">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <strong class="text-dark">You</strong>
+                                <span class="badge bg-light text-dark ms-2">Original Request</span>
+                            </div>
+                            <small class="text-muted">{{ help_request.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                        </div>
+                        <div class="mt-2">
+                            <strong>{{ help_request.subject }}</strong>
+                        </div>
+                        <div class="mt-2 text-muted">{{ help_request.description|replace('\n', '<br>')|safe }}</div>
+                    </div>
+                    
+                    <!-- Replies -->
+                    {% if replies %}
+                        {% for reply in replies %}
+                        <div class="border-bottom pb-3 mb-3">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div>
+                                    {% if reply.is_staff_reply %}
+                                        <strong class="text-primary">
+                                            {{ reply.first_name }} {{ reply.last_name }}
+                                        </strong>
+                                        <span class="badge" style="background: var(--primary-dark); color: white;">Support Staff</span>
+                                    {% else %}
+                                        <strong class="text-dark">You</strong>
+                                        <span class="badge status-open">Your Reply</span>
+                                    {% endif %}
+                                </div>
+                                <small class="text-muted">{{ reply.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                            </div>
+                            <div class="mt-2">{{ reply.message|replace('\n', '<br>')|safe }}</div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-center py-4">
+                            <i class="fas fa-comments fa-3x text-muted mb-3"></i>
+                            <p class="text-muted">No replies yet. Support staff will respond to your request soon.</p>
+                        </div>
+                    {% endif %}
+                    
+                    <!-- Reply Form - Only show if request is not resolved -->
+                    {% if help_request.status != 'resolved' %}
+                    <div class="border-top pt-4">
+                        <h6 class="mb-3">Add a Reply</h6>
+                        <form method="POST" action="{{ url_for('add_user_reply', request_id=help_request.request_id) }}">
+                            <div class="mb-3">
+                                <label for="message" class="form-label">Your Message</label>
+                                <textarea name="message" id="message" class="form-control" rows="4" 
+                                          placeholder="Type your message here..." required></textarea>
+                                <div class="form-text">
+                                    Your reply will be sent to the support team.
+                                </div>
+                            </div>
+                            <button type="submit" class="unified-btn">
+                                <i class="fas fa-paper-plane me-2"></i>Send Reply
+                            </button>
+                        </form>
+                    </div>
+                    {% else %}
+                    <div class="border-top pt-4">
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle me-2"></i>
+                            <strong>Request Resolved</strong><br>
+                            This request has been marked as resolved and is now read-only. No further replies can be added.
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

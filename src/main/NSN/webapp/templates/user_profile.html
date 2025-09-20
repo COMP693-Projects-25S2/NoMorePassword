@@ -1,0 +1,794 @@
+{% extends 'userbase.html' %}
+
+{% block title %}User Profile - {{ profile.username }}{% endblock %}
+
+{# Set the active page to be highlighted in the navigation bar. #}
+{% if session.user_id == profile.user_id %}
+{% set active_page = 'profile' %}
+{% else %}
+{% set active_page = 'user' %}
+{% endif %}
+
+{% block head_extras %}
+<style>
+    .favorite-destinations-list {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .favorite-destination-item {
+        transition: all 0.3s ease;
+    }
+
+    .favorite-destination-item:hover {
+        background-color: #f8f9fa !important;
+    }
+
+    .remove-favorite {
+        opacity: 0.6;
+        transition: opacity 0.3s ease;
+    }
+
+    .remove-favorite:hover {
+        opacity: 1;
+    }
+
+    .favorite-destinations-list {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .favorite-destination-item {
+        transition: all 0.3s ease;
+    }
+
+    .favorite-destination-item:hover {
+        background-color: #f8f9fa !important;
+    }
+
+    .remove-favorite {
+        opacity: 0.6;
+        transition: opacity 0.3s ease;
+    }
+
+    .remove-favorite:hover {
+        opacity: 1;
+    }
+</style>
+
+
+{% endblock %}
+
+{% block content %}
+<h1>Profile: {{ profile.username }}</h1>
+
+{% if not can_view_full_profile and not profile.is_public %}
+<div class="alert alert-warning" role="alert">
+    <i class="fas fa-lock me-2"></i>This profile is private.
+</div>
+{% else %}
+<div class="row">
+
+    <div class="col-md-4 mb-4">
+        <div class="card border-0">
+
+            <div class="card-body text-center">
+                <div class=" mb-3">
+                    <img id="imagePreview"
+                        src="{% if profile.profile_image %}{{profile.profile_image}}{% else %}{{ url_for('static', filename='avatars/default.png') }}{% endif %}"
+                        alt="{{profile.username}}'s avatar"
+                        style="object-fit:cover;width: 250px; height: 250px; border-radius:50%;border:1px solid #ccc;" />
+                </div>
+
+                {% if session.user_id == profile.user_id or session.role == 'admin' %}
+                <form action="{{url_for('upload_profile_image')}}" method="post" enctype="multipart/form-data"
+                    class="mb-3">
+                    <input type="hidden" name="user_id" value="{{profile.user_id}}">
+                    <div>
+                        <span class="btn btn-outline-success"
+                            style="position: relative;display:inline-block;overflow: hidden;">
+                            <span>Choose Image</span>
+                            <input type="file" id="imageUpload" name="profile_image" accept="image/*"
+                                style="position: absolute;right:0;top:0; opacity: 0;">
+                        </span>
+                        <button id="submitUpload" class="btn btn-outline-success" type="submit" disabled>Upload</button>
+                        {% if profile.profile_image %}
+                        <a class="btn btn-outline-danger"
+                            href="{{url_for('remove_avatar')}}?user_id={{profile.user_id}}">Delete</a>
+                        {% endif %}
+                    </div>
+                </form>
+                {% endif %}
+
+                <!-- js for displaying user uploaded avatars -->
+                <script>
+                    const imageUpload = document.getElementById('imageUpload');
+                    const imagePreview = document.getElementById('imagePreview');
+                    const submitUpload = document.getElementById('submitUpload');
+
+                    if (imageUpload && imagePreview && submitUpload) { // Ensure elements exist
+                        imageUpload.addEventListener('change', function () {
+                            const file = imageUpload.files[0];
+                            if (file) {
+                                submitUpload.disabled = false; // Enable upload button
+                                const reader = new FileReader();
+                                reader.onload = function (e) {
+                                    imagePreview.src = e.target.result;
+                                    imagePreview.alt = file.name;
+                                };
+                                reader.readAsDataURL(file);
+                            } else {
+                                // Revert to original or default if no file selected
+                                imagePreview.src = "{% if profile.profile_image %}..{{profile.profile_image}}{% else %}{{ url_for('static', filename='avatars/default.png') }}{% endif %}";
+                                imagePreview.alt = "{{profile.username}}'s avatar";
+                                submitUpload.disabled = true; // Disable upload button
+                            }
+                        });
+                    }
+                </script>
+            </div>
+
+            {% if is_member %}
+            {% if is_member.s_name %}
+            <div class="row justify-content-center mt-1" style="pointer-events: none;">
+                <div class="btn btn-info col-md-6">
+                    {{is_member.s_name}} <br>
+                    {% if is_member.end_time %}
+                    until {{is_member.end_time}}
+                    {% endif %}
+
+                </div>
+            </div>
+            {% endif %}
+            {% endif %}
+
+            <div class="row justify-content-center mt-5">
+                {% if is_admin and session.user_id != profile.user_id %}
+                <a class="btn btn-success col-md-6" href="#" data-bs-toggle="modal" data-bs-target="#giftsModal">
+                    <i class="fas fa-gift me-2 text-light"></i>Gifts
+                </a>
+                {% endif %}
+            </div>
+
+
+            <div class="row justify-content-center mt-3">
+                {% if session.role == 'admin' or session.user_id == profile.user_id %}
+                <a class='btn btn-success col-md-6'
+                    href="{{ url_for('premium_history') }}?user_id={{ profile.user_id }}&username={{profile.username}}"><i
+                        class="fas fa-calendar me-2 text-light"></i>Subscriptions</a>
+                {% endif %}
+            </div>
+            <div class="row justify-content-center mt-3">
+                <!-- Follow/Unfollow Button -->
+                {% if session.loggedin and profile.user_id != session.user_id %}
+                {% set user_role = session.get('role', '') %}
+                {% set is_premium = session.get('premium', 0) %}
+                {% if user_role in ['admin', 'editor','support_tech','moderator'] or is_premium == 1 %}
+                <!-- User has permission to follow -->
+                <button type="button" class="btn btn-success col-md-6 follow-btn" data-user-id="{{ profile.user_id }}"
+                    onclick="handleFollowClick(this, {{ profile.user_id }})"
+                    title="Follow this user to see all their journey events on your Departure Board">
+                    <i class="fas fa-user-plus me-2"></i>Follow User
+                </button>
+                {% else %}
+                <!-- User needs premium to follow -->
+                <a href="{{ url_for('list_premium') }}" class="btn btn-warning col-md-6"
+                    title="Upgrade to Premium to follow users">
+                    <i class="fas fa-star me-2"></i>Premium Required
+                </a>
+                {% endif %}
+                {% elif not session.loggedin %}
+                <!-- Not logged in -->
+                <a href="{{ url_for('login') }}" class="btn btn-outline-success col-md-6">
+                    <i class="fas fa-sign-in-alt me-2"></i>Login to Follow
+                </a>
+                {% endif %}
+            </div>
+
+            <div class="row justify-content-center mt-3">
+                {% if current_user_can_send_pm and profile.user_id != session.user_id %}
+                <a href="{{ url_for('message.start_conversation_with_user', recipient_user_id=profile.user_id) }}"
+                    class="btn btn-success col-md-6">
+                    <i class="fas fa-envelope me-2"></i>Send Message
+                </a>
+                {% endif %}
+            </div>
+            <div class="row justify-content-center mt-5">
+                <a class='btn btn-secondary col-md-6'
+                    href="{{ url_for('view_users') if session.role == 'admin' else url_for('dashboard') }}">Back</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card border-0">
+            <div class="card-body border-0">
+                <div class="row mb-3">
+                    <div class="col-md-6 mb-3">
+                        <label for="username" class="form-label fw-bold">Username</label>
+                        <div class="form-control-plaintext">{{ profile.username }}</div>
+                    </div>
+                    {% if can_view_sensitive_info %}
+                    <div class="col-md-6 mb-3">
+                        <label for="email" class="form-label fw-bold">Email</label>
+                        <div class="form-control-plaintext">{{ profile.email }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                {% if can_view_sensitive_info %}
+                <div class="row mb-3">
+                    <div class="col-md-6 mb-3">
+                        <label for="first_name" class="form-label fw-bold">First Name</label>
+                        <div class="form-control-plaintext">{{ profile.first_name or "N/A" }}</div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="last_name" class="form-label fw-bold">Last Name</label>
+                        <div class="form-control-plaintext">{{ profile.last_name or "N/A" }}</div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="mb-3">
+                    <label for="location" class="form-label fw-bold">Home Location</label>
+                    <div class="form-control-plaintext">{{ profile.address or "Not specified" }}</div>
+                </div>
+
+
+                {% if can_view_sensitive_info %}
+                <div class="mb-3">
+                    <label for="profile_visibility" class="form-label fw-bold">Profile Visibility</label>
+                    <div class="form-control-plaintext">
+                        <span class="badge {% if profile.is_public %}bg-success{% else %}bg-secondary{% endif %}">
+                            {{ 'Public' if profile.is_public else 'Private' }}
+                        </span>
+                        <small class="text-muted ms-2">
+                            {% if profile.is_public %}
+                            Profile is visible to all users
+                            {% else %}
+                            Only you can see your profile
+                            {% endif %}
+                        </small>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="mb-3">
+                    <label for="description" class="form-label fw-bold">About Me</label>
+                    <div class="form-control-plaintext" style="white-space: pre-wrap;">{{ profile.description or "No
+                        description provided." }}</div>
+                </div>
+
+                {% if session.role=='admin' or session.user_id==profile.user_id %}
+                <div class="d-flex justify-content-end mt-4">
+                    <a href="{{ url_for('edit_profile') }}?user_id={{ profile.user_id}}" class="btn btn-dark"><i
+                            class="fas fa-edit me-2"></i>Edit Profile</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Activity Highlights Section -->
+        {% if can_view_full_profile %}
+        <div class="mt-5">
+            <!-- Nav tabs -->
+            <ul class="nav nav-tabs" id="activityTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="recent-journeys-tab" data-bs-toggle="tab"
+                        data-bs-target="#recent-journeys" type="button" role="tab" aria-controls="recent-journeys"
+                        aria-selected="true">Recent Journeys</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="liked-events-tab" data-bs-toggle="tab" data-bs-target="#liked-events"
+                        type="button" role="tab" aria-controls="liked-events" aria-selected="false">Liked
+                        Events</button>
+                </li>
+            </ul>
+
+            <!-- Tab panes -->
+            <div class="tab-content" id="activityTabsContent">
+                <!-- recent journeys -->
+                <div class="tab-pane fade show active" id="recent-journeys" role="tabpanel"
+                    aria-labelledby="recent-journeys-tab">
+                    <div class="mt-3">
+                        {% if recent_journeys %}
+                        <div class="row">
+                            {% for journey in recent_journeys %}
+                            <div class="col-md-6 mb-4">
+                                <!-- Creates a two-column layout for cards on medium screens and up -->
+                                <div class="card h-100 border-0 shadow-sm hover-card">
+                                    <div
+                                        class="card-header bg-white d-flex justify-content-between align-items-center border-bottom-0 pb-0">
+                                        <div>
+                                            <span
+                                                class="badge bg-{{ 'dark' if journey.display == 'public' else 'secondary' }} rounded-pill">
+                                                {{ journey.display }}
+                                            </span>
+                                            <small class="text-muted ms-2">by {{ profile.username }}</small>
+                                        </div>
+
+                                    </div>
+                                    <div class="card-body">
+                                        {% if journey.cover_image %}
+                                        <img src="{{ url_for('static', filename='journeys/' + journey.cover_image) }}"
+                                            alt="{{ journey.title }}" class="img-fluid mb-3">
+                                        <br>
+                                        {% endif %}
+                                        <h5 class="card-title">
+                                            <a href="{{ url_for('view_journey', journey_id=journey.journey_id) }}"
+                                                class="text-decoration-none text-dark link-hover">
+                                                {{ journey.title }}
+                                            </a>
+                                        </h5>
+                                        {% if journey.description %}
+                                        <p class="card-text text-truncate">{{ journey.description }}</p>
+                                        {% else %}
+                                        <p class="card-text text-muted fst-italic">No description.</p>
+                                        {% endif %}
+                                        <p class="card-text">
+                                            {% if journey.start_date %}
+                                            <small class="text-muted">
+                                                <i class="far fa-calendar-alt me-1"></i>
+                                                Started: {{ journey.start_date.strftime('%d %b %Y') }}
+                                            </small>
+                                            <br>
+                                            {% endif %}
+                                            {% set last_update_date = journey.updated_at or journey.created_at %}
+                                            {% if last_update_date %}
+                                            <small class="text-muted">
+                                                <i class="far fa-clock me-1"></i> <!-- Using clock icon for update -->
+                                                Updated: {{ last_update_date.strftime('%d %b %Y') }}
+                                            </small>
+                                            {% endif %}
+                                        </p>
+                                    </div>
+                                    <div class="card-footer bg-white border-top-0 pt-0">
+                                        <a href="{{ url_for('public_events', journey_id=journey.journey_id, journey_title=journey.title, keyword=keyword, filter=filter) }}"
+                                            class="text-dark text-decoration-none link-hover flex-grow-1 text-center d-block">
+                                            <i class="fas fa-eye me-1"></i>View Events
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <p class="mt-3">No recent journeys to display.</p>
+                        {% endif %}
+                    </div>
+                </div>
+                <!-- liked events -->
+                <div class="tab-pane fade" id="liked-events" role="tabpanel" aria-labelledby="liked-events-tab">
+                    <div class="mt-3">
+                        {% if liked_events %}
+                        <div class="row">
+                            {% for event in liked_events %}
+                            <div class="col-12 mb-4">
+                                <div class="card h-100">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <h5 class="mb-0">{{ event.title }}</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        {% if event.event_images %}
+                                        {% for image in event.event_images %}
+                                        {% if image.event_image %}
+                                        <img src="{{ url_for('static', filename='events/' + image.event_image) }}"
+                                            alt="{{ event.title }}" class="img-fluid mb-3">
+
+                                        {% endif %}
+                                        {% endfor %}
+                                        <hr>
+                                        {% endif %}
+                                        {% if event.description %}
+                                        <p>{{ event.description }}</p>
+                                        {% else %}
+                                        <p class="card-text text-muted fst-italic">No description.</p>
+                                        {% endif %}
+                                        <p>
+                                            <small class="text-muted">
+                                                <i class="far fa-clock me-1"></i>
+                                                Start: {{ event.start_time.strftime('%Y-%m-%d %H:%M') if
+                                                event.start_time else 'N/A' }}
+                                                <br>
+                                                <i class="far fa-clock me-1"></i>
+                                                End: {{ event.end_time.strftime('%Y-%m-%d %H:%M') if event.end_time else
+                                                'N/A' }}
+                                            </small>
+                                        </p>
+                                        <p><small class="text-muted"><i
+                                                    class="fas fa-map-marker-alt me-1"></i>{{event.address}}</small></p>
+                                    </div>
+                                    <div class="card-footer bg-white border-top-0 pt-0">
+                                        <a href="{{ url_for('public_events', journey_id=event.journey_id, journey_title=event.journey_title, keyword=keyword, filter=filter) }}"
+                                            class="text-dark text-decoration-none link-hover flex-grow-1 text-center d-block">
+                                            <i class="fas fa-eye me-1"></i>View
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="alert alert-info mt-3">
+                            <i class="fas fa-info-circle me-2"></i>No liked events to display.
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        <!-- End Activity Highlights Section -->
+    </div>
+</div>
+
+<!-- Send Message Modal -->
+{% if current_user_can_send_pm and profile.user_id != session.user_id %}
+<div class="modal fade" id="sendMessageModal" tabindex="-1" aria-labelledby="sendMessageModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="sendMessageModalLabel">Send Message to {{ profile.username }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="sendMessageForm">
+                    <input type="hidden" name="recipient_id" value="{{ profile.user_id }}">
+                    <div class="mb-3">
+                        <label for="messageContent" class="form-label">Your Message</label>
+                        <textarea class="form-control" id="messageContent" name="content" rows="5" required></textarea>
+                        <div id="sendMessageError" class="text-danger mt-2"></div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="sendMessageSubmitBtn">Send Message</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Gifts Modal -->
+<div class="modal fade" id="giftsModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title">Subscription Plan</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row text-md-center mt-3">
+                    <div class="mb-3"><a class="btn btn-success col-md-8"
+                            href="{{ url_for('gift_premium') }}?user_id={{ profile.user_id }}&gift_name=One Month Gift">One
+                            Month Gift</a></div>
+                    <div class="mb-3"><a class="btn btn-success col-md-8"
+                            href="{{ url_for('gift_premium') }}?user_id={{ profile.user_id }}&gift_name=One Quarter Gift">One
+                            Quarter Gift</a>
+                    </div>
+                    <div class="mb-3"><a class="btn btn-success col-md-8"
+                            href="{{ url_for('gift_premium') }}?user_id={{ profile.user_id }}&gift_name=One Year Gift">One
+                            Year Gift</a></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Admin: User's Public Journeys Section -->
+{% if session.role == 'admin' and profile.user_id|string != session.user_id|string and can_view_full_profile %}
+<div class="row mt-4 mb-5">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h4 class="mb-0">{{ profile.username }}'s Public Journeys</h4>
+            </div>
+            <div class="card-body p-0">
+                {% if recent_journeys %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Journey Title</th>
+                                <th>Start Date</th>
+                                <th>Events</th>
+                                <th>Status</th>
+                                <th>Last Updated</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for journey in recent_journeys %}
+                            <tr>
+                                <td>{{ journey.title }}</td>
+                                <td>{{ journey.start_date.strftime('%d %b %Y') }}</td>
+                                <td>{{ journey.event_count }}</td>
+                                <td>
+                                    <span
+                                        class="badge {% if journey.status == 'open' %}bg-success{% else %}bg-warning{% endif %} rounded-pill">
+                                        {{ journey.status|capitalize }}
+                                    </span>
+                                </td>
+                                <td>{{ journey.updated_at.strftime('%d %b %Y, %H:%M') if journey.updated_at else
+                                    journey.created_at.strftime('%d %b %Y, %H:%M') }}</td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="{{ url_for('view_journey', journey_id=journey.journey_id) }}"
+                                            class="btn btn-primary">
+                                            <i class="fas fa-eye"></i> View
+                                        </a>
+                                        <button type="button" class="btn btn-warning" data-bs-toggle="modal"
+                                            data-bs-target="#editJourney{{ journey.journey_id }}">
+                                            <i class="fas fa-edit"></i> Edit
+                                        </button>
+                                        <button type="button" class="btn btn-danger" data-bs-toggle="modal"
+                                            data-bs-target="#deleteJourney{{ journey.journey_id }}">
+                                            <i class="fas fa-trash"></i> Delete
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info m-3">
+                    <i class="fas fa-info-circle me-2"></i> This user doesn't have any public journeys to display here.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modals for Edit/Delete Journey -->
+{% if recent_journeys %}
+{% for journey in recent_journeys %}
+<!-- Edit Journey Modal -->
+<div class="modal fade" id="editJourney{{ journey.journey_id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title">Edit Journey</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('admin_edit_journey') }}">
+                <input type="hidden" name="journey_id" value="{{ journey.journey_id }}">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>As an {{ session.role }}, you are editing a journey
+                        created by {{ profile.username }}.
+                    </div>
+                    <div class="mb-3">
+                        <label for="title{{ journey.journey_id }}" class="form-label">Title</label>
+                        <input type="text" class="form-control" id="title{{ journey.journey_id }}" name="title"
+                            value="{{ journey.title }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description{{ journey.journey_id }}" class="form-label">Description</label>
+                        <textarea class="form-control" id="description{{ journey.journey_id }}" name="description"
+                            rows="4" required>{{ journey.description }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="status{{ journey.journey_id }}" class="form-label">Status</label>
+                        <select class="form-select" id="status{{ journey.journey_id }}" name="status">
+                            <option value="open" {% if journey.status=='open' %}selected{% endif %}>Open (Visible)
+                            </option>
+                            <option value="hidden" {% if journey.status=='hidden' %}selected{% endif %}>Hidden</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="display{{ journey.journey_id }}" class="form-label">Display</label>
+                        <select class="form-select" id="display{{ journey.journey_id }}" name="display">
+                            <option value="public" {% if journey.display=='public' %}selected{% endif %}>Public</option>
+                            <option value="private" {% if journey.display=='private' %}selected{% endif %}>Private
+                            </option>
+                            <option value="published" {% if journey.display=='published' %}selected{% endif %}>Published
+                            </option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Journey Modal -->
+<div class="modal fade" id="deleteJourney{{ journey.journey_id }}" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Confirm Deletion</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-center mb-3">
+                    <i class="fas fa-exclamation-triangle text-danger fa-3x"></i>
+                </div>
+                <p>Are you sure you want to delete the journey "<strong>{{ journey.title }}</strong>"?</p>
+                <p class="text-danger">This action cannot be undone and will delete all events in this journey.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <a href="{{ url_for('admin_delete_journey', journey_id=journey.journey_id) }}"
+                    class="btn btn-danger">Delete Journey</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endif %}
+
+<script>
+    
+    document.addEventListener('DOMContentLoaded', function () {
+    // Initialize follow buttonAdd commentMore actions
+        const followButton = document.querySelector('.follow-btn');
+        if (followButton) {
+            const userId = followButton.getAttribute('data-user-id');
+            updateFollowButton(userId, followButton);
+        }
+
+        // Handle Send Message Modal
+        const sendMessageModalElement = document.getElementById('sendMessageModal');
+        const sendMessageSubmitBtn = document.getElementById('sendMessageSubmitBtn');
+        const sendMessageForm = document.getElementById('sendMessageForm');
+        const messageContent = document.getElementById('messageContent');
+        const sendMessageError = document.getElementById('sendMessageError');
+
+        if (sendMessageSubmitBtn && sendMessageForm && messageContent && sendMessageModalElement) {
+            sendMessageSubmitBtn.addEventListener('click', function () {
+                const formData = new FormData(sendMessageForm);
+                const recipientId = formData.get('recipient_id');
+                const content = formData.get('content');
+
+                if (!content.trim()) {
+                    if (sendMessageError) sendMessageError.textContent = 'Message content cannot be empty.';
+                    else alert('Message content cannot be empty.');
+                    return;
+                }
+                if (sendMessageError) sendMessageError.textContent = '';
+
+                fetch("{{ url_for('message.send_message') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams({
+                        'recipient_id': recipientId,
+                        'content': content
+                    })
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            var modalInstance = bootstrap.Modal.getInstance(sendMessageModalElement);
+                            if (modalInstance) {
+                                modalInstance.hide();
+                            }
+                            messageContent.value = '';
+                            alert(data.message || 'Message sent successfully!');
+                        } else {
+                            if (sendMessageError) sendMessageError.textContent = data.message || 'Error sending message.';
+                            else alert('Error: ' + (data.message || 'Unknown error'));
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error sending message:', error);
+                        if (sendMessageError) sendMessageError.textContent = 'An error occurred while sending the message.';
+                        else alert('An error occurred while sending the message.');
+                    });
+            });
+
+            sendMessageModalElement.addEventListener('hidden.bs.modal', function () {
+                messageContent.value = '';
+                if (sendMessageError) sendMessageError.textContent = '';
+            });
+        }
+    });
+    
+    // Function to check if user can follow users (premium or staff)
+    function canFollowUsers() {
+        {% if session.loggedin %}
+        {% set user_role = session.get('role', '') %}
+        {% if user_role in ['admin', 'editor','support_tech','moderator'] %}
+        return true;
+        {% else %}
+        return {{ 'true' if session.get('premium') == 1 else 'false' }};
+        {% endif %}
+        {% else %}
+        return false;
+        {% endif %}
+}
+
+    // Function to update follow button state
+    function updateFollowButton(userId, buttonElement) {
+        if (!canFollowUsers()) {
+            return;
+        }
+
+        fetch(`/api/check_user_follow_status/${userId}`, {
+            credentials: 'same-origin'
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.following) {
+                    buttonElement.innerHTML = '<i class="fas fa-user-check me-2"></i>Following';
+                    buttonElement.className = 'btn btn-info col-md-6 follow-btn';
+                    buttonElement.title = 'You are following this user - click to unfollow';
+                    buttonElement.setAttribute('data-action', 'unfollow');
+                } else {
+                    buttonElement.innerHTML = '<i class="fas fa-user-plus me-2"></i>Follow User';
+                    buttonElement.className = 'btn btn-success col-md-6 follow-btn';
+                    buttonElement.title = 'Follow this user to see all their journey events on your Departure Board';
+                    buttonElement.setAttribute('data-action', 'follow');
+                }
+            })
+            .catch(error => {
+                console.error('Error checking follow status:', error);
+                buttonElement.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>Error';
+                buttonElement.className = 'btn btn-secondary col-md-6';
+                buttonElement.disabled = true;
+            });
+    }
+
+    // Function to handle follow button clicks
+    function handleFollowClick(button, userId) {
+        if (button.disabled) return;
+
+        const action = button.getAttribute('data-action') || 'follow';
+        const isFollowing = action === 'unfollow';
+
+        // Show loading state
+        const originalText = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>' + (isFollowing ? 'Unfollowing...' : 'Following...');
+        button.disabled = true;
+
+        // Create and submit form
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = isFollowing ? `/user/unfollow/${userId}` : `/user/follow/${userId}`;
+        form.style.display = 'none';
+        document.body.appendChild(form);
+        form.submit();
+    }
+
+    // Helper function to show messages
+    function showMessage(message, type = 'info') {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type === 'error' ? 'danger' : 'success'} alert-dismissible fade show position-fixed`;
+        alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+
+        document.body.appendChild(alertDiv);
+
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.parentNode.removeChild(alertDiv);
+            }
+        }, 5000);
+    }
+</script>
+{% endblock %}
+<!-- End Admin Public Journeys Section -->
+
+
+
+
+

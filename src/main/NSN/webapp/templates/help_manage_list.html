@@ -1,0 +1,707 @@
+{% extends 'userbase.html' %}
+
+{% block title %}Ticket Management - TravelTales{% endblock %}
+
+{% set active_page = 'help_manage' %}
+
+{% block head_extras %}
+<style>
+    /* Refined and balanced color scheme */
+    :root {
+        --primary-green: #00AA6C;
+        --secondary-green: #34E0A1;
+        --primary-dark: #212529;
+        --secondary-dark: #495057;
+        --light-gray: #f8f9fa;
+        --medium-gray: #e9ecef;
+        --border-gray: #dee2e6;
+        --text-muted: #6c757d;
+        --card-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+        --card-shadow-hover: 0 4px 20px rgba(0, 0, 0, 0.12);
+    }
+
+    /* Simplified statistics cards */
+    .stats-card {
+        border: none;
+        border-radius: 12px;
+        box-shadow: var(--card-shadow);
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .stats-card:hover {
+        transform: translateY(-3px);
+        box-shadow: var(--card-shadow-hover);
+    }
+    
+    .stats-card.new-card {
+        background: #64b5f6;
+        color: white;
+    }
+    
+    .stats-card.progress-card {
+        background: #4dd0e1;
+        color: white;
+    }
+    
+    .stats-card.resolved-card {
+        background: #66bb6a;
+        color: white;
+    }
+    
+    .stats-card.urgent-card {
+        background: #ef5350;
+        color: white;
+    }
+    
+    .stats-card.total-card {
+        background: var(--light-gray);
+        color: var(--primary-dark);
+        border: 2px solid var(--border-gray);
+    }
+    
+    .stats-card .card-icon {
+        font-size: 2.2rem;
+        opacity: 0.8;
+        margin-bottom: 8px;
+    }
+    
+    .stats-card .card-number {
+        font-size: 2rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+    
+    .stats-card .card-label {
+        font-size: 0.85rem;
+        opacity: 0.9;
+        font-weight: 500;
+    }
+
+    /* Simplified filter section */
+    .filter-card {
+        border: 1px solid var(--border-gray);
+        border-radius: 10px;
+        box-shadow: var(--card-shadow);
+        background: white;
+    }
+    
+    .filter-card .card-header {
+        background: var(--light-gray);
+        border-bottom: 1px solid var(--border-gray);
+        border-radius: 10px 10px 0 0;
+    }
+    
+    .filter-icon {
+        color: var(--text-muted);
+        margin-right: 8px;
+    }
+    
+    .quick-filters {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+    }
+    
+    .quick-filter-btn {
+        background: var(--primary-dark);
+        border: none;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        letter-spacing: 0.3px;
+        transition: all 0.3s ease;
+        text-decoration: none;
+    }
+    
+    .quick-filter-btn:hover {
+        background: var(--secondary-dark);
+        transform: translateY(-1px);
+        color: white;
+    }
+    
+    .quick-filter-btn.primary {
+        background: var(--secondary-dark);
+    }
+    
+    .quick-filter-btn.primary:hover {
+        background: #495057;
+    }
+
+    /* Simplified table and tickets */
+    .ticket-table-card {
+        border: 1px solid var(--border-gray);
+        border-radius: 10px;
+        box-shadow: var(--card-shadow);
+    }
+    
+    .ticket-table-card .card-header {
+        background: var(--primary-dark);
+        color: white;
+        border-radius: 10px 10px 0 0;
+        border: none;
+    }
+    
+    .ticket-row {
+        position: relative;
+        transition: all 0.2s ease;
+    }
+    
+    .ticket-row:hover {
+        background-color: rgba(0, 0, 0, 0.02);
+    }
+    
+    .status-badge {
+        padding: 5px 10px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .status-new {
+        background: #64b5f6;
+        color: white;
+    }
+    
+    .status-open {
+        background: #4dd0e1;
+        color: white;
+    }
+    
+    .status-stalled {
+        background: #ffb74d;
+        color: white;
+    }
+    
+    .status-resolved {
+        background: #66bb6a;
+        color: white;
+    }
+    
+    .priority-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        font-size: 0.9rem;
+        cursor: help;
+        transition: transform 0.2s ease;
+    }
+    
+    .priority-badge:hover {
+        transform: scale(1.1);
+    }
+    
+    .category-badge {
+        background: var(--medium-gray);
+        color: var(--primary-dark);
+        padding: 4px 8px;
+        border-radius: 10px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+    
+    .user-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: var(--primary-dark);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: 600;
+        margin-right: 10px;
+    }
+    
+    .subject-link {
+        color: #333;
+        text-decoration: none;
+        font-weight: 600;
+        transition: color 0.3s ease;
+    }
+    
+    .subject-link:hover {
+        color: #000;
+        text-decoration: underline;
+    }
+    
+    .ticket-id {
+        color: #2c3e50;
+        font-weight: bold;
+    }
+    
+    .view-btn {
+        background: none;
+        border: 1px solid #dee2e6;
+        color: #6c757d;
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        display: inline-block;
+    }
+    
+    .view-btn:hover {
+        background: #f8f9fa;
+        border-color: #adb5bd;
+        color: #495057;
+    }
+
+    /* Simplified page header */
+    .page-header {
+        background: white;
+        padding: 25px 0;
+        border-radius: 12px;
+        margin-bottom: 25px;
+        border: 1px solid var(--border-gray);
+        box-shadow: var(--card-shadow);
+    }
+    
+    .page-title {
+        color: var(--primary-dark);
+        font-weight: 700;
+        font-size: 1.8rem;
+    }
+    
+    .page-title i {
+        margin-left: 8px;
+        margin-right: 12px;
+        color: var(--text-muted);
+    }
+    
+    .total-badge {
+        background: var(--medium-gray);
+        color: var(--primary-dark);
+        padding: 8px 15px;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        border: 1px solid var(--border-gray);
+    }
+
+    /* Enhanced responsive design */
+    @media (max-width: 768px) {
+        .stats-card {
+            margin-bottom: 15px;
+        }
+        
+        .quick-filters {
+            justify-content: center;
+        }
+        
+        .ticket-row:hover {
+            transform: none;
+        }
+        
+        .page-title {
+            font-size: 1.5rem;
+        }
+    }
+    
+    /* Form improvements */
+    .form-select {
+        border: 1px solid var(--border-gray);
+        border-radius: 6px;
+        transition: border-color 0.3s ease;
+    }
+    
+    .form-select:focus {
+        border-color: var(--primary-green);
+        box-shadow: 0 0 0 0.2rem rgba(0, 170, 108, 0.25);
+    }
+    
+    .btn-outline-secondary {
+        border-color: var(--border-gray);
+        color: var(--text-muted);
+    }
+    
+    .btn-outline-secondary:hover {
+        background: var(--light-gray);
+        border-color: var(--border-gray);
+        color: var(--primary-dark);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Simplified Page Header -->
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <h2 class="page-title mb-0">
+            <i class="fas fa-tasks"></i>
+            Ticket Management
+        </h2>
+        <div class="d-flex align-items-center" style="margin-right: 20px;">
+            <span class="badge total-badge">
+                <i class="fas fa-list me-1"></i>Total: {{ total_requests }}
+            </span>
+            <a href="{{ url_for('manage_requests', unassigned='1') }}" 
+               class="btn quick-filter-btn ms-2">
+                <i class="fas fa-inbox me-1"></i>Support Queue
+            </a>
+            <button class="btn quick-filter-btn ms-2" onclick="refreshStats()">
+                <i class="fas fa-sync-alt me-1"></i>Refresh
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Simplified Statistics Cards -->
+<div class="row mb-4 g-3">
+    <div class="col-lg col-md-6">
+        <div class="card stats-card new-card h-100">
+            <div class="card-body text-center py-4">
+                <div class="card-icon">
+                    <i class="fas fa-plus-circle"></i>
+                </div>
+                <h3 class="card-number mb-1" id="new-count">-</h3>
+                <p class="card-label mb-0">New Tickets</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg col-md-6">
+        <div class="card stats-card progress-card h-100">
+            <div class="card-body text-center py-4">
+                <div class="card-icon">
+                    <i class="fas fa-cogs"></i>
+                </div>
+                <h3 class="card-number mb-1" id="progress-count">-</h3>
+                <p class="card-label mb-0">In Progress</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg col-md-6">
+        <div class="card stats-card resolved-card h-100">
+            <div class="card-body text-center py-4">
+                <div class="card-icon">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <h3 class="card-number mb-1" id="resolved-count">-</h3>
+                <p class="card-label mb-0">Resolved</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg col-md-6">
+        <div class="card stats-card urgent-card h-100">
+            <div class="card-body text-center py-4">
+                <div class="card-icon">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <h3 class="card-number mb-1" id="urgent-count">-</h3>
+                <p class="card-label mb-0">Urgent Priority</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg col-md-6">
+        <div class="card stats-card total-card h-100">
+            <div class="card-body text-center py-4">
+                <div class="card-icon">
+                    <i class="fas fa-list-alt"></i>
+                </div>
+                <h3 class="card-number mb-1" id="total-count">{{ total_requests or '-' }}</h3>
+                <p class="card-label mb-0">Total Tickets</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Simplified Filters -->
+<div class="card filter-card mb-4">
+    <div class="card-header">
+        <h6 class="mb-0 text-muted">
+            <i class="fas fa-filter filter-icon"></i>
+            Filter & Quick Actions
+        </h6>
+    </div>
+    <div class="card-body">
+        <!-- Quick Filter Buttons -->
+        <div class="quick-filters">
+            <a href="{{ url_for('manage_requests', unassigned='1') }}" class="quick-filter-btn">
+                <i class="fas fa-inbox me-1"></i>Unassigned
+            </a>
+            <a href="{{ url_for('manage_requests', status='urgent') }}" class="quick-filter-btn">
+                <i class="fas fa-exclamation-triangle me-1"></i>Urgent
+            </a>
+            <a href="{{ url_for('manage_requests', status='new') }}" class="quick-filter-btn">
+                <i class="fas fa-plus me-1"></i>New Today
+            </a>
+            <a href="{{ url_for('manage_requests', category='technical_issue') }}" class="quick-filter-btn">
+                <i class="fas fa-bug me-1"></i>Technical
+            </a>
+        </div>
+        
+        <!-- Detailed Filters -->
+        <form method="GET" action="{{ url_for('manage_requests') }}">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="status" class="form-label">
+                        <i class="fas fa-flag filter-icon"></i>Status
+                    </label>
+                    <select name="status" id="status" class="form-select">
+                        <option value="">All Status</option>
+                        <option value="new" {% if status_filter == 'new' %}selected{% endif %}>New</option>
+                        <option value="open" {% if status_filter == 'open' %}selected{% endif %}>Open</option>
+                        <option value="stalled" {% if status_filter == 'stalled' %}selected{% endif %}>Stalled</option>
+                        <option value="resolved" {% if status_filter == 'resolved' %}selected{% endif %}>Resolved</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="category" class="form-label">
+                        <i class="fas fa-tags filter-icon"></i>Category
+                    </label>
+                    <select name="category" id="category" class="form-select">
+                        <option value="">All Categories</option>
+                        <option value="technical_issue" {% if category_filter == 'technical_issue' %}selected{% endif %}>Technical Issue</option>
+                        <option value="account_help" {% if category_filter == 'account_help' %}selected{% endif %}>Account Help</option>
+                        <option value="bug_report" {% if category_filter == 'bug_report' %}selected{% endif %}>Bug Report</option>
+                        <option value="feature_request" {% if category_filter == 'feature_request' %}selected{% endif %}>Feature Request</option>
+                        <option value="other" {% if category_filter == 'other' %}selected{% endif %}>Other</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="unassigned" class="form-label">
+                        <i class="fas fa-users filter-icon"></i>Assignment
+                    </label>
+                    <select name="unassigned" id="unassigned" class="form-select">
+                        <option value="">All Requests</option>
+                        <option value="1" {% if unassigned_only %}selected{% endif %}>Unassigned Only</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row mt-3">
+                <div class="col-12 d-flex justify-content-end gap-2">
+                    <button type="submit" class="btn quick-filter-btn">
+                        <i class="fas fa-search me-1"></i>Apply Filters
+                    </button>
+                    <a href="{{ url_for('manage_requests') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-times me-1"></i>Clear All
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Simplified Requests Table -->
+{% if requests %}
+<div class="card ticket-table-card">
+    <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">
+                <i class="fas fa-list me-2"></i>
+                Ticket List
+            </h6>
+
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 80px;">ID</th>
+                        <th>Subject</th>
+                        <th style="width: 200px;">User</th>
+                        <th style="width: 120px;">Category</th>
+                        <th style="width: 100px;">Status</th>
+                        <th style="width: 100px;">Priority</th>
+                        <th style="width: 120px;">Assigned To</th>
+                        <th style="width: 100px;">Created</th>
+                        <th style="width: 80px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for request in requests %}
+                    <tr class="ticket-row
+                        {% if request.priority == 'urgent' %}table-warning
+                        {% elif request.status == 'new' and not request.assigned_to %}table-light
+                        {% endif %}">
+                        
+                        <td>
+                            <strong class="ticket-id">#{{ request.request_id }}</strong>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('manage_single_request', request_id=request.request_id) }}" 
+                               class="subject-link" title="{{ request.subject }}">
+                                {% if request.subject|length > 30 %}
+                                    {{ request.subject[:30] }}...
+                                {% else %}
+                                    {{ request.subject }}
+                                {% endif %}
+                            </a>
+                        </td>
+                        <td>
+                            <div>
+                                <div class="fw-medium d-flex align-items-center">
+                                    {{ request.submitter_username }}
+                                    {% if request.is_premium_user %}
+                                        <span class="badge bg-warning text-dark ms-2" title="Premium User">
+                                            <i class="fas fa-crown fa-sm"></i>
+                                        </span>
+                                    {% endif %}
+                                    {% if request.submitter_role in ['admin', 'editor', 'moderator', 'support_tech'] %}
+                                        <span class="badge bg-info text-white ms-2" title="Staff Member">
+                                            <i class="fas fa-user-shield fa-sm"></i>
+                                        </span>
+                                    {% endif %}
+                                </div>
+                                <small class="text-muted">{{ request.submitter_email }}</small>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="category-badge">
+                                {% if request.category == 'technical_issue' %}
+                                    <i class="fas fa-cog me-1"></i>Technical
+                                {% elif request.category == 'account_help' %}
+                                    <i class="fas fa-user me-1"></i>Account
+                                {% elif request.category == 'bug_report' %}
+                                    <i class="fas fa-bug me-1"></i>Bug
+                                {% elif request.category == 'feature_request' %}
+                                    <i class="fas fa-lightbulb me-1"></i>Feature
+                                {% else %}
+                                    <i class="fas fa-question me-1"></i>Other
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="status-badge 
+                                {% if request.status == 'new' %}status-new
+                                {% elif request.status == 'open' %}status-open
+                                {% elif request.status == 'stalled' %}status-stalled
+                                {% elif request.status == 'resolved' %}status-resolved
+                                {% endif %}">
+                                {{ request.status.title() }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="priority-badge 
+                                {% if request.priority == 'urgent' %}text-white
+                                {% elif request.priority == 'high' %}text-white
+                                {% elif request.priority == 'medium' %}text-white
+                                {% else %}bg-light text-dark border
+                                {% endif %}"
+                                {% if request.priority == 'urgent' %}style="background: #ef5350;"
+                                {% elif request.priority == 'high' %}style="background: #ffcc80;"
+                                {% elif request.priority == 'medium' %}style="background: #81c784;"
+                                {% endif %}
+                                title="{% if request.priority == 'urgent' %}Urgent Priority
+                                {% elif request.priority == 'high' %}High Priority
+                                {% elif request.priority == 'medium' %}Medium Priority
+                                {% else %}Low Priority
+                                {% endif %}">
+                                {% if request.priority == 'urgent' %}
+                                    <i class="fas fa-angle-double-up"></i>
+                                {% elif request.priority == 'high' %}
+                                    <i class="fas fa-chevron-up"></i>
+                                {% elif request.priority == 'medium' %}
+                                    <i class="fas fa-minus"></i>
+                                {% else %}
+                                    <i class="fas fa-chevron-down"></i>
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            {% if request.assigned_to_username %}
+                                <small class="text-primary">
+                                    {{ request.assigned_to_username }}
+                                </small>
+                            {% else %}
+                                <small class="text-muted">
+                                    <i class="fas fa-user-slash me-1"></i>Unassigned
+                                </small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small class="text-muted">
+                                <i class="fas fa-clock me-1"></i>
+                                {{ request.created_at.strftime('%m-%d %H:%M') }}
+                            </small>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('manage_single_request', request_id=request.request_id) }}" 
+                               class="btn view-btn">
+                                <i class="fas fa-eye me-1"></i>View
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<div class="text-center py-5">
+    <div class="mb-4">
+        <i class="fas fa-clipboard-list fa-4x text-muted"></i>
+    </div>
+    <h4 class="text-muted">No Tickets Found</h4>
+    <p class="text-muted">
+        {% if status_filter or category_filter %}
+            No tickets found matching the current filter criteria.
+        {% else %}
+            No help requests have been submitted yet.
+        {% endif %}
+    </p>
+    {% if status_filter or category_filter %}
+    <a href="{{ url_for('manage_requests') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-times me-2"></i>Clear Filters
+    </a>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Load statistics on page load
+    refreshStats();
+    
+    // Auto-refresh stats every 30 seconds
+    setInterval(refreshStats, 30000);
+});
+
+function refreshStats() {
+    fetch('{{ url_for("get_help_stats") }}')
+        .then(response => response.json())
+        .then(data => {
+            // Update status counts with animation
+            updateCountWithAnimation('new-count', data.status_counts.new || 0);
+            updateCountWithAnimation('progress-count', (data.status_counts.open || 0) + (data.status_counts.stalled || 0));
+            updateCountWithAnimation('resolved-count', data.status_counts.resolved || 0);
+            updateCountWithAnimation('urgent-count', data.urgent_count || 0);
+            
+            // Update total count
+            const totalCount = Object.values(data.status_counts).reduce((sum, count) => sum + count, 0);
+            updateCountWithAnimation('total-count', totalCount || 0);
+        })
+        .catch(error => {
+            console.error('Error fetching stats:', error);
+        });
+}
+
+function updateCountWithAnimation(elementId, newValue) {
+    const element = document.getElementById(elementId);
+    const currentValue = parseInt(element.textContent) || 0;
+    
+    if (currentValue !== newValue) {
+        element.style.transform = 'scale(1.05)';
+        setTimeout(() => {
+            element.textContent = newValue;
+            element.style.transform = 'scale(1)';
+        }, 150);
+    }
+}
+</script>
+{% endblock %} 

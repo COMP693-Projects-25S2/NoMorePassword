@@ -1,0 +1,422 @@
+{% extends 'userbase.html' %}
+
+{% block title %}Submit Appeal{% endblock %}
+
+{% set active_page = 'appeals' %}
+
+{% block head_extras %}
+<style>
+    .restriction-card {
+        transition: all 0.3s ease;
+        border-left: 4px solid #dc3545;
+    }
+
+    .restriction-card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    .restriction-type {
+        font-weight: 600;
+        color: #dc3545;
+    }
+
+    .appeal-form {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 2rem;
+        border: 1px solid #dee2e6;
+    }
+
+    .pending-appeal {
+        background-color: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 1rem;
+        border-radius: 4px;
+        margin-bottom: 1rem;
+    }
+
+    .form-control:focus {
+        border-color: #80bdff;
+        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    }
+
+    .character-count {
+        font-size: 0.875rem;
+        color: #6c757d;
+        text-align: right;
+        margin-top: 0.25rem;
+    }
+
+    .character-count.warning {
+        color: #fd7e14;
+    }
+
+    .character-count.error {
+        color: #dc3545;
+    }
+
+    .appeal-guidelines {
+        background-color: #e7f3ff;
+        border-left: 4px solid #007bff;
+        padding: 1rem;
+        border-radius: 0 4px 4px 0;
+        margin-bottom: 2rem;
+    }
+
+    .restriction-badge {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 0.875rem;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+    }
+
+    .badge-site-ban {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+
+    .badge-sharing-block {
+        background-color: #fff3cd;
+        color: #856404;
+    }
+
+    .badge-hidden-journey {
+        background-color: #d1ecf1;
+        color: #0c5460;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Banner -->
+<div class="banner-image"
+    style="background-image: url('/static/ui_photos/private_journey.jpg'); background-size: cover; background-position: center; height: 300px; position: relative;">
+    <div class="banner-overlay"
+        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5);">
+        <div class="container h-100">
+            <div class="row h-100 align-items-center">
+                <div class="col-md-12 text-end">
+                    <h1 class="text-white fw-bold">Submit Appeal</h1>
+                    <p class="text-white lead">Appeal restrictions on your account or content</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+
+            <!-- Appeal Guidelines -->
+            <div class="appeal-guidelines">
+                <h6><i class="fas fa-info-circle me-2"></i>Appeal Guidelines</h6>
+                <ul class="mb-0 small">
+                    <li>Provide clear and detailed reasons for your appeal</li>
+                    <li>Appeals are reviewed within 3-5 business days</li>
+                    <li>You can only submit one appeal per restriction</li>
+                    <li>Be respectful and honest in your justification</li>
+                </ul>
+            </div>
+
+            <!-- Current Restrictions -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-exclamation-triangle text-danger me-2"></i>
+                        Your Current Restrictions
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if restrictions %}
+                        {% for restriction in restrictions %}
+                        <div class="restriction-card card mb-3 {% if restriction.has_pending %}opacity-50{% endif %}">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        <div class="restriction-type mb-2">
+                                            {% if restriction.type == 'site_ban' %}
+                                                <span class="restriction-badge badge-site-ban">
+                                                    <i class="fas fa-user-slash me-1"></i>Site Ban
+                                                </span>
+                                            {% elif restriction.type == 'sharing_block' %}
+                                                <span class="restriction-badge badge-sharing-block">
+                                                    <i class="fas fa-ban me-1"></i>Sharing Block
+                                                </span>
+                                            {% elif restriction.type == 'hidden_journey' %}
+                                                <span class="restriction-badge badge-hidden-journey">
+                                                    <i class="fas fa-eye-slash me-1"></i>Hidden Journey
+                                                </span>
+                                            {% endif %}
+                                        </div>
+                                        <p class="mb-0">{{ restriction.description }}</p>
+
+                                        {% if restriction.has_pending %}
+                                        <div class="pending-appeal mt-2">
+                                            <small><i class="fas fa-clock me-1"></i>You already have a pending appeal for this restriction.</small>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="ms-3">
+                                        {% if not restriction.has_pending %}
+                                        <button type="button" class="btn btn-primary btn-sm appeal-btn"
+                                                data-restriction-type="{{ restriction.type }}"
+                                                data-reference-id="{{ restriction.reference_id or '' }}"
+                                                data-description="{{ restriction.description }}">
+                                            <i class="fas fa-paper-plane me-1"></i>Appeal
+                                        </button>
+                                        {% else %}
+                                        <button type="button" class="btn btn-secondary btn-sm" disabled>
+                                            <i class="fas fa-clock me-1"></i>Pending
+                                        </button>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-center py-4">
+                            <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                            <h5>No Active Restrictions</h5>
+                            <p class="text-muted">You currently have no restrictions on your account.</p>
+                            <a href="{{ url_for('dashboard') }}" class="btn btn-primary">
+                                <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Appeal Form (Hidden by default) -->
+            <div class="card appeal-form-container" id="appealFormContainer" style="display: none;">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-edit me-2"></i>Submit Your Appeal
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form id="appealForm">
+                        <input type="hidden" id="appealType" name="appeal_type">
+                        <input type="hidden" id="referenceId" name="reference_id">
+
+                        <div class="mb-3">
+                            <label class="form-label">Appealing Restriction:</label>
+                            <div id="restrictionInfo" class="p-3 bg-light rounded">
+                                <!-- Restriction info will be populated here -->
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="justification" class="form-label">
+                                Why do you believe this restriction was applied incorrectly? *
+                            </label>
+                            <textarea class="form-control" id="justification" name="justification"
+                                      rows="6" required minlength="20" maxlength="2000"
+                                      placeholder="Please provide a detailed explanation of why you believe this restriction should be removed. Include any relevant information that supports your case. (Minimum 20 characters)"></textarea>
+                            <div class="character-count" id="charCount">0 / 2000 characters (minimum 20 required)</div>
+                            <div class="form-text">
+                                Be specific and honest. Provide any context that might help our review team understand your situation.
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <button type="button" class="btn btn-secondary" id="cancelAppeal">
+                                <i class="fas fa-times me-2"></i>Cancel
+                            </button>
+                            <button type="submit" class="btn btn-primary" id="submitAppeal">
+                                <i class="fas fa-paper-plane me-2"></i>Submit Appeal
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Appeal History Link -->
+            {% if restrictions %}
+            <div class="text-center mt-4">
+                <a href="{{ url_for('my_appeals') }}" class="btn btn-outline-primary">
+                    <i class="fas fa-history me-2"></i>View My Appeal History
+                </a>
+            </div>
+            {% endif %}
+
+            <!-- Back to Dashboard -->
+            <div class="text-center mt-4 mb-5">
+                <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+                </a>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const appealBtns = document.querySelectorAll('.appeal-btn');
+    const appealFormContainer = document.getElementById('appealFormContainer');
+    const appealForm = document.getElementById('appealForm');
+    const cancelBtn = document.getElementById('cancelAppeal');
+    const justificationTextarea = document.getElementById('justification');
+    const charCountDiv = document.getElementById('charCount');
+
+    // Handle appeal button clicks
+    appealBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const restrictionType = this.dataset.restrictionType;
+            const referenceId = this.dataset.referenceId;
+            const description = this.dataset.description;
+
+            // Populate hidden fields
+            document.getElementById('appealType').value = restrictionType;
+            document.getElementById('referenceId').value = referenceId;
+
+            // Update restriction info display
+            const restrictionInfo = document.getElementById('restrictionInfo');
+            let typeDisplay = '';
+            let iconClass = '';
+
+            switch(restrictionType) {
+                case 'site_ban':
+                    typeDisplay = 'Site Ban';
+                    iconClass = 'fas fa-user-slash text-danger';
+                    break;
+                case 'sharing_block':
+                    typeDisplay = 'Sharing Block';
+                    iconClass = 'fas fa-ban text-warning';
+                    break;
+                case 'hidden_journey':
+                    typeDisplay = 'Hidden Journey';
+                    iconClass = 'fas fa-eye-slash text-info';
+                    break;
+            }
+
+            restrictionInfo.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <i class="${iconClass} me-2"></i>
+                    <div>
+                        <strong>${typeDisplay}</strong>
+                        <div class="text-muted small">${description}</div>
+                    </div>
+                </div>
+            `;
+
+            // Show the form
+            appealFormContainer.style.display = 'block';
+            appealFormContainer.scrollIntoView({ behavior: 'smooth' });
+
+            // Disable all appeal buttons
+            appealBtns.forEach(b => b.disabled = true);
+        });
+    });
+
+    // Handle cancel button
+    cancelBtn.addEventListener('click', function() {
+        appealFormContainer.style.display = 'none';
+        appealForm.reset();
+
+        // Re-enable appeal buttons
+        appealBtns.forEach(b => b.disabled = false);
+    });
+
+    // Character count functionality
+    justificationTextarea.addEventListener('input', function() {
+        const length = this.value.length;
+        const minLength = 20;
+        const maxLength = 2000;
+
+        charCountDiv.textContent = `${length} / ${maxLength} characters`;
+
+        if (length < minLength) {
+            charCountDiv.className = 'character-count error';
+            charCountDiv.textContent += ` (minimum ${minLength} required)`;
+        } else if (length > maxLength * 0.9) {
+            charCountDiv.className = 'character-count warning';
+        } else {
+            charCountDiv.className = 'character-count';
+        }
+    });
+
+    // Handle form submission
+    appealForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const submitBtn = document.getElementById('submitAppeal');
+        const originalText = submitBtn.innerHTML;
+
+        // Validate justification length
+        const justification = justificationTextarea.value.trim();
+        if (justification.length < 20) {
+            alert('Please provide at least 20 characters in your justification.');
+            return;
+        }
+
+        // Disable submit button
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Submitting...';
+
+        // Prepare form data
+        const formData = new FormData(this);
+        const data = Object.fromEntries(formData);
+
+        // Submit appeal
+        fetch('{{ url_for("submit_appeal") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show success message
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-success alert-dismissible fade show';
+                alertDiv.innerHTML = `
+                    <i class="fas fa-check-circle me-2"></i>
+                    ${data.message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+
+                const container = document.querySelector('.container');
+                container.insertBefore(alertDiv, container.firstChild);
+
+                // Redirect to dashboard after delay
+                setTimeout(() => {
+                    window.location.href = '{{ url_for("dashboard") }}';
+                }, 2000);
+
+            } else {
+                throw new Error(data.error || 'An error occurred');
+            }
+        })
+        .catch(error => {
+            // Show error message
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-danger alert-dismissible fade show';
+            alertDiv.innerHTML = `
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                ${error.message || 'An error occurred while submitting your appeal.'}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+
+            appealFormContainer.prepend(alertDiv);
+            console.error('Error:', error);
+        })
+        .finally(() => {
+            // Re-enable submit button
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        });
+    });
+});
+</script>
+{% endblock %}

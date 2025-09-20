@@ -1,0 +1,887 @@
+{% extends 'userbase.html' %}
+
+{% block title %}Manage Followed Content{% endblock %}
+
+{% set active_page = 'manage_followed_content' %}
+
+{% block content %}
+<!-- Banner image with text overlay -->
+<div class="banner-image"
+    style="background-image: url('/static/ui_photos/private_journey.jpg'); background-size: cover; background-position: center; height: 300px; position: relative;">
+    <div class="banner-overlay"
+        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5);">
+        <div class="container h-100">
+            <div class="row h-100 align-items-center">
+                <div class="col-md-12 text-end">
+                    <h1 class="text-white fw-bold">Manage Followed Content</h1>
+                    <p class="text-white lead">Manage your followed journeys, users, and locations</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <!-- <h1><i class="fas fa-cog"></i> Manage Followed Content</h1> -->
+                <div class="d-flex gap-2">
+                    <!-- <div class="badge bg-info fs-6" id="followed-counts-badge">
+                        Following {{ followed_journeys|length }} journey{{ 's' if followed_journeys|length != 1 else '' }},
+                        {{ followed_users|length }} user{{ 's' if followed_users|length != 1 else '' }},
+                        {{ followed_locations|length }} location{{ 's' if followed_locations|length != 1 else '' }}
+                    </div> -->
+                    <a href="{{ url_for('departure_board') }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-arrow-left me-2"></i>Back to Departure Board
+                    </a>
+                </div>
+            </div>
+
+            {% if not followed_journeys and not followed_users and not followed_locations %}
+                <!-- No followed content message -->
+                <div class="card border-0 shadow-sm" id="no-followed-content">
+                    <div class="card-body text-center py-5">
+                        <i class="fas fa-map-marked-alt fa-4x text-muted mb-4"></i>
+                        <h4 class="text-muted">No Followed Content</h4>
+                        <p class="text-muted mb-4">You haven't followed any journeys, users, or locations yet. Start following to see their latest events!</p>
+                        <a href="{{ url_for('public_journey') }}" class="btn btn-dark">
+                            <i class="fas fa-search me-2"></i>Browse Public Journeys
+                        </a>
+                    </div>
+                </div>
+            {% else %}
+                <!-- Filter Controls -->
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-light">
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                <h6 class="mb-0"><i class="fas fa-filter me-2"></i>Filter Followed Content</h6>
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <small class="text-muted" id="filter-results-count">
+                                    Showing all content
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row align-items-center">
+                            <div class="col-md-3">
+                                <label for="filter-type" class="form-label small fw-bold">Filter by Type:</label>
+                                <select class="form-select form-select-sm" id="filter-type">
+                                    <option value="">All Types</option>
+                                    <option value="journey">Journeys Only</option>
+                                    <option value="user">Users Only</option>
+                                    <option value="location">Locations Only</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="search-text" class="form-label small fw-bold">Search by Name:</label>
+                                <input type="text" class="form-control form-control-sm" id="search-text" 
+                                       placeholder="Enter journey, user, or location name...">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="sort-order" class="form-label small fw-bold">Sort Order:</label>
+                                <select class="form-select form-select-sm" id="sort-order">
+                                    <option value="newest">Newest First</option>
+                                    <option value="oldest">Oldest First</option>
+                                    <option value="name">Name (A-Z)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small fw-bold">&nbsp;</label>
+                                <div class="d-flex gap-1">
+                                    <button type="button" class="btn btn-dark btn-sm w-100" id="apply-filters">
+                                        <i class="fas fa-search"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-dark btn-sm" id="clear-filters">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Followed content management -->
+                <div class="card border-0 shadow-sm" id="followed-content-card">
+                    <div class="card-header bg-dark text-white">
+                        <h5 class="mb-0">Your Followed Content</h5>
+                    </div>
+                    <div class="card-body" id="followed-content-body">
+                        <!-- Followed Journeys -->
+                        {% if followed_journeys %}
+                        <div class="mb-4 content-section" data-section-type="journey">
+                            <h6 class="text-dark mb-3 section-header">
+                                <i class="fas fa-route me-2"></i>Journeys (<span class="section-count">{{ followed_journeys|length }}</span>)
+                            </h6>
+                            <div class="row section-content">
+                                {% for journey in followed_journeys %}
+                                    <div class="col-md-6 col-lg-4 mb-3 content-item" 
+                                         data-content-type="journey" 
+                                         data-content-id="{{ journey.journey_id }}"
+                                         data-content-name="{{ journey.journey_title|lower }}"
+                                         data-followed-since="{{ journey.followed_since.timestamp() }}">
+                                        <div class="card border-start border-dark border-3 h-100">
+                                            <div class="card-body">
+                                                <h6 class="card-title">{{ journey.journey_title }}</h6>
+                                                <p class="card-text text-muted small mb-2">
+                                                    by <strong>{{ journey.journey_owner }}</strong>
+                                                </p>
+                                                <p class="card-text text-muted small">
+                                                    <i class="fas fa-calendar-plus me-1"></i>
+                                                    Followed since {{ journey.followed_since.strftime('%b %d, %Y') }}
+                                                </p>
+                                                <div class="btn-group btn-group-sm w-100">
+                                                    <a href="{{ url_for('view_journey', journey_id=journey.journey_id, from='manage_followed') }}" 
+                                                       class="btn btn-outline-dark btn-sm">
+                                                        <i class="fas fa-eye"></i> View
+                                                    </a>
+                                                    <button type="button" class="btn btn-outline-dark btn-sm unfollow-btn"
+                                                            data-source-type="journey" 
+                                                            data-source-id="{{ journey.journey_id }}"
+                                                            data-source-name="{{ journey.journey_title }}">
+                                                        <i class="fas fa-heart-broken"></i> Unfollow
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- Followed Users -->
+                        {% if followed_users %}
+                        <div class="mb-4 content-section" data-section-type="user">
+                            <h6 class="text-dark mb-3 section-header">
+                                <i class="fas fa-users me-2"></i>Users (<span class="section-count">{{ followed_users|length }}</span>)
+                            </h6>
+                            <div class="row section-content">
+                                {% for user in followed_users %}
+                                    <div class="col-md-6 col-lg-4 mb-3 content-item" 
+                                         data-content-type="user" 
+                                         data-content-id="{{ user.user_id }}"
+                                         data-content-name="{{ user.username|lower }}"
+                                         data-followed-since="{{ user.followed_since.timestamp() }}">
+                                        <div class="card border-start border-dark border-3 h-100">
+                                            <div class="card-body">
+                                                <h6 class="card-title">{{ user.username }}</h6>
+                                                {% if user.first_name or user.last_name %}
+                                                <p class="card-text text-muted small mb-2">
+                                                    {{ user.first_name }} {{ user.last_name }}
+                                                </p>
+                                                {% endif %}
+                                                <p class="card-text text-muted small">
+                                                    <i class="fas fa-calendar-plus me-1"></i>
+                                                    Followed since {{ user.followed_since.strftime('%b %d, %Y') }}
+                                                </p>
+                                                <div class="btn-group btn-group-sm w-100">
+                                                    <a href="{{ url_for('view_profile') }}?user_id={{ user.user_id }}" 
+                                                       class="btn btn-outline-dark btn-sm">
+                                                        <i class="fas fa-user"></i> View Profile
+                                                    </a>
+                                                    <button type="button" class="btn btn-outline-dark btn-sm unfollow-btn"
+                                                            data-source-type="user" 
+                                                            data-source-id="{{ user.user_id }}"
+                                                            data-source-name="{{ user.username }}">
+                                                        <i class="fas fa-user-times"></i> Unfollow
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- Followed Locations -->
+                        {% if followed_locations %}
+                        <div class="mb-4 content-section" data-section-type="location">
+                            <h6 class="text-dark mb-3 section-header">
+                                <i class="fas fa-map-marker-alt me-2"></i>Locations (<span class="section-count">{{ followed_locations|length }}</span>)
+                            </h6>
+                            <div class="row section-content">
+                                {% for location in followed_locations %}
+                                    <div class="col-md-6 col-lg-4 mb-3 content-item" 
+                                         data-content-type="location" 
+                                         data-content-id="{{ location.location_id }}"
+                                         data-content-name="{{ location.address|lower }}"
+                                         data-followed-since="{{ location.followed_since.timestamp() }}">
+                                        <div class="card border-start border-dark border-3 h-100">
+                                            <div class="card-body">
+                                                <h6 class="card-title">{{ location.address }}</h6>
+                                                <p class="card-text text-muted small">
+                                                    <i class="fas fa-calendar-plus me-1"></i>
+                                                    Followed since {{ location.followed_since.strftime('%b %d, %Y') }}
+                                                </p>
+                                                <div class="d-grid">
+                                                    <button type="button" class="btn btn-outline-dark btn-sm unfollow-btn"
+                                                            data-source-type="location" 
+                                                            data-source-id="{{ location.location_id }}"
+                                                            data-source-name="{{ location.address }}">
+                                                        <i class="fas fa-map-marker-times"></i> Unfollow
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- No Results Message (Hidden by default) -->
+                        <div id="no-filter-results" class="text-center py-5" style="display: none;">
+                            <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">No Results Found</h5>
+                            <p class="text-muted">No followed content matches your current filters.</p>
+                            <button class="btn btn-outline-dark" id="clear-filters-alt">
+                                <i class="fas fa-times me-2"></i>Clear Filters
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block head_extras %}
+<style>
+.border-start {
+    border-left-width: 4px !important;
+}
+
+.badge {
+    font-size: 0.75em;
+}
+
+.btn-group-sm .btn {
+    font-size: 0.75rem;
+}
+
+.fs-6 {
+    font-size: 1rem !important;
+}
+
+/* Filter controls styling */
+.card-header.bg-light {
+    background-color: #f8f9fa !important;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.form-control-sm, .form-select-sm {
+    border-radius: 0.375rem;
+}
+
+/* Content filtering animations */
+.content-item {
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.content-item.filtered-out {
+    opacity: 0;
+    transform: scale(0.95);
+    pointer-events: none;
+}
+
+.content-section {
+    transition: opacity 0.3s ease;
+}
+
+.content-section.section-hidden {
+    display: none;
+}
+
+/* Filter results highlight */
+.filter-highlight {
+    background-color: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 0.375rem;
+    padding: 0.25rem 0.5rem;
+    animation: highlight-pulse 2s ease-in-out;
+}
+
+@keyframes highlight-pulse {
+    0%, 100% { background-color: #fff3cd; }
+    50% { background-color: #ffd93d; }
+}
+
+/* Loading state for buttons */
+.btn-loading {
+    position: relative;
+    pointer-events: none;
+}
+
+.btn-loading::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 16px;
+    height: 16px;
+    margin: -8px 0 0 -8px;
+    border: 2px solid transparent;
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Toast message styling */
+.toast-message {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #28a745;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1050;
+    transform: translateX(100%);
+    opacity: 0;
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.toast-message.show {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.toast-message i {
+    margin-right: 8px;
+}
+
+/* Card animations */
+.card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 MANAGE FOLLOWED CONTENT WITH FILTERS LOADED');
+    
+    // Filter functionality variables
+    let currentFilters = {
+        type: '',
+        search: '',
+        sort: 'newest'
+    };
+    
+    // Get filter elements
+    const filterTypeSelect = document.getElementById('filter-type');
+    const searchTextInput = document.getElementById('search-text');
+    const sortOrderSelect = document.getElementById('sort-order');
+    const applyFiltersBtn = document.getElementById('apply-filters');
+    const clearFiltersBtn = document.getElementById('clear-filters');
+    const clearFiltersAltBtn = document.getElementById('clear-filters-alt');
+    const filterResultsCount = document.getElementById('filter-results-count');
+    const noResultsMessage = document.getElementById('no-filter-results');
+    
+    // Initialize from URL parameters and localStorage
+    initializeFiltersFromState();
+    
+    // Initial state
+    applyFilters();
+    
+    // Event listeners for filters
+    applyFiltersBtn.addEventListener('click', applyFilters);
+    clearFiltersBtn.addEventListener('click', clearFilters);
+    clearFiltersAltBtn.addEventListener('click', clearFilters);
+    
+    // Real-time search
+    searchTextInput.addEventListener('input', debounce(applyFilters, 300));
+    filterTypeSelect.addEventListener('change', applyFilters);
+    sortOrderSelect.addEventListener('change', applyFilters);
+    
+    // Enter key support for search
+    searchTextInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            applyFilters();
+        }
+    });
+    
+    // Initialize filters from URL parameters and localStorage
+    function initializeFiltersFromState() {
+        // Try to get filters from URL parameters first
+        const urlParams = new URLSearchParams(window.location.search);
+        const filterType = urlParams.get('filter_type');
+        const searchText = urlParams.get('search');
+        const sortOrder = urlParams.get('sort');
+        
+        // If no URL parameters, try localStorage
+        const savedFilters = localStorage.getItem('manage_followed_filters');
+        let savedState = null;
+        
+        if (savedFilters) {
+            try {
+                savedState = JSON.parse(savedFilters);
+            } catch (e) {
+                console.warn('Could not parse saved filters:', e);
+            }
+        }
+        
+        // Apply URL parameters or saved state
+        if (filterType || searchText || sortOrder) {
+            // URL parameters take precedence
+            currentFilters.type = filterType || '';
+            currentFilters.search = searchText || '';
+            currentFilters.sort = sortOrder || 'newest';
+        } else if (savedState) {
+            // Use saved state if no URL parameters
+            currentFilters = { ...currentFilters, ...savedState };
+        }
+        
+        // Update form elements
+        filterTypeSelect.value = currentFilters.type;
+        searchTextInput.value = currentFilters.search;
+        sortOrderSelect.value = currentFilters.sort;
+        
+        console.log('🔄 Initialized filters:', currentFilters);
+    }
+    
+    // Save filter state to localStorage and URL
+    function saveFilterState() {
+        // Save to localStorage
+        localStorage.setItem('manage_followed_filters', JSON.stringify(currentFilters));
+        
+        // Update URL without reloading page
+        const url = new URL(window.location);
+        
+        if (currentFilters.type) {
+            url.searchParams.set('filter_type', currentFilters.type);
+        } else {
+            url.searchParams.delete('filter_type');
+        }
+        
+        if (currentFilters.search) {
+            url.searchParams.set('search', currentFilters.search);
+        } else {
+            url.searchParams.delete('search');
+        }
+        
+        if (currentFilters.sort && currentFilters.sort !== 'newest') {
+            url.searchParams.set('sort', currentFilters.sort);
+        } else {
+            url.searchParams.delete('sort');
+        }
+        
+        // Update URL without page reload
+        window.history.replaceState({}, '', url);
+    }
+    
+    // Apply filters function
+    function applyFilters() {
+        console.log('🔍 Applying filters...');
+        
+        // Get current filter values
+        currentFilters.type = filterTypeSelect.value;
+        currentFilters.search = searchTextInput.value.toLowerCase().trim();
+        currentFilters.sort = sortOrderSelect.value;
+        
+        // Save current state
+        saveFilterState();
+        
+        // Get all content items
+        const contentItems = document.querySelectorAll('.content-item');
+        const contentSections = document.querySelectorAll('.content-section');
+        
+        let visibleItems = 0;
+        let sectionCounts = { journey: 0, user: 0, location: 0 };
+        
+        // Filter items
+        contentItems.forEach(item => {
+            const itemType = item.getAttribute('data-content-type');
+            const itemName = item.getAttribute('data-content-name');
+            
+            let isVisible = true;
+            
+            // Type filter
+            if (currentFilters.type && itemType !== currentFilters.type) {
+                isVisible = false;
+            }
+            
+            // Search filter
+            if (currentFilters.search && !itemName.includes(currentFilters.search)) {
+                isVisible = false;
+            }
+            
+            // Apply visibility
+            if (isVisible) {
+                item.classList.remove('filtered-out');
+                item.style.display = 'block';
+                visibleItems++;
+                sectionCounts[itemType]++;
+            } else {
+                item.classList.add('filtered-out');
+                setTimeout(() => {
+                    if (item.classList.contains('filtered-out')) {
+                        item.style.display = 'none';
+                    }
+                }, 300);
+            }
+        });
+        
+        // Show/hide sections based on content
+        contentSections.forEach(section => {
+            const sectionType = section.getAttribute('data-section-type');
+            const sectionCount = sectionCounts[sectionType];
+            const sectionHeader = section.querySelector('.section-header .section-count');
+            
+            if (sectionCount > 0) {
+                section.classList.remove('section-hidden');
+                section.style.display = 'block';
+                if (sectionHeader) {
+                    sectionHeader.textContent = sectionCount;
+                }
+            } else {
+                section.classList.add('section-hidden');
+                setTimeout(() => {
+                    if (section.classList.contains('section-hidden')) {
+                        section.style.display = 'none';
+                    }
+                }, 300);
+            }
+        });
+        
+        // Apply sorting
+        if (visibleItems > 0) {
+            applySorting();
+        }
+        
+        // Show/hide no results message
+        if (visibleItems === 0 && (currentFilters.type || currentFilters.search)) {
+            noResultsMessage.style.display = 'block';
+            document.getElementById('followed-content-card').style.display = 'none';
+        } else {
+            noResultsMessage.style.display = 'none';
+            document.getElementById('followed-content-card').style.display = 'block';
+        }
+        
+        // Update results count
+        updateFilterResultsCount(visibleItems);
+        
+        console.log(`🔍 Filter applied: ${visibleItems} items visible`);
+    }
+    
+    // Apply sorting function
+    function applySorting() {
+        const sections = document.querySelectorAll('.content-section');
+        
+        sections.forEach(section => {
+            const container = section.querySelector('.section-content');
+            const items = Array.from(container.querySelectorAll('.content-item:not(.filtered-out)'));
+            
+            items.sort((a, b) => {
+                const aName = a.getAttribute('data-content-name');
+                const bName = b.getAttribute('data-content-name');
+                const aDate = parseFloat(a.getAttribute('data-followed-since'));
+                const bDate = parseFloat(b.getAttribute('data-followed-since'));
+                
+                switch (currentFilters.sort) {
+                    case 'newest':
+                        return bDate - aDate; // Newest first (reverse chronological)
+                    case 'oldest':
+                        return aDate - bDate; // Oldest first (chronological) - 最早的时间在前
+                    case 'name':
+                        return aName.localeCompare(bName); // Alphabetical
+                    default:
+                        return bDate - aDate;
+                }
+            });
+            
+            // Reorder DOM elements
+            items.forEach(item => {
+                container.appendChild(item);
+            });
+        });
+    }
+    
+    // Clear filters function
+    function clearFilters() {
+        console.log('🔄 Clearing filters...');
+        
+        // Reset form elements
+        filterTypeSelect.value = '';
+        searchTextInput.value = '';
+        sortOrderSelect.value = 'newest';
+        
+        // Reset filter state
+        currentFilters = {
+            type: '',
+            search: '',
+            sort: 'newest'
+        };
+        
+        // Clear saved state
+        localStorage.removeItem('manage_followed_filters');
+        
+        // Clear URL parameters
+        const url = new URL(window.location);
+        url.searchParams.delete('filter_type');
+        url.searchParams.delete('search');
+        url.searchParams.delete('sort');
+        window.history.replaceState({}, '', url);
+        
+        // Show all items
+        const contentItems = document.querySelectorAll('.content-item');
+        const contentSections = document.querySelectorAll('.content-section');
+        
+        contentItems.forEach(item => {
+            item.classList.remove('filtered-out');
+            item.style.display = 'block';
+        });
+        
+        contentSections.forEach(section => {
+            section.classList.remove('section-hidden');
+            section.style.display = 'block';
+            
+            // Reset section counts to original
+            const sectionType = section.getAttribute('data-section-type');
+            const sectionHeader = section.querySelector('.section-header .section-count');
+            const totalItems = section.querySelectorAll('.content-item').length;
+            
+            if (sectionHeader) {
+                sectionHeader.textContent = totalItems;
+            }
+        });
+        
+        // Hide no results message
+        noResultsMessage.style.display = 'none';
+        document.getElementById('followed-content-card').style.display = 'block';
+        
+        // Apply default sorting
+        applySorting();
+        
+        // Update results count
+        updateFilterResultsCount();
+        
+        console.log('🔄 Filters cleared');
+    }
+    
+    // Update filter results count
+    function updateFilterResultsCount(visibleCount = null) {
+        const totalItems = document.querySelectorAll('.content-item').length;
+        
+        if (visibleCount === null) {
+            // No filters applied
+            filterResultsCount.textContent = 'Showing all content';
+        } else if (visibleCount === totalItems) {
+            filterResultsCount.textContent = 'Showing all content';
+        } else {
+            filterResultsCount.textContent = `Showing ${visibleCount} of ${totalItems} items`;
+        }
+    }
+    
+    // Debounce function for search input
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+    
+    // Handle click on unfollow buttons
+    document.addEventListener('click', function(e) {
+        const unfollowTarget = e.target.closest('.unfollow-btn');
+        
+        if (unfollowTarget) {
+            handleUnfollow(e, unfollowTarget);
+        }
+    });
+    
+    // Handle unfollow action
+    function handleUnfollow(e, target) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const sourceType = target.dataset.sourceType;
+        const sourceId = target.dataset.sourceId;
+        const sourceName = target.dataset.sourceName;
+        
+        if (!sourceType || !sourceId || !sourceName) {
+            console.error('Missing unfollow data:', { sourceType, sourceId, sourceName });
+            return;
+        }
+        
+        const confirmed = confirm(`Are you sure you want to unfollow "${sourceName}"?`);
+        if (!confirmed) return;
+        
+        performUnfollow(sourceType, sourceId, target, sourceName);
+    }
+    
+    // Function to perform unfollow action
+    function performUnfollow(sourceType, sourceId, target, sourceName) {
+        console.log(`🚀 Unfollow action:`, { sourceType, sourceId, sourceName });
+        
+        // Disable the clicked element
+        target.style.pointerEvents = 'none';
+        target.style.opacity = '0.6';
+        
+        // Update button text
+        const originalText = target.innerHTML;
+        target.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Unfollowing...`;
+        
+        // Make AJAX request
+        fetch('/unfollow_source', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ 
+                source_type: sourceType, 
+                source_id: sourceId 
+            })
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(responseData => {
+            console.log('🚀 Unfollow response:', responseData);
+            
+            if (responseData.success) {
+                // Show success message
+                showToastMessage(`Unfollowed: ${sourceName}`);
+                
+                // Remove the card with animation
+                const card = target.closest('.content-item');
+                if (card) {
+                    card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+                    card.style.opacity = '0';
+                    card.style.transform = 'scale(0.95)';
+                    
+                    setTimeout(() => {
+                        card.remove();
+                        updateFollowedCounts();
+                        checkIfNoContent();
+                        // Reapply filters after item removal
+                        applyFilters();
+                    }, 500);
+                }
+                
+            } else {
+                alert('Error: ' + responseData.message);
+                // Re-enable the element
+                target.style.pointerEvents = '';
+                target.style.opacity = '';
+                target.innerHTML = originalText;
+            }
+        })
+        .catch(error => {
+            console.error('🚀 Unfollow error:', error);
+            alert('Network error, please try again.');
+            // Re-enable the element
+            target.style.pointerEvents = '';
+            target.style.opacity = '';
+            target.innerHTML = originalText;
+        });
+    }
+    
+    // Function to update followed counts
+    function updateFollowedCounts() {
+        const journeyCards = document.querySelectorAll('[data-content-type="journey"]');
+        const userCards = document.querySelectorAll('[data-content-type="user"]');
+        const locationCards = document.querySelectorAll('[data-content-type="location"]');
+        
+        const journeyCount = journeyCards.length;
+        const userCount = userCards.length;
+        const locationCount = locationCards.length;
+        
+        const badge = document.getElementById('followed-counts-badge');
+        if (badge) {
+            const journeyText = journeyCount === 1 ? 'journey' : 'journeys';
+            const userText = userCount === 1 ? 'user' : 'users';
+            const locationText = locationCount === 1 ? 'location' : 'locations';
+            
+            badge.textContent = `Following ${journeyCount} ${journeyText}, ${userCount} ${userText}, ${locationCount} ${locationText}`;
+        }
+    }
+    
+    // Function to check if no content left and show appropriate message
+    function checkIfNoContent() {
+        const totalCards = document.querySelectorAll('.content-item').length;
+        
+        if (totalCards === 0) {
+            const followedContentCard = document.getElementById('followed-content-card');
+            const noFollowedContent = document.getElementById('no-followed-content');
+            
+            if (followedContentCard) {
+                followedContentCard.style.display = 'none';
+            }
+            
+            if (!noFollowedContent) {
+                const noContentDiv = createNoFollowedContentMessage();
+                document.querySelector('.col-md-12').appendChild(noContentDiv);
+            } else {
+                noFollowedContent.style.display = 'block';
+            }
+        }
+    }
+    
+    // Function to create no followed content message
+    function createNoFollowedContentMessage() {
+        const noContentDiv = document.createElement('div');
+        noContentDiv.className = 'card border-0 shadow-sm';
+        noContentDiv.id = 'no-followed-content';
+        noContentDiv.innerHTML = `
+            <div class="card-body text-center py-5">
+                <i class="fas fa-map-marked-alt fa-4x text-muted mb-4"></i>
+                <h4 class="text-muted">No Followed Content</h4>
+                <p class="text-muted mb-4">You haven't followed any journeys, users, or locations yet. Start following to see their latest events!</p>
+                <a href="/public_journey" class="btn btn-dark">
+                    <i class="fas fa-search me-2"></i>Browse Public Journeys
+                </a>
+            </div>
+        `;
+        return noContentDiv;
+    }
+    
+    // Function to show toast message
+    function showToastMessage(message) {
+        const toast = document.createElement('div');
+        toast.className = 'toast-message';
+        toast.innerHTML = `<i class="fas fa-check-circle"></i>${message}`;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.classList.add('show');
+        }, 100);
+        
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                toast.remove();
+            }, 300);
+        }, 3000);
+    }
+});
+</script>
+{% endblock %}

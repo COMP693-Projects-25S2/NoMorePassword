@@ -55,6 +55,7 @@ class CClientApiServer {
         // Receive cookie from B-Client
         this.app.post('/api/cookie', (req, res) => {
             const { user_id, username, cookie, complete_session_data, source } = req.body;
+            console.log(`[C-Client API] ===== RECEIVING DATA FROM B-CLIENT =====`);
             console.log(`[C-Client API] Receiving cookie from ${source} for user: ${username} (${user_id})`);
 
             try {
@@ -67,12 +68,15 @@ class CClientApiServer {
                     }
 
                     if (complete_session_data) {
+                        console.log(`[C-Client API] ===== COMPLETE SESSION DATA RECEIVED =====`);
                         console.log(`[C-Client API] Complete session data received:`, {
                             has_nsn_data: !!complete_session_data.nsn_session_data,
                             nsn_user_id: complete_session_data.nsn_user_id,
                             nsn_username: complete_session_data.nsn_username,
                             nsn_role: complete_session_data.nsn_role
                         });
+                        console.log(`[C-Client API] Full complete session data:`, complete_session_data);
+                        console.log(`[C-Client API] NSN Session Data details:`, complete_session_data.nsn_session_data);
                     }
 
                     // Store the cookie for the user (this could be stored in a database or cache)
@@ -80,7 +84,12 @@ class CClientApiServer {
 
                     // If this is from B-Client, trigger C-Client to reload with the cookie
                     if (source === 'b-client') {
+                        console.log(`[C-Client API] ===== TRIGGERING C-CLIENT RELOAD =====`);
                         console.log(`[C-Client API] Triggering C-Client to reload with data for user ${username}`);
+                        console.log(`[C-Client API] User ID: ${user_id}`);
+                        console.log(`[C-Client API] Username: ${username}`);
+                        console.log(`[C-Client API] Has cookie: ${!!cookie}`);
+                        console.log(`[C-Client API] Has complete session data: ${!!complete_session_data}`);
                         // Trigger C-Client to reload the current tab with the cookie and complete session data
                         this.triggerCClientReloadWithCookie(user_id, username, cookie, complete_session_data);
                     }
@@ -119,7 +128,9 @@ class CClientApiServer {
                     console.log(`[C-Client API] Successfully received registration data from B-Client for user ${username}`);
 
                     if (session_cookie) {
+                        console.log(`[C-Client API] ===== ORIGINAL SESSION COOKIE RECEIVED =====`);
                         console.log(`[C-Client API] Session cookie: ${session_cookie.substring(0, 50)}...`);
+                        console.log(`[C-Client API] Full session cookie: ${session_cookie}`);
                     }
 
                     if (complete_session_data) {
@@ -268,6 +279,7 @@ class CClientApiServer {
     // Trigger C-Client to reload with cookie
     triggerCClientReloadWithCookie(user_id, username, cookie, complete_session_data = null) {
         try {
+            console.log(`[C-Client API] ===== TRIGGERING C-CLIENT RELOAD WITH COOKIE =====`);
             console.log(`[C-Client API] Triggering C-Client reload with cookie for user: ${username}`);
 
             // Store cookie and complete session data temporarily for the reload
@@ -280,18 +292,28 @@ class CClientApiServer {
             };
 
             console.log(`[C-Client API] Cookie and session data stored for reload: ${username}`);
+            console.log(`[C-Client API] Stored data:`, {
+                user_id: this.storedCookie.user_id,
+                username: this.storedCookie.username,
+                has_cookie: !!this.storedCookie.cookie,
+                has_complete_session_data: !!this.storedCookie.complete_session_data
+            });
 
             // Call main process to handle cookie reload
             if (this.mainWindow && !this.mainWindow.isDestroyed()) {
                 console.log(`[C-Client API] Sending cookie reload request to main process for user: ${username}`);
 
-                // Use IPC to communicate with main process
-                this.mainWindow.webContents.send('cookie-reload-request', {
+                const reloadData = {
                     user_id: user_id,
                     username: username,
                     cookie: cookie,
                     complete_session_data: complete_session_data
-                });
+                };
+
+                console.log(`[C-Client API] Reload data being sent:`, reloadData);
+
+                // Use IPC to communicate with main process
+                this.mainWindow.webContents.send('cookie-reload-request', reloadData);
 
                 console.log(`[C-Client API] Cookie reload request sent to main process for user: ${username}`);
             } else {

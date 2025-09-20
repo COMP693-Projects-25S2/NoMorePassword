@@ -1,0 +1,239 @@
+{% extends 'userbase.html' %}
+
+{% block title %}Submit Appeal{% endblock %}
+
+{% set active_page = 'appeals' %}
+
+{% block head_extras %}
+<style>
+    .restriction-card {
+        transition: all 0.3s ease;
+        cursor: pointer;
+        border-left: 4px solid #dee2e6;
+    }
+
+    .restriction-card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        border-left-color: #007bff;
+    }
+
+    .restriction-card.selected {
+        border-left-color: #007bff;
+        background-color: #f8f9fa;
+    }
+
+    .restriction-card.disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        background-color: #f8f9fa;
+    }
+
+    .appeal-form {
+        display: none;
+    }
+
+    .character-count {
+        font-size: 0.875rem;
+        color: #6c757d;
+    }
+
+    .character-count.valid {
+        color: #198754;
+    }
+
+    .character-count.invalid {
+        color: #dc3545;
+    }
+
+    .alert-restriction {
+        border-left: 4px solid #dc3545;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Banner -->
+<div class="banner-image"
+    style="background-image: url('/static/ui_photos/private_journey.jpg'); background-size: cover; background-position: center; height: 300px; position: relative;">
+    <div class="banner-overlay"
+        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5);">
+        <div class="container h-100">
+            <div class="row h-100 align-items-center">
+                <div class="col-md-12 text-end">
+                    <h1 class="text-white fw-bold">Submit Appeal</h1>
+                    <p class="text-white lead">Appeal restrictions on your account or content</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+
+            <!-- Information Alert -->
+            <div class="alert alert-info">
+                <h5><i class="fas fa-info-circle me-2"></i>Appeal Process Information</h5>
+                <ul class="mb-0">
+                    <li><strong>Review Time:</strong> Appeals are typically reviewed within 3-5 business days</li>
+                    <li><strong>Required Details:</strong> Please provide a detailed justification (minimum 20 characters)</li>
+                    <li><strong>One Appeal Per Restriction:</strong> You can only have one pending appeal per restriction</li>
+                    <li><strong>Decision Notification:</strong> You will be notified of the decision via this platform</li>
+                </ul>
+            </div>
+
+            <!-- Current Restrictions -->
+            <div class="card mb-4">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Your Current Restrictions</h5>
+                </div>
+                <div class="card-body">
+                    {% if restrictions %}
+                        <p class="text-muted mb-3">Select a restriction below to submit an appeal:</p>
+
+                        {% for restriction in restrictions %}
+                        <div class="restriction-card card mb-3 {% if restriction.has_pending %}disabled{% endif %}"
+                             data-restriction-type="{{ restriction.type }}"
+                             data-reference-id="{{ restriction.reference_id or '' }}"
+                             data-description="{{ restriction.description }}">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h6 class="mb-1">
+                                            {% if restriction.type == 'hidden_journey' %}
+                                                <i class="fas fa-eye-slash text-warning me-2"></i>Hidden Journey
+                                            {% elif restriction.type == 'sharing_block' %}
+                                                <i class="fas fa-ban text-danger me-2"></i>Sharing Block
+                                            {% elif restriction.type == 'site_ban' %}
+                                                <i class="fas fa-user-slash text-danger me-2"></i>Site Ban
+                                            {% endif %}
+                                        </h6>
+                                        <p class="text-muted mb-0">{{ restriction.description }}</p>
+                                    </div>
+                                    <div>
+                                        {% if restriction.has_pending %}
+                                            <span class="badge bg-warning">Appeal Pending</span>
+                                        {% else %}
+                                            <span class="badge bg-primary">Can Appeal</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+
+                    {% else %}
+                        <div class="text-center py-4">
+                            <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                            <h4>No Current Restrictions</h4>
+                            <p class="text-muted">You don't have any restrictions that can be appealed at this time.</p>
+                            <a href="{{ url_for('dashboard') }}" class="btn btn-primary">Return to Dashboard</a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Appeal Form -->
+            <div id="appealForm" class="appeal-form">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="fas fa-edit me-2"></i>Submit Your Appeal</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="submitAppealForm">
+                            <input type="hidden" id="appealType" name="appeal_type">
+                            <input type="hidden" id="referenceId" name="reference_id">
+
+                            <div class="mb-3">
+                                <label class="form-label"><strong>Restriction Being Appealed:</strong></label>
+                                <div id="selectedRestriction" class="alert alert-restriction">
+                                    <!-- Will be populated by JavaScript -->
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="justification" class="form-label">
+                                    <i class="fas fa-comment me-1"></i>Justification for Appeal *
+                                </label>
+                                <textarea class="form-control" id="justification" name="justification"
+                                          rows="6" required minlength="20"
+                                          placeholder="Please provide a detailed explanation of why you believe this restriction should be removed. Include any relevant context or circumstances that led to this situation. (Minimum 20 characters)"></textarea>
+                                <div class="character-count mt-2">
+                                    <span id="charCount">0</span>/20 minimum characters
+                                </div>
+                                <div class="form-text">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    Be honest and specific. False information may result in rejection of your appeal.
+                                </div>
+                            </div>
+
+                            <div class="alert alert-warning">
+                                <h6><i class="fas fa-exclamation-triangle me-2"></i>Before Submitting</h6>
+                                <ul class="mb-0">
+                                    <li>Ensure your justification is honest and complete</li>
+                                    <li>You can only submit one appeal per restriction</li>
+                                    <li>Review times may vary depending on complexity</li>
+                                    <li>Abusing the appeal system may result in additional restrictions</li>
+                                </ul>
+                            </div>
+
+                            <div class="d-flex justify-content-between">
+                                <button type="button" class="btn btn-secondary" id="cancelBtn">
+                                    <i class="fas fa-times me-2"></i>Cancel
+                                </button>
+                                <button type="submit" class="btn btn-primary" id="submitBtn" disabled>
+                                    <i class="fas fa-paper-plane me-2"></i>Submit Appeal
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- My Appeals Link -->
+            <div class="text-center mt-4">
+                <a href="{{ url_for('my_appeals') }}" class="btn btn-outline-primary">
+                    <i class="fas fa-history me-2"></i>View My Appeal History
+                </a>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const restrictionCards = document.querySelectorAll('.restriction-card:not(.disabled)');
+    const appealForm = document.getElementById('appealForm');
+    const form = document.getElementById('submitAppealForm');
+    const justificationTextarea = document.getElementById('justification');
+    const charCount = document.getElementById('charCount');
+    const submitBtn = document.getElementById('submitBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const selectedRestriction = document.getElementById('selectedRestriction');
+
+    // Restriction card selection
+    restrictionCards.forEach(card => {
+        card.addEventListener('click', function() {
+            // Remove previous selection
+            restrictionCards.forEach(c => c.classList.remove('selected'));
+
+            // Select current card
+            this.classList.add('selected');
+
+            // Get restriction data
+            const type = this.dataset.restrictionType;
+            const referenceId = this.dataset.referenceId;
+            const description = this.dataset.description;
+
+            // Update form
+            document.getElementById('appealType').value = type;
+            document.getElementById('referenceId').value = referenceId;
+
+            // Update selected restriction display
+            const typeDisplay = {
+                'hidden_journey': '<i

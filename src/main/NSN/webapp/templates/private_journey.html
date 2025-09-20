@@ -1,0 +1,862 @@
+{% extends 'userbase.html' %}
+
+{% block title %}My Journeys{% endblock %}
+
+{# Set the active page to be highlighted in the navigation bar. #}
+{% set active_page = 'private_journey' %}
+
+
+{% block content %}
+
+<!-- Banner image with text overlay -->
+<div class="banner-image"
+    style="background-image: url('/static/ui_photos/private_journey.jpg'); background-size: cover; background-position: center; height: 300px; position: relative;">
+    <div class="banner-overlay"
+        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5);">
+        <div class="container h-100">
+            <div class="row h-100 align-items-center">
+                <div class="col-md-12 text-end">
+                    <h1 class="text-white fw-bold">My Journeys</h1>
+                    <p class="text-white lead">Explore and manage your personal travel experiences</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <!-- Search Form -->
+            <div class="card mb-4 border-0 shadow-sm">
+                <div class="card-body bg-light">
+                    <form method="POST" action="{{ url_for('private_journey') }}">
+                        <div class="input-group">
+                            <input type="hidden" name="user_id" id="user_id" value="{{session.user_id}}">
+                            <span class="input-group-text bg-white border-end-0">
+                                <i class="fas fa-search text-muted"></i>
+                            </span>
+                            <input type="text" class="form-control border-start-0" name="keyword"
+                                placeholder="Search your journeys..." value="{{ request.form.get('keyword', '') }}">
+                            <select name="filter" id="filter" class="form-select" style="max-width: 20%;">
+                                <option value="content" selected>by content</option>
+                                <option value="location">by location</option>
+                            </select>
+                            <button class="btn btn-dark ms-2" type="submit">Search</button>
+                            {% if keyword %}
+                            <a href="{{ url_for('private_journey') }}" class="btn btn-outline-secondary ms-2">Reset</a>
+                            {% endif %}
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Add Journey Link instead of Button -->
+            <div class="d-flex justify-content-end mb-4">
+                <a href="#" class="text-dark text-decoration-none link-hover" data-bs-toggle="modal"
+                    data-bs-target="#addJourney">
+                    <i class="fas fa-plus me-2"></i>Add Journey
+                </a>
+            </div>
+
+            <!-- Add Journey Modal -->
+            <div class="modal fade" id="addJourney" tabindex="-1" aria-labelledby="modalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content border-0 shadow">
+                        <div class="modal-header bg-dark text-white">
+                            <h5 class="modal-title">Add Journey</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <form method="POST" action="{{ url_for('add_journey') }}" enctype="multipart/form-data">
+                            <div class="modal-body">
+
+                                {% if is_member %}
+                                <label for="cover_image" class="form-label">Cover Image</label>
+                                <div class="preview-container mt-1 mb-2 text-center">
+                                    <img id="coverImagePreview" class="img-fluid rounded shadow-sm"
+                                        style="max-height:200px; display:none;" alt="cover_image preview">
+                                </div>
+
+                                <div class="d-grid">
+                                    <label class="btn btn-outline-dark" style="position: relative; overflow: hidden;">
+                                        <i class="fas fa-camera me-2"></i>Choose An Cover Image
+                                        <input type="file" id="coverImageUpload" name="cover_image" accept="image/*"
+                                            style="position: absolute; right:0; top:0; opacity: 0;">
+                                    </label>
+                                </div>
+
+                                <script>
+                                    (function () {
+                                        const imageUpload = document.getElementById('coverImageUpload');
+                                        const imagePreview = document.getElementById('coverImagePreview');
+
+                                        imageUpload.addEventListener('change', function () {
+                                            const file = imageUpload.files[0];
+                                            if (file) {
+                                                const reader = new FileReader();
+                                                reader.onload = function (e) {
+                                                    imagePreview.src = e.target.result;
+                                                    imagePreview.alt = file.name;
+                                                    imagePreview.style.display = "block";
+                                                };
+                                                reader.readAsDataURL(file);
+                                            } else {
+                                                imagePreview.style.display = "none";
+                                            }
+                                        })
+                                    })();
+                                </script>
+
+                                {% endif %}
+
+                                <div class="mb-3">
+                                    <label for="title" class="form-label">Title</label>
+                                    <input type="text" class="form-control" id="title" name="title"
+                                        placeholder="Please enter a title" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="description" class="form-label">Description</label>
+                                    <textarea class="form-control" id="description" name="description" rows="4"
+                                        placeholder="Please enter description here."></textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="start_date" class="form-label">Start Date</label>
+                                    <input type="date" class="form-control" id="start_date" name="start_date">
+                                </div>
+
+                                <script>
+                                    (function () {
+                                        const today1 = new Date();
+                                        const year = today1.getFullYear();
+                                        const month = String(today1.getMonth() + 1).padStart(2, '0');
+                                        const day = String(today1.getDate()).padStart(2, '0');
+                                        const formattedDate = `${year}-${month}-${day}`;
+
+                                        document.getElementById('start_date').value = formattedDate;
+                                    })();
+                                </script>
+
+                                <div class="mb-3">
+                                    <label for="display" class="form-label">Visibility</label>
+                                    <select class="form-select" id="display" name="display">
+
+                                        <option value="public" selected>Public</option>
+                                        {% if is_member %}
+                                        <option value="published" selected>Published</option>
+                                        {% endif %}
+                                        <option value="private">Private</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary"
+                                    data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="btn btn-dark">Create Journey</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Journey List -->
+            {% if journey_list %}
+            <div class="row mb-5">
+                {% for journey in journey_list %}
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <div class="card h-100 border-0 shadow-sm hover-card">
+                        <div
+                            class="card-header bg-white d-flex justify-content-between align-items-center border-bottom-0 pb-0">
+                            <div>
+                                <span
+                                    class="badge bg-{{ 'dark' if journey.display == 'published' else 'secondary' }} rounded-pill">
+                                    {{ journey.display }}
+                                </span>
+                                {% if journey.status == 'hidden' %}
+                                <span class="badge bg-danger rounded-pill">Hidden</span>
+                                {% endif %}
+                            </div>
+                            <div class="dropdown">
+                                <a href="#" class="text-dark text-decoration-none" type="button"
+                                    data-bs-toggle="dropdown">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </a>
+                                <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal"
+                                            data-bs-target="#editJourney{{ journey.journey_id }}">
+                                            <i class="fas fa-edit me-2 text-dark"></i>Edit
+                                        </a></li>
+                                    <li>
+                                        {% if journey.cover_image %}
+                                    <li>
+                                        <a class="dropdown-item" href="#" data-bs-toggle="modal"
+                                            data-bs-target="#removeJourneyCover{{ journey.journey_id }}">
+                                            <i class="fas fa-edit me-2 text-dark"></i>Remove Cover Image
+                                        </a>
+                                    </li>
+                                    {% endif %}
+                                    <hr class="dropdown-divider">
+                                    </li>
+                                    <li><a class="dropdown-item text-danger" href="#" data-bs-toggle="modal"
+                                            data-bs-target="#deleteJourney{{ journey.journey_id }}">
+                                            <i class="fas fa-trash-alt me-2"></i>Delete
+                                        </a></li>
+
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="card-body">
+
+                            {% if journey.cover_image %}
+                            <img src="{{ url_for('static', filename='journeys/' + journey.cover_image) }}"
+                                alt="{{ journey.title }}" class="img-fluid mb-3">
+                            <br>
+                            {% endif %}
+
+                            <h5 class="card-title">
+                                <a href="{{ url_for('private_events', journey_id=journey.journey_id,journey_title=journey.title) }}"
+                                    class="text-decoration-none text-dark">
+                                    {{ journey.title }}
+                                </a>
+                            </h5>
+                            <p class="card-text text-truncate">{{ journey.description }}</p>
+                            <p class="card-text">
+                                <small class="text-muted">
+                                    <i class="far fa-calendar-alt me-1"></i>
+                                    Started: {{ journey.start_date.strftime('%d %b %Y') }}
+                                </small>
+                            </p>
+                        </div>
+                        <div class="card-footer bg-white border-top-0 pt-0">
+                            <div class="d-flex gap-2">
+                                <a href="#" class="text-dark text-decoration-none link-hover flex-grow-1 text-center"
+                                    data-bs-toggle="modal" data-bs-target="#addEvent4Journey{{journey.journey_id}}">
+                                    <i class="fas fa-plus me-1"></i>Add Event
+                                </a>
+                                <a href="{{ url_for('private_events', journey_id=journey.journey_id,journey_title=journey.title) }}"
+                                    class="text-dark text-decoration-none link-hover flex-grow-1 text-center">
+                                    <i class="fas fa-eye me-1"></i>View Events
+                                </a>
+                            </div>
+                        </div>
+
+                        <!-- Edit Journey Modal -->
+                        <div class="modal fade" id="editJourney{{ journey.journey_id }}" tabindex="-1"
+                            data-bs-backdrop="static">
+                            <div class="modal-dialog modal-dialog-centered">
+                                <div class="modal-content border-0 shadow">
+                                    <div class="modal-header bg-dark text-white">
+                                        <h5 class="modal-title">Edit Journey</h5>
+                                        <button type="button" class="btn-close btn-close-white"
+                                            data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <form method="POST" action="{{ url_for('traveller_edit_journey') }}"
+                                        enctype="multipart/form-data">
+                                        <input type="hidden" name="journey_id" value="{{ journey.journey_id }}">
+                                        <div class="modal-body">
+
+                                            {% if is_member %}
+                                            <label for="cover_image" class="form-label">Cover Image</label>
+                                            <div class="preview-container mt-1 mb-2 text-center">
+                                                <img id="coverImagePreview_edit{{ journey.journey_id }}" class="img-fluid rounded shadow-sm"
+                                                    style="max-height:200px; display:none;" alt="cover_image preview">
+                                            </div>
+
+                                            <div class="d-grid">
+                                                <label class="btn btn-outline-dark"
+                                                    style="position: relative; overflow: hidden;">
+                                                    <i class="fas fa-camera me-2"></i>Choose An Cover Image
+                                                    <input type="file" id="coverImageUpload_edit{{ journey.journey_id }}" name="cover_image"
+                                                        accept="image/*"
+                                                        style="position: absolute; right:0; top:0; opacity: 0;">
+                                                </label>
+                                            </div>
+
+                                            <script>
+                                                (function () {
+                                                    const imageUpload = document.getElementById('coverImageUpload_edit{{ journey.journey_id }}');
+                                                    const imagePreview = document.getElementById('coverImagePreview_edit{{ journey.journey_id }}');
+
+                                                    imageUpload.addEventListener('change', function () {
+                                                        const file = imageUpload.files[0];
+                                                        if (file) {
+                                                            const reader = new FileReader();
+                                                            reader.onload = function (e) {
+                                                                imagePreview.src = e.target.result;
+                                                                imagePreview.alt = file.name;
+                                                                imagePreview.style.display = "block";
+                                                            };
+                                                            reader.readAsDataURL(file);
+                                                        } else {
+                                                            imagePreview.style.display = "none";
+                                                        }
+                                                    })
+                                                })();
+                                            </script>
+
+                                            {% endif %}
+                                            <div class="mb-3">
+                                                <label for="editTitle{{ journey.journey_id }}"
+                                                    class="form-label">Title</label>
+                                                <input type="text" class="form-control"
+                                                    id="editTitle{{ journey.journey_id }}" name="title"
+                                                    value="{{ journey.title }}" required>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label for="editDescription{{ journey.journey_id }}"
+                                                    class="form-label">Description</label>
+                                                <textarea class="form-control"
+                                                    id="editDescription{{ journey.journey_id }}" name="description"
+                                                    rows="4">{{ journey.description }}</textarea>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label for="editStartDate{{ journey.journey_id }}"
+                                                    class="form-label">Start Date</label>
+                                                <input type="date" class="form-control"
+                                                    id="editStartDate{{ journey.journey_id }}" name="start_date"
+                                                    value="{{ journey.start_date.strftime('%Y-%m-%d') }}" required>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label for="editDisplay{{ journey.journey_id }}"
+                                                    class="form-label">Visibility</label>
+                                                <select class="form-select" id="editDisplay{{ journey.journey_id }}"
+                                                    name="display">
+                                                    <option value="private" {% if journey.display=='private'
+                                                        %}selected{% endif %}>Private
+                                                    </option>
+                                                    {% if is_member %}
+                                                    <option value="published" {% if journey.display=='published'
+                                                        %}selected{% endif %}>Published</option>
+                                                    {% endif %}
+                                                    <option value="public" {% if journey.display=='public' %}selected{%
+                                                        endif %}>Public</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-outline-secondary"
+                                                data-bs-dismiss="modal">Cancel</button>
+                                            <button type="submit" class="btn btn-dark">Save Changes</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Remove Journey Cover Image -->
+                        <div class="modal fade" id="removeJourneyCover{{ journey.journey_id }}" tabindex="-1">
+                            <div class="modal-dialog modal-dialog-centered">
+                                <div class="modal-content border-0">
+                                    <div class="modal-header bg-dark text-white">
+                                        <h5 class="modal-title">Confirm Removal</h5>
+                                        <button type="button" class="btn-close btn-close-white"
+                                            data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body"><!-- Remove Journey Cover Image -->
+                                        <div class="modal fade" id="removeJourneyCover{{ journey.journey_id }}"
+                                            tabindex="-1">
+                                            <div class="modal-dialog modal-dialog-centered">
+                                                <div class="modal-content border-0">
+                                                    <div class="modal-header bg-dark text-white">
+                                                        <h5 class="modal-title">Confirm Removal</h5>
+                                                        <button type="button" class="btn-close btn-close-white"
+                                                            data-bs-dismiss="modal"></button>
+                                                    </div>
+                                                    <div class="modal-body">
+                                                        <div class="text-center mb-3">
+                                                            <i class="fas fa-exclamation-triangle text-dark fa-3x"></i>
+                                                        </div>
+                                                        <p>Are you sure you want to remove the cover image of journey
+                                                            "<strong>{{
+                                                                journey.title
+                                                                }}</strong>"?
+                                                        </p>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-outline-secondary"
+                                                            data-bs-dismiss="modal">Cancel</button>
+                                                        <a href="{{ url_for('traveller_remove_cover_journey', journey_id=journey.journey_id) }}"
+                                                            class="btn btn-dark">Remove Journey Cover</a>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="text-center mb-3">
+                                            <i class="fas fa-exclamation-triangle text-dark fa-3x"></i>
+                                        </div>
+                                        <p>Are you sure you want to remove the cover image of journey "<strong>{{
+                                                journey.title
+                                                }}</strong>"?
+                                        </p>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-outline-secondary"
+                                            data-bs-dismiss="modal">Cancel</button>
+                                        <a href="{{ url_for('traveller_remove_cover_journey', journey_id=journey.journey_id) }}"
+                                            class="btn btn-dark">Remove Journey Cover</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Delete Journey Confirmation Modal -->
+                        <div class="modal fade" id="deleteJourney{{ journey.journey_id }}" tabindex="-1">
+                            <div class="modal-dialog modal-dialog-centered">
+                                <div class="modal-content border-0">
+                                    <div class="modal-header bg-danger text-white">
+                                        <h5 class="modal-title">Confirm Deletion</h5>
+                                        <button type="button" class="btn-close btn-close-white"
+                                            data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="text-center mb-3">
+                                            <i class="fas fa-exclamation-triangle text-danger fa-3x"></i>
+                                        </div>
+                                        <p>Are you sure you want to delete the journey "<strong>{{ journey.title
+                                                }}</strong>"?
+                                        </p>
+                                        <p class="text-danger">This action cannot be undone and will delete all events
+                                            in this journey.</p>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-outline-secondary"
+                                            data-bs-dismiss="modal">Cancel</button>
+                                        <a href="{{ url_for('traveller_delete_journey', journey_id=journey.journey_id) }}"
+                                            class="btn btn-danger">Delete Journey</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Add Event Modal -->
+                <div class="modal fade" id="addEvent4Journey{{journey.journey_id}}" tabindex="-1"
+                    aria-labelledby="modalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content border-0 shadow">
+                            <div class="modal-header bg-dark text-white">
+                                <h5 class="modal-title">Add Event</h5>
+                                <button type="button" class="btn-close btn-close-white"
+                                    data-bs-dismiss="modal"></button>
+                            </div>
+                            <form method="POST" action="{{ url_for('add_event') }}" enctype="multipart/form-data">
+                                <input type="hidden" name="journey_id" id="journey_id" value="{{journey.journey_id}}">
+                                <input type="hidden" name="journey_title" id="journey_title" value="{{journey.title}}">
+                                <div class="modal-body">
+                                    <div class="mb-3">
+                                        <label for="event_image" class="form-label">Event Image</label>
+
+                                        {% if is_member %}
+
+                                        <div id="imagePreviewContainer{{loop.index}}" class="image-preview-container">
+                                            <!-- Preview images will be displayed here -->
+                                        </div>
+
+                                        <div class="d-grid">
+                                            <label class="btn btn-outline-dark"
+                                                style="position: relative; overflow: hidden;">
+                                                <i class="fas fa-images me-2"></i>Choose Images
+                                                <input type="file" id="imageUpload{{loop.index}}" name="event_images"
+                                                    accept="image/*" multiple
+                                                    style="position: absolute; right:0; top:0; opacity: 0;">
+                                            </label>
+                                        </div>
+
+                                        <script>
+                                            document.addEventListener('DOMContentLoaded', function () {
+                                                const imageUpload = document.getElementById('imageUpload{{loop.index}}');
+                                                const previewContainer = document.getElementById('imagePreviewContainer{{loop.index}}');
+
+                                                // Preview Generate Function
+                                                function createPreview(file) {
+                                                    const reader = new FileReader();
+
+                                                    reader.onload = function (e) {
+                                                        const img = document.createElement('img');
+                                                        img.src = e.target.result;
+                                                        img.style.width = '100px';
+                                                        img.style.margin = '5px';
+                                                        previewContainer.appendChild(img);
+                                                    };
+
+                                                    reader.readAsDataURL(file);
+                                                }
+
+                                                // File selection event
+
+                                                imageUpload.addEventListener('change', function () {
+                                                    previewContainer.innerHTML = ''; // Each time you re-preview (remove this line if you want to add cumulatively)
+
+                                                    for (let i = 0; i < this.files.length; i++) {
+                                                        createPreview(this.files[i]);
+                                                    }
+                                                });
+                                            });
+                                        </script>
+                                        {% else %}
+
+                                        <div class="preview-container mt-1 mb-2 text-center">
+                                            <img id="imagePreview{{loop.index}}" class="img-fluid rounded shadow-sm"
+                                                style="max-height:200px; display:none;" alt="event_image preview">
+                                        </div>
+
+                                        <div class="d-grid">
+                                            <label class="btn btn-outline-dark"
+                                                style="position: relative; overflow: hidden;">
+                                                <i class="fas fa-camera me-2"></i>Choose An Image
+                                                <input type="file" id="imageUpload{{loop.index}}" name="event_image"
+                                                    accept="image/*"
+                                                    style="position: absolute; right:0; top:0; opacity: 0;">
+                                            </label>
+                                        </div>
+
+                                        <script>
+                                            (function () {
+                                                const imageUpload = document.getElementById('imageUpload{{loop.index}}');
+                                                const imagePreview = document.getElementById('imagePreview{{loop.index}}');
+
+                                                imageUpload.addEventListener('change', function () {
+                                                    const file = imageUpload.files[0];
+                                                    if (file) {
+                                                        const reader = new FileReader();
+                                                        reader.onload = function (e) {
+                                                            imagePreview.src = e.target.result;
+                                                            imagePreview.alt = file.name;
+                                                            imagePreview.style.display = "block";
+                                                        };
+                                                        reader.readAsDataURL(file);
+                                                    } else {
+                                                        imagePreview.style.display = "none";
+                                                    }
+                                                })
+                                            })();
+                                        </script>
+                                        {% endif %}
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="location" class="form-label">Location</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white border-end-0">
+                                                <i class="fas fa-map-marker-alt text-dark"></i>
+                                            </span>
+                                            <input type="text" class="form-control border-start-0"
+                                                id="input_location{{loop.index}}" name="location"
+                                                placeholder="Enter an address or landmark..." autocomplete="off"
+                                                value="{{address}}">
+                                        </div>
+                                        <div id="suggestions{{loop.index}}" class="suggestions"></div>
+
+                                        <script>
+                                            // JS for quick search location
+                                            document.addEventListener('DOMContentLoaded', function () {
+                                                const searchInput = document.getElementById('input_location{{loop.index}}');
+                                                const suggestionsContainer = document.getElementById('suggestions{{loop.index}}');
+                                                let debounceTimer;
+                                                let selectedIndex = -1;
+                                                let suggestions = [];
+
+                                                searchInput.addEventListener('input', function () {
+                                                    const query = this.value.trim();
+
+                                                    clearTimeout(debounceTimer);
+
+                                                    if (query.length < 2) {
+                                                        suggestionsContainer.style.display = 'none';
+                                                        return;
+                                                    }
+
+                                                    suggestionsContainer.innerHTML = '<div class="loading">finding...</div>';
+                                                    suggestionsContainer.style.display = 'block';
+
+                                                    debounceTimer = setTimeout(function () {
+                                                        fetchSuggestions(query);
+                                                    }, 300);
+                                                });
+
+                                                searchInput.addEventListener('keydown', function (e) {
+                                                    if (!suggestions.length || suggestionsContainer.style.display === 'none') return;
+
+                                                    if (e.key === 'ArrowDown') {
+                                                        e.preventDefault();
+                                                        selectedIndex = (selectedIndex + 1) % suggestions.length;
+                                                        updateSelection();
+                                                    }
+                                                    else if (e.key === 'ArrowUp') {
+                                                        e.preventDefault();
+                                                        selectedIndex = selectedIndex <= 0 ? suggestions.length - 1 : selectedIndex - 1;
+                                                        updateSelection();
+                                                    }
+                                                    else if (e.key === 'Enter' && selectedIndex >= 0) {
+                                                        e.preventDefault();
+                                                        selectSuggestion(suggestions[selectedIndex]);
+                                                    }
+                                                    else if (e.key === 'Escape') {
+                                                        suggestionsContainer.style.display = 'none';
+                                                        selectedIndex = -1;
+                                                    }
+                                                });
+
+                                                document.addEventListener('click', function (e) {
+                                                    if (!suggestionsContainer.contains(e.target) && e.target !== searchInput) {
+                                                        suggestionsContainer.style.display = 'none';
+                                                        selectedIndex = -1;
+                                                    }
+                                                });
+
+                                                function fetchSuggestions(query) {
+                                                    fetch(`/location/search?keyword=${encodeURIComponent(query)}`)
+                                                        .then(response => response.json())
+                                                        .then(data => {
+                                                            suggestions = data;
+                                                            renderSuggestions(query, data);
+                                                        })
+                                                        .catch(error => {
+                                                            console.error('search failed:', error);
+                                                            suggestionsContainer.innerHTML = '<div class="no-results">no results, please retry...</div>';
+                                                        });
+                                                }
+
+                                                function renderSuggestions(query, suggestions) {
+                                                    suggestionsContainer.innerHTML = '';
+
+                                                    if (suggestions.length === 0) {
+                                                        suggestionsContainer.innerHTML = '<div class="no-results">no matched address</div>';
+                                                        return;
+                                                    }
+
+                                                    suggestions.forEach((suggestion, index) => {
+                                                        const item = document.createElement('div');
+                                                        item.className = 'suggestion-item';
+                                                        if (index === selectedIndex) {
+                                                            item.classList.add('selected');
+                                                        }
+
+                                                        const highlightedText = highlightMatch(suggestion, query);
+                                                        item.innerHTML = highlightedText;
+
+                                                        item.addEventListener('click', function () {
+                                                            selectSuggestion(suggestion);
+                                                        });
+
+                                                        item.addEventListener('mouseover', function () {
+                                                            selectedIndex = index;
+                                                            updateSelection();
+                                                        });
+
+                                                        suggestionsContainer.appendChild(item);
+                                                    });
+
+                                                    suggestionsContainer.style.display = 'block';
+                                                }
+
+                                                function highlightMatch(text, query) {
+                                                    const regex = new RegExp(escapeRegExp(query), 'gi');
+                                                    return text.replace(regex, match => `<span class="highlight">${match}</span>`);
+                                                }
+
+                                                function escapeRegExp(string) {
+                                                    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                                                }
+
+                                                function updateSelection() {
+                                                    const items = suggestionsContainer.querySelectorAll('.suggestion-item');
+                                                    items.forEach((item, index) => {
+                                                        if (index === selectedIndex) {
+                                                            item.classList.add('selected');
+                                                            item.scrollIntoView({ block: 'nearest' });
+                                                        } else {
+                                                            item.classList.remove('selected');
+                                                        }
+                                                    });
+                                                }
+
+                                                function selectSuggestion(suggestion) {
+                                                    searchInput.value = suggestion;
+                                                    suggestionsContainer.style.display = 'none';
+                                                    selectedIndex = -1;
+                                                    searchInput.focus();
+                                                }
+                                            });
+                                        </script>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="title" class="form-label">Title</label>
+                                        <input type="text" class="form-control" id="title{{loop.index}}"
+                                            name="event_title" placeholder="Please enter a title" required>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="description" class="form-label">Description</label>
+                                        <textarea class="form-control" id="description{{loop.index}}" name="description"
+                                            rows="3" placeholder="Please enter description here."></textarea>
+                                    </div>
+
+                                    <div class="row mb-3">
+                                        <label for="start_date" class="form-label">Start at</label>
+                                        <div class="col-md-6">
+                                            <div class="input-group mb-2">
+                                                <span class="input-group-text bg-white border-end-0">
+                                                    <i class="far fa-calendar-alt text-dark"></i>
+                                                </span>
+                                                <input type="date" id="start_date{{loop.index}}"
+                                                    class="form-control border-start-0" name="start_date">
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="input-group mb-2">
+                                                <span class="input-group-text bg-white border-end-0">
+                                                    <i class="far fa-clock text-dark"></i>
+                                                </span>
+                                                <input type="time" id="start_time{{loop.index}}"
+                                                    class="form-control border-start-0" name="start_time">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="row mb-3">
+                                        <label for="end_date" class="form-label">End at</label>
+                                        <div class="col-md-6">
+                                            <div class="input-group mb-2">
+                                                <span class="input-group-text bg-white border-end-0">
+                                                    <i class="far fa-calendar-alt text-dark"></i>
+                                                </span>
+                                                <input type="date" id="end_date{{loop.index}}"
+                                                    class="form-control border-start-0" name="end_date">
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="input-group mb-2">
+                                                <span class="input-group-text bg-white border-end-0">
+                                                    <i class="far fa-clock text-dark"></i>
+                                                </span>
+                                                <input type="time" id="end_time{{loop.index}}"
+                                                    class="form-control border-start-0" name="end_time">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <script>
+                                        (function () {
+                                            var start_date = document.getElementById("start_date{{loop.index}}");
+                                            var end_date = document.getElementById("end_date{{loop.index}}");
+                                            var start_time = document.getElementById("start_time{{loop.index}}");
+                                            var end_time = document.getElementById("end_time{{loop.index}}");
+
+                                            const today = new Date();
+                                            const dateString = today.toISOString().split('T')[0];
+                                            start_date.value = dateString;
+                                            end_date.value = dateString;
+
+                                            const hours = String(today.getHours()).padStart(2, '0');
+                                            const minutes = String(today.getMinutes()).padStart(2, '0');
+                                            start_time.value = `${hours}:${minutes}`;
+                                            end_time.value = `${hours}:${minutes}`;
+                                        })();
+                                    </script>
+
+                                    <div class="mb-3">
+                                        <label for="display" class="form-label">Visibility</label>
+                                        <select class="form-select" id="display" name="display">
+                                            <option value="public" selected>Public</option>
+                                            {% if is_member %}
+                                            <option value="published" selected>Published</option>
+                                            {% endif %}
+                                            <option value="private">Private</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-outline-secondary"
+                                        data-bs-dismiss="modal">Cancel</button>
+                                    <button type="submit" class="btn btn-dark">Save Event</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="alert alert-info bg-light border-0 shadow-sm">
+                <div class="text-center py-5">
+                    <i class="fas fa-suitcase-rolling fa-4x text-dark mb-3"></i>
+                    <h4 class="alert-heading text-dark">No journeys found!</h4>
+                    <p class="mb-3">You haven't added any journeys yet. Start documenting your adventures by creating
+                        your first journey.</p>
+                    <a href="#" class="text-dark text-decoration-none link-hover" data-bs-toggle="modal"
+                        data-bs-target="#addJourney">
+                        <i class="fas fa-plus me-2"></i>Add Your First Journey
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="invisible">journey_successful: {{journey_successful}}</div>
+</div>
+
+{% endblock %}
+
+{% block head_extras %}
+<style>
+    /* Custom styles that can be achieved with Bootstrap classes */
+    .hover-card {
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .hover-card:hover {
+
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1) !important;
+    }
+
+    /* Link hover effect with underline */
+    .link-hover {
+        transition: all 0.3s ease;
+    }
+
+    .link-hover:hover {
+        text-decoration: underline !important;
+    }
+
+    .suggestions {
+        position: absolute;
+        z-index: 1000;
+        width: 100%;
+        max-height: 200px;
+        overflow-y: auto;
+        background-color: white;
+        border: 1px solid #ced4da;
+        border-radius: 0.25rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        margin-top: 2px;
+        display: none;
+    }
+
+    .suggestion-item {
+        padding: 8px 12px;
+        cursor: pointer;
+    }
+
+    .suggestion-item:hover,
+    .suggestion-item.selected {
+        background-color: #f8f9fa;
+    }
+
+    .highlight {
+        font-weight: bold;
+        color: #343a40;
+    }
+
+    .loading,
+    .no-results {
+        padding: 8px 12px;
+        text-align: center;
+        color: #6c757d;
+        font-style: italic;
+    }
+</style>
+{% endblock %}

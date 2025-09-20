@@ -1,0 +1,109 @@
+{% extends 'userbase.html' %}
+
+{% block title %}{{ journey.title }} - Travel Journal{% endblock %}
+
+{% set active_page = 'public journey' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <h1>{{ journey.title }}</h1>
+            <p class="text-muted">By {{ journey.username }} | Started on {{ journey.start_date.strftime('%d %b %Y') }}
+            </p>
+            <p>{{ journey.description }}</p>
+
+            <!-- Display visibility -->
+            <span class="badge bg-{{ 'primary' if journey.display == 'public' else 'secondary' }}">
+                {{ journey.display|capitalize }}
+            </span>
+            <span class="badge bg-{{ 'success' if journey.status == 'active' else 'warning' }}">
+                {{ journey.status|capitalize }}
+            </span>
+
+            <!-- Flash messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% endwith %}
+
+            <!-- Events List -->
+            <div class="mt-5">
+                <h2>Events</h2>
+                {% if event_list %}
+                <div class="timeline">
+                    {% for event in event_list %}
+                    <div class="row mb-4">
+                        <div class="col-md-3 text-md-end">
+                            <div class="event-time">
+                                {% if event.start_time %}
+                                <p class="text-muted mb-0">
+                                    <strong>Start:</strong> {{ event.start_time.strftime('%d %b %Y, %H:%M') }}
+                                </p>
+                                {% else %}
+                                <p class="text-muted mb-0">Start time not specified</p>
+                                {% endif %}
+
+                                {% if event.end_time %}
+                                <p class="text-muted mb-0">
+                                    <strong>End:</strong> {{ event.end_time.strftime('%d %b %Y, %H:%M') }}
+                                </p>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-9">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">{{ event.title }}</h5>
+                                </div>
+                                <div class="card-body">
+                                    {% if event.event_image %}
+                                    <img src="{{ url_for('static', filename='events/' + event.event_image) }}"
+                                        alt="{{ event.title }}" class="img-fluid mb-3">
+                                    {% else %}
+                                    <div class="text-center py-4 bg-light mb-3">
+                                        <i class="fas fa-image fa-3x text-muted"></i>
+                                        <p class="mt-2 text-muted">No image available</p>
+                                    </div>
+                                    {% endif %}
+                                    <p>{{ event.description }}</p>
+                                    {% if event.address %}
+                                    <p><small class="text-muted"><i class="fas fa-map-marker-alt me-1"></i>{{
+                                            event.address }}</small></p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <h4 class="alert-heading">No events found!</h4>
+                    <p>This journey doesn't have any events yet.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Back to Public Journeys with much better visibility -->
+            <div class="d-flex justify-content-center mt-5 pt-4 mb-5 pb-5">
+                {% if request.args.get('from') == 'manage_followed' %}
+                <a href="{{ url_for('manage_followed_content') }}" class="btn btn-primary btn-lg shadow">
+                    <i class="fas fa-arrow-left me-2"></i>Back to Manage Followed Content
+                </a>
+                {% else %}
+                <a href="{{ url_for('public_journey') }}" class="btn btn-primary btn-lg shadow">
+                    <i class="fas fa-arrow-left me-2"></i>Back to Public Journeys
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

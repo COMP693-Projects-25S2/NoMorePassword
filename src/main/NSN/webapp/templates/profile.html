@@ -1,0 +1,480 @@
+{% extends 'userbase.html' %}
+
+{% block title %}User Profile{% endblock %}
+
+{# Set the active page to be highlighted in the navigation bar. #}
+{% set active_page = 'profile' %}
+
+{% block head_extras %}
+<style>
+    .favorite-destinations-list {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .favorite-destination-item {
+        transition: all 0.3s ease;
+    }
+
+    .favorite-destination-item:hover {
+        background-color: #f8f9fa !important;
+    }
+
+    .remove-favorite {
+        opacity: 0.6;
+        transition: opacity 0.3s ease;
+    }
+
+    .remove-favorite:hover {
+        opacity: 1;
+    }
+
+    .bg-purple {
+        background-color: #6f42c1;
+        color: white;
+    }
+
+    .bg-teal {
+        background-color: #20c997;
+        color: white;
+    }
+
+    .bg-navy {
+        background-color: #0a4275;
+        color: white;
+    }
+
+    .bg-violet {
+        background-color: #8a5ca5;
+        color: white;
+    }
+
+    .bg-skyblue {
+        background-color: #47b0d3;
+        color: white;
+    }
+
+    .bg-orange {
+        background-color: #fd7e14;
+        color: white;
+    }
+
+    .bg-forest {
+        background-color: #2c7744;
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">User Profile</h5>
+            </div>
+            <div class="card-body text-center">
+                <div class="bg-secondary text-white rounded-circle d-inline-flex justify-content-center align-items-center mb-3"
+                    style="width: 150px; height: 150px;">
+                    <span style="font-size: 64px;">{{ profile.username|default('?')|upper|first }}</span>
+                </div>
+
+                <h4>{{ profile.username|default('Unknown User') }}</h4>
+                <p class="text-muted">
+                    <span
+                        class="badge bg-{{ 'primary' if profile.role == 'admin' else 'orange' if profile.role == 'editor' else 'forest' }}">
+                        {{ profile.role|default('traveller')|capitalize }}
+                    </span>
+                    <span
+                        class="badge bg-{{ 'teal' if profile.status == 'active' else 'secondary' if profile.status == 'banned' else 'warning' }}">
+                        {{ profile.status|default('unknown')|capitalize }}
+                    </span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Personal Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-4 fw-bold">Full Name:</div>
+                    <div class="col-md-8">{{ profile.first_name|default('') }} {{ profile.last_name|default('') }}</div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-4 fw-bold">Email:</div>
+                    <div class="col-md-8">{{ profile.email|default('Not provided') }}</div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-4 fw-bold">Location:</div>
+                    <div class="col-md-8">{{ profile.location|default('Not specified') }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">About Me</h5>
+                {% if is_admin and not is_own_profile %}
+                <button type="button" class="btn btn-sm btn-light" data-bs-toggle="modal"
+                    data-bs-target="#editBioModal">
+                    <i class="fas fa-pencil-alt"></i> Edit
+                </button>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if profile.description %}
+                <p>{{ profile.description }}</p>
+                {% else %}
+                <p class="text-muted">No description available.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if is_admin and not is_own_profile %}
+        <div class="card mt-4">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0">Admin Actions</h5>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('change_user_role') }}" method="post" class="mb-3">
+                    <input type="hidden" name="user_id" value="{{ profile.user_id }}">
+                    <div class="row g-2 align-items-center">
+                        <div class="col-auto">
+                            <label class="col-form-label">Role:</label>
+                        </div>
+                        <div class="col-auto">
+                            <select name="role" class="form-select">
+                                <option value="traveller" {% if profile.role=='traveller' %}selected{% endif %}>
+                                    Traveller</option>
+                                <option value="editor" {% if profile.role=='editor' %}selected{% endif %}>Editor
+                                </option>
+                                <option value="admin" {% if profile.role=='admin' %}selected{% endif %}>Admin</option>
+                            </select>
+                        </div>
+                        <div class="col-auto">
+                            <button type="submit" class="btn btn-primary">Update Role</button>
+                        </div>
+                    </div>
+                </form>
+
+                <form action="{{ url_for('change_user_role') }}" method="post">
+                    <input type="hidden" name="user_id" value="{{ profile.user_id }}">
+                    <div class="row g-2 align-items-center">
+                        <div class="col-auto">
+                            <label class="col-form-label">Status:</label>
+                        </div>
+                        <div class="col-auto">
+                            <select name="status" class="form-select">
+                                <option value="active" {% if profile.status=='active' %}selected{% endif %}>Active
+                                </option>
+                                <option value="banned" {% if profile.status=='banned' %}selected{% endif %}>Banned
+                                </option>
+                            </select>
+                        </div>
+                        <div class="col-auto">
+                            <button type="submit" class="btn btn-primary">Update Status</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Modal for Editing Biography -->
+{% if is_admin and not is_own_profile %}
+<div class="modal fade" id="editBioModal" tabindex="-1" aria-labelledby="editBioModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ url_for('admin_edit_description', user_id=profile.user_id) }}" method="post">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editBioModalLabel">Edit About Me</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" name="description"
+                            rows="5">{{ profile.description|default('') }}</textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Handle favorite destinations removal
+        document.querySelectorAll('.remove-favorite').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                const destination = this.getAttribute('data-destination');
+                const item = this.closest('.favorite-destination-item');
+
+                fetch('/event/favorite-destination', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify({
+                        event_id: 0,
+                        location: destination,
+                        action: 'remove'
+                    })
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            item.style.opacity = '0';
+                            setTimeout(() => {
+                                item.remove();
+                                if (document.querySelectorAll('.favorite-destination-item').length === 0) {
+                                    document.querySelector('.favorite-destinations-list').innerHTML =
+                                        '<div class="text-muted">No favorite destinations yet</div>';
+                                }
+                            }, 300);
+                        } else {
+                            alert(data.message || 'Failed to remove destination');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('An error occurred while removing the destination');
+                    });
+            });
+        });
+
+        // Initialize follow button
+        const followButton = document.querySelector('.follow-btn');
+        if (followButton) {
+            const userId = followButton.getAttribute('data-user-id');
+            updateFollowButton(userId, followButton);
+        }
+
+        // Handle Send Message Modal
+        const sendMessageModalElement = document.getElementById('sendMessageModal');
+        const sendMessageSubmitBtn = document.getElementById('sendMessageSubmitBtn');
+        const sendMessageForm = document.getElementById('sendMessageForm');
+        const messageContent = document.getElementById('messageContent');
+        const sendMessageError = document.getElementById('sendMessageError');
+
+        if (sendMessageSubmitBtn && sendMessageForm && messageContent && sendMessageModalElement) {
+            sendMessageSubmitBtn.addEventListener('click', function () {
+                const formData = new FormData(sendMessageForm);
+                const recipientId = formData.get('recipient_id');
+                const content = formData.get('content');
+
+                if (!content.trim()) {
+                    if (sendMessageError) sendMessageError.textContent = 'Message content cannot be empty.';
+                    else alert('Message content cannot be empty.');
+                    return;
+                }
+                if (sendMessageError) sendMessageError.textContent = '';
+
+                fetch("{{ url_for('message.send_message') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams({
+                        'recipient_id': recipientId,
+                        'content': content
+                    })
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            var modalInstance = bootstrap.Modal.getInstance(sendMessageModalElement);
+                            if (modalInstance) {
+                                modalInstance.hide();
+                            }
+                            messageContent.value = '';
+                            alert(data.message || 'Message sent successfully!');
+                        } else {
+                            if (sendMessageError) sendMessageError.textContent = data.message || 'Error sending message.';
+                            else alert('Error: ' + (data.message || 'Unknown error'));
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error sending message:', error);
+                        if (sendMessageError) sendMessageError.textContent = 'An error occurred while sending the message.';
+                        else alert('An error occurred while sending the message.');
+                    });
+            });
+
+            sendMessageModalElement.addEventListener('hidden.bs.modal', function () {
+                messageContent.value = '';
+                if (sendMessageError) sendMessageError.textContent = '';
+            });
+        }
+    });
+
+    // Function to check if user can follow users (premium or staff)
+    function canFollowUsers() {
+            {% if session.loggedin %}
+            {% set user_role = session.get('role', '') %}
+            {% if user_role in ['admin', 'editor'] %}
+            return true;
+            {% else %}
+            return {{ 'true' if session.get('premium') == 1 else 'false' }};
+        {% endif %}
+        {% else %}
+        return false;
+        {% endif %}
+    }
+
+
+    function updateFollowButton(userId, buttonElement) {
+        if (!canFollowUsers()) {
+            return;
+        }
+
+        console.log(`Checking follow status for user ${userId}`); // debug log
+
+        fetch(`/api/check_user_follow_status/${userId}`, {
+            credentials: 'same-origin'
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Follow status data:', data); // debug log
+
+                if (data.following) {
+                    buttonElement.innerHTML = '<i class="fas fa-user-check me-2"></i>Following';
+                    buttonElement.className = 'btn btn-info col-md-6 follow-btn';
+                    buttonElement.title = 'You are following this user - click to unfollow';
+                    buttonElement.setAttribute('data-action', 'unfollow');
+                } else {
+                    buttonElement.innerHTML = '<i class="fas fa-user-plus me-2"></i>Follow User';
+                    buttonElement.className = 'btn btn-success col-md-6 follow-btn';
+                    buttonElement.title = 'Follow this user to see all their journey events on your Departure Board';
+                    buttonElement.setAttribute('data-action', 'follow');
+                }
+            })
+            .catch(error => {
+                console.error('Error checking follow status:', error);
+                buttonElement.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>Error';
+                buttonElement.className = 'btn btn-secondary col-md-6';
+                buttonElement.disabled = true;
+            });
+    }
+
+    // Improved Follow button processing function
+    function handleFollowClick(button, userId) {
+        if (button.disabled) return;
+
+        const action = button.getAttribute('data-action') || 'follow';
+        const isFollowing = action === 'unfollow';
+
+        // Show loading state
+        const originalText = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>' + (isFollowing ? 'Unfollowing...' : 'Following...');
+        button.disabled = true;
+
+        // Make AJAX request
+        const url = isFollowing ? `/user/unfollow/${userId}` : `/user/follow/${userId}`;
+
+        console.log(`Making request to: ${url}`); // debug log
+
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            credentials: 'same-origin' // Make sure to send session cookies
+        })
+            .then(response => {
+                console.log(`Response status: ${response.status}`); // debug log
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                return response.json();
+            })
+            .then(data => {
+                console.log('Response data:', data); // debug log
+
+                if (data.success) {
+                    if (isFollowing) {
+                        // Now unfollowed
+                        button.innerHTML = '<i class="fas fa-user-plus me-2"></i>Follow User';
+                        button.className = 'btn btn-success col-md-6 follow-btn';
+                        button.title = 'Follow this user to see all their journey events on your Departure Board';
+                        button.setAttribute('data-action', 'follow');
+                    } else {
+                        // Now following
+                        button.innerHTML = '<i class="fas fa-user-check me-2"></i>Following';
+                        button.className = 'btn btn-info col-md-6 follow-btn';
+                        button.title = 'You are following this user - click to unfollow';
+                        button.setAttribute('data-action', 'unfollow');
+                    }
+
+                    // Show success message
+                    showMessage(data.message || (isFollowing ? 'User unfollowed successfully' : 'User followed successfully'), 'success');
+                } else {
+                    button.innerHTML = originalText;
+                    showMessage(data.message || 'An error occurred', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Fetch error:', error);
+                button.innerHTML = originalText;
+
+                // Error handling
+                let errorMessage = 'An error occurred while processing your request';
+                if (error.message.includes('404')) {
+                    errorMessage = 'User not found';
+                } else if (error.message.includes('401')) {
+                    errorMessage = 'Please log in first';
+                } else if (error.message.includes('403')) {
+                    errorMessage = 'Premium subscription required';
+                } else if (error.message.includes('500')) {
+                    errorMessage = 'Server error occurred';
+                }
+
+                showMessage(errorMessage, 'error');
+            })
+            .finally(() => {
+                button.disabled = false;
+            });
+    }
+
+    // Helper function for displaying messages
+    function showMessage(message, type = 'info') {
+        // Create a temporary alert div
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type === 'error' ? 'danger' : 'success'} alert-dismissible fade show position-fixed`;
+        alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+
+        document.body.appendChild(alertDiv);
+
+        // Automatically delete after 5 seconds
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.parentNode.removeChild(alertDiv);
+            }
+        }, 5000);
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,823 @@
+{% extends 'userbase.html' %}
+
+{% block title %}{% if session.role=='admin' %}User Management{% else %}User Searching{% endif %}{% endblock %}
+
+{# Set the active page to be highlighted in the navigation bar. #}
+{% set active_page = 'user' %}
+
+{% block head_extras %}
+<style>
+    .bg-purple {
+        background-color: #6f42c1;
+        color: white;
+    }
+
+    .bg-teal {
+        background-color: #20c997;
+        color: white;
+    }
+
+    .bg-navy {
+        background-color: #0a4275;
+        color: white;
+    }
+
+    .bg-violet {
+        background-color: #8a5ca5;
+        color: white;
+    }
+
+    .bg-skyblue {
+        background-color: #47b0d3;
+        color: white;
+    }
+
+    .bg-orange {
+        background-color: #fd7e14;
+        color: white;
+    }
+
+    .bg-forest {
+        background-color: #2c7744;
+        color: white;
+    }
+
+    .bg-moderator {
+        /* ADDED Moderator Badge Color */
+        background-color: #6610f2;
+        /* Example purple, choose any color */
+        color: white;
+    }
+
+    /* Card styling */
+    .card {
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .card:hover {
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1) !important;
+    }
+
+    /* Table styling */
+    .table th {
+        font-weight: 600;
+        border-top: none;
+    }
+
+    /* 固定列宽 */
+    .table th:nth-child(1) {
+        width: 15%;
+    }
+
+    .table th:nth-child(2) {
+        width: 25%;
+    }
+
+    .table th:nth-child(3) {
+        width: 20%;
+    }
+
+    .table th:nth-child(4) {
+        width: 20%;
+    }
+
+    .table th:nth-child(5) {
+        width: 20%;
+    }
+
+    .user-row {
+        transition: all 0.2s ease;
+    }
+
+    .user-row:hover {
+        background-color: rgba(0, 0, 0, 0.02);
+    }
+
+    /* Custom select styling */
+    .custom-select {
+        border-radius: 4px;
+        border: 1px solid #ced4da;
+        transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    }
+
+    .custom-select:focus {
+        border-color: #80bdff;
+        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    }
+
+    /* Link hover effect with underline */
+    .link-hover {
+        transition: all 0.3s ease;
+    }
+
+    .link-hover:hover {
+        text-decoration: underline !important;
+        color: #0056b3 !important;
+    }
+
+    /* Badges */
+    .badge {
+        font-weight: 500;
+        padding: 0.4em 0.8em;
+    }
+
+    /* Input field focus effect */
+    .form-control:focus,
+    .form-select:focus {
+        box-shadow: 0 0 0 0.25rem rgba(0, 0, 0, 0.1);
+        border-color: rgba(0, 0, 0, 0.25);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Banner image with text overlay -->
+<div class="banner-image"
+    style="background-image: url('/static/ui_photos/private_journey.jpg'); background-size: cover; background-position: center; height: 300px; position: relative;">
+    <div class="banner-overlay"
+        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5);">
+        <div class="container h-100">
+            <div class="row h-100 align-items-center">
+                <div class="col-md-12 text-end">
+                    <h1 class="text-white fw-bold">{% if session.role=='admin' %}User Management{% else %}User
+                        Searching{% endif %}</h1>
+                    <p class="text-white lead">{% if session.role=='admin' %}Manage users and their roles{% else %}Find
+                        other travelers in our community{% endif %}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-4 mb-5">
+    <!-- Filter and Search Bar -->
+    <div class="card mb-4 border-0 shadow-sm">
+        <div class="card-body bg-light">
+            <form id="userSearchForm" action="{{ url_for('view_users') }}" method="GET">
+                <div class="input-group">
+                    <span class="input-group-text bg-white border-end-0">
+                        <i class="fas fa-search text-muted"></i>
+                    </span>
+                    <input type="text" class="form-control border-start-0" id="search" name="search"
+                        placeholder="Search by username, email, or name..."
+                        value="{{ request.args.get('search', '') }}">
+
+                    {% if session.role=='admin' %}
+                    <select class="form-select" id="roleFilter" name="role" onchange="this.form.submit()"
+                        style="max-width: 20%;">
+                        <option value="" {% if not request.args.get('role') %}selected{% endif %}>All Roles</option>
+                        <option value="admin" {% if request.args.get('role')=='admin' %}selected{% endif %}>Admin
+                        </option>
+                        <option value="editor" {% if request.args.get('role')=='editor' %}selected{% endif %}>Editor
+                        </option>
+                        <option value="moderator" {% if request.args.get('role')=='moderator' %}selected{% endif %}>
+                            Moderator</option>
+                            <option value="support_tech" {% if request.args.get('role')=='support_tech' %}selected{% endif %}>Support Tech</option>
+                        <option value="staff" {% if request.args.get('role')=='staff' %}selected{% endif %}>Admin &
+                            Editor & Moderator</option>
+                        <option value="traveller" {% if request.args.get('role')=='traveller' %}selected{% endif %}>
+                            Traveller</option>
+                    </select>
+                    {% endif %}
+
+                    <button class="btn btn-dark ms-2" type="submit">Search</button>
+                    {% if request.args.get('search') %}
+                    <a href="{{ url_for('view_users', role=request.args.get('role', '')) }}"
+                        class="btn btn-outline-secondary ms-2">Clear</a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if show_role_lists %}
+    <!-- Admin Users Section -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-dark text-white">
+            <h4 class="mb-0">Administrators</h4>
+        </div>
+        <div class="card-body">
+            {% if admin_users %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Name</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in admin_users %}
+                        <tr class="user-row">
+                            <td>
+                                <a href="{{ url_for('view_profile', user_id=user.user_id) }}"
+                                    class="text-decoration-none text-dark link-hover">
+                                    {{ user.username }}
+                                </a>
+                            </td>
+                            <td>{{ user.email }}</td>
+                            <td>{{ user.first_name }} {{ user.last_name }}</td>
+                            <td>
+                                <span class="badge rounded-pill bg-primary">
+                                    {{ user.role|capitalize }}
+                                </span>
+
+                                {% if can_edit_role %}
+                                <select class="form-select form-select-sm mt-1 role-select custom-select"
+                                    data-user-id="{{ user.user_id }}" data-admin-count="{{ admin_count }}">
+                                    <option value="traveller" {% if user.role=='traveller' %}selected{% endif %}>
+                                        Traveller</option>
+                                    <option value="editor" {% if user.role=='editor' %}selected{% endif %}>Editor
+                                    </option>
+                                    <option value="moderator" {% if user.role=='moderator' %}selected{% endif %}>
+                                        Moderator</option> <!-- ADDED Moderator Option -->
+                                        <option value="support_tech" {% if user.role=='support_tech' %}selected{% endif %}>Support Tech</option>
+                                    <option value="admin" {% if user.role=='admin' %}selected{% endif %}>Admin</option>
+                                </select>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span
+                                    class="badge rounded-pill bg-{{ 'teal' if user.status == 'active' else 'secondary' if user.status == 'banned' else 'warning' }}">
+                                    {{ user.status|capitalize }}
+                                </span>
+
+                                {% if user.user_id != session.user_id %}
+                                <select class="form-select form-select-sm mt-1 status-select custom-select"
+                                    data-user-id="{{ user.user_id }}" data-user-role="{{ user.role }}">
+                                    <option value="active" {% if user.status=='active' %}selected{% endif %}>Active
+                                    </option>
+                                    <option value="banned" {% if user.status=='banned' %}selected{% endif %}>Banned
+                                    </option>
+                                </select>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-info bg-light border-0">
+                <div class="text-center py-3">
+                    <p class="mb-0">No administrators found in the system.</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Editor Users Section -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-dark text-white">
+            <h4 class="mb-0">Editors</h4>
+        </div>
+        <div class="card-body">
+            {% if editor_users %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Name</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in editor_users %}
+                        <tr class="user-row">
+                            <td>
+                                <a href="{{ url_for('view_profile', user_id=user.user_id) }}"
+                                    class="text-decoration-none text-dark link-hover">
+                                    {{ user.username }}
+                                </a>
+                            </td>
+                            <td>{{ user.email }}</td>
+                            <td>{{ user.first_name }} {{ user.last_name }}</td>
+                            <td>
+                                <span class="badge rounded-pill bg-orange">
+                                    {{ user.role|capitalize }}
+                                </span>
+
+                                {% if can_edit_role %}
+                                <select class="form-select form-select-sm mt-1 role-select custom-select"
+                                    data-user-id="{{ user.user_id }}" data-admin-count="{{ admin_count }}">
+                                    <option value="traveller" {% if user.role=='traveller' %}selected{% endif %}>
+                                        Traveller</option>
+                                    <option value="editor" {% if user.role=='editor' %}selected{% endif %}>Editor
+                                    </option>
+                                    <option value="moderator" {% if user.role=='moderator' %}selected{% endif %}>
+                                        Moderator</option> <!-- ADDED Moderator Option -->
+                                    <option value="support_tech" {% if user.role=='support_tech' %}selected{% endif %}>Support Tech</option>
+                                    <option value="admin" {% if user.role=='admin' %}selected{% endif %}>Admin</option>
+                                </select>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span
+                                    class="badge rounded-pill bg-{{ 'teal' if user.status == 'active' else 'secondary' if user.status == 'banned' else 'warning' }}">
+                                    {{ user.status|capitalize }}
+                                </span>
+                                {% if user.user_id != session.user_id %}
+                                <select class="form-select form-select-sm mt-1 status-select custom-select"
+                                    data-user-id="{{ user.user_id }}" data-user-role="{{ user.role }}">
+                                    <option value="active" {% if user.status=='active' %}selected{% endif %}>Active
+                                    </option>
+                                    <option value="banned" {% if user.status=='banned' %}selected{% endif %}>Banned
+                                    </option>
+                                </select>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-info bg-light border-0">
+                <div class="text-center py-3">
+                    <p class="mb-0">No editors found in the system.</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Moderator Users Section -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-dark text-white">
+            <h4 class="mb-0">Moderators</h4>
+        </div>
+        <div class="card-body">
+            {% if moderator_users %} {# MODIFIED: Check for moderator_users #}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Name</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in moderator_users %} {# MODIFIED: Loop through moderator_users #}
+                        <tr class="user-row">
+                            <td>
+                                <a href="{{ url_for('view_profile', user_id=user.user_id) }}"
+                                    class="text-decoration-none text-dark link-hover">
+                                    {{ user.username }}
+                                </a>
+                            </td>
+                            <td>{{ user.email }}</td>
+                            <td>{{ user.first_name }} {{ user.last_name }}</td>
+                            <td>
+                                <span class="badge rounded-pill bg-moderator"> {# MODIFIED: Badge color for moderator #}
+                                    {{ user.role|capitalize }}
+                                </span>
+                                {% if can_edit_role %}
+                                <select class="form-select form-select-sm mt-1 role-select custom-select"
+                                    data-user-id="{{ user.user_id }}" data-admin-count="{{ admin_count }}">
+                                    <option value="traveller" {% if user.role=='traveller' %}selected{% endif %}>
+                                        Traveller</option>
+                                    <option value="editor" {% if user.role=='editor' %}selected{% endif %}>Editor
+                                    </option>
+                                    <option value="moderator" {% if user.role=='moderator' %}selected{% endif %}>
+                                        Moderator</option>
+                                    <option value="support_tech" {% if user.role=='support_tech' %}selected{% endif %}>Support Tech</option>
+                                    <option value="admin" {% if user.role=='admin' %}selected{% endif %}>Admin</option>
+                                </select>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span
+                                    class="badge rounded-pill bg-{{ 'teal' if user.status == 'active' else 'secondary' if user.status == 'banned' else 'warning' }}">
+                                    {{ user.status|capitalize }}
+                                </span>
+                                {% if user.user_id != session.user_id %}
+                                <select class="form-select form-select-sm mt-1 status-select custom-select"
+                                    data-user-id="{{ user.user_id }}" data-user-role="{{ user.role }}">
+                                    <option value="active" {% if user.status=='active' %}selected{% endif %}>Active
+                                    </option>
+                                    <option value="inactive" {% if user.status=='inactive' %}selected{% endif %}>Inactive
+                                    </option>
+                                    <option value="banned" {% if user.status=='banned' %}selected{% endif %}>Banned
+                                    </option>
+                                </select>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-info bg-light border-0">
+                <div class="text-center py-3">
+                    <p class="mb-0">No moderators found in the system.</p> {# MODIFIED: Message for no moderators #}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Traveller Users Section -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-dark text-white">
+            <h4 class="mb-0">Travellers</h4>
+        </div>
+        <div class="card-body">
+            {% if traveller_users %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Name</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in traveller_users %}
+                        <tr class="user-row">
+                            <td>
+                                <a href="{{ url_for('view_profile', user_id=user.user_id) }}"
+                                    class="text-decoration-none text-dark link-hover">
+                                    {{ user.username }}
+                                </a>
+                            </td>
+                            <td>{{ user.email }}</td>
+                            <td>{{ user.first_name }} {{ user.last_name }}</td>
+                            <td>
+                                <span class="badge rounded-pill bg-forest">
+                                    {{ user.role|capitalize }}
+                                </span>
+                                {% if can_edit_role %}
+                                <select class="form-select form-select-sm mt-1 role-select custom-select"
+                                    data-user-id="{{ user.user_id }}" data-admin-count="{{ admin_count }}">
+                                    <option value="traveller" {% if user.role=='traveller' %}selected{% endif %}>
+                                        Traveller</option>
+                                    <option value="editor" {% if user.role=='editor' %}selected{% endif %}>Editor
+                                    </option>
+                                    <option value="moderator" {% if user.role=='moderator' %}selected{% endif %}>
+                                        Moderator</option> <!-- ADDED Moderator Option -->
+                                    <option value="support_tech" {% if user.role=='support_tech' %}selected{% endif %}>Support Tech</option>
+                                    <option value="admin" {% if user.role=='admin' %}selected{% endif %}>Admin</option>
+                                </select>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span
+                                    class="badge rounded-pill bg-{{ 'teal' if user.status == 'active' else 'secondary' if user.status == 'banned' else 'warning' if user.status=='inactive'  }}">
+                                    {{ user.status|capitalize }}
+                                </span>
+                                {% if user.user_id != session.user_id %}
+                                <select class="form-select form-select-sm mt-1 status-select custom-select"
+                                    data-user-id="{{ user.user_id }}" data-user-role="{{ user.role }}">
+                                    <option value="active" {% if user.status=='active' %}selected{% endif %}>Active
+                                    </option>
+                                    <option value="inactive" {% if user.status=='inactive' %}selected{% endif %}>
+                                        Inactive
+                                    </option>
+                                    <option value="banned" {% if user.status=='banned' %}selected{% endif %}>Banned
+                                    </option>
+                                </select>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% if traveller_total_pages > 1 %}
+                <nav aria-label="Traveller pagination" class="mt-2">
+                    <div class="d-flex flex-column flex-md-row align-items-center justify-content-center mb-2">
+                        <div class="text-center text-muted small mt-2 me-2 mt-md-0">
+                            Page {{ traveller_page }} of {{ traveller_total_pages }} | Total: {{ traveller_total }}
+                        </div>
+                        <ul class="pagination mb-0 me-md-3">
+                            <li class="page-item {% if traveller_page <= 1 %}disabled{% endif %}">
+                                <a class="page-link"
+                                    href="{{ url_for('view_users', admin_page=1, editor_page=1, moderator_page=1, traveller_page=traveller_page-1) }}">Previous</a>
+                            </li>
+                            {% for p in range(1, traveller_total_pages+1) %}
+                            <li class="page-item {% if p == traveller_page %}active{% endif %}">
+                                <a class="page-link"
+                                    href="{{ url_for('view_users', admin_page=1, editor_page=1, moderator_page=1, traveller_page=p) }}">{{
+                                    p }}</a>
+                            </li>
+                            {% endfor %}
+                            <li class="page-item {% if traveller_page >= traveller_total_pages %}disabled{% endif %}">
+                                <a class="page-link"
+                                    href="{{ url_for('view_users', admin_page=1, editor_page=1, moderator_page=1, traveller_page=traveller_page+1) }}">Next</a>
+                            </li>
+                        </ul>
+                    </div>
+                </nav>
+                {% endif %}
+            </div>
+            {% else %}
+            <div class="alert alert-info bg-light border-0">
+                <div class="text-center py-3">
+                    <p class="mb-0">No travellers found in the system.</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% else %}
+    <!-- All Users or Filtered Users Section -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-dark text-white">
+            <h4 class="mb-0">
+                {% if request.args.get('role') %}
+                {{ request.args.get('role')|capitalize }} Users
+                {% else %}
+                All Users
+                {% endif %}
+            </h4>
+        </div>
+        <div class="card-body">
+            {% if user_list %}
+            {% if session.role != 'admin' %}
+            <!-- user card displayed for none admin users -->
+            <div class="row row-cols-1 row-cols-md-3 g-4">
+                {% for user in user_list %}
+                {% if not request.args.get('role') or
+                (request.args.get('role') == 'staff' and (user.role == 'admin' or user.role == 'editor' or user.role == 'moderator')) or
+                user.role == request.args.get('role') %}
+                <div class="col">
+                    <a href="{{ url_for('view_profile', user_id=user.user_id) }}" class="text-decoration-none text-dark">
+                        <div class="card h-100 shadow-sm hover-shadow" style="cursor: pointer;">
+                            <div class="card-body d-flex align-items-center">
+                                {% if user.avatar_url %}
+                                <img class="rounded-circle me-3" src="{{ user.avatar_url }}" alt="avatar" style="width: 64px; height: 64px; object-fit: cover;">
+                                {% else %}
+                                <img class="rounded-circle me-3" src="{{ url_for('static', filename='avatars/default.png') }}" alt="avatar" style="width: 64px; height: 64px; object-fit: cover;">
+                                {% endif %}
+                                <div>
+                                    <h5 class="mb-0">{{ user.username }}</h5>
+                                  
+                                </div>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+                {% endif %}
+                {% if loop.index % 3 == 0 %}
+                {% endif %}
+                {% if loop.index % 3 == 0 %}    
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% else %}
+            <!-- user list displayed for admin  -->
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Name</th>
+                            {% if session.role=='admin' %}
+                            <th>Role</th>
+                            <th>Status</th>
+                            {% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in user_list %}
+                        {% if not request.args.get('role') or
+                        (request.args.get('role') == 'staff' and (user.role == 'admin' or user.role == 'editor' or
+                        user.role == 'moderator')) or
+                        user.role == request.args.get('role') %}
+                        <tr class="user-row">
+                            <td>
+                                <a href="{{ url_for('view_profile', user_id=user.user_id) }}"
+                                    class="text-decoration-none text-dark link-hover">
+                                    {{ user.username }}
+                                </a>
+                            </td>
+                            <td>{{ user.email }}</td>
+                            <td>{{ user.first_name }} {{ user.last_name }}</td>
+
+                            {% if session.role=='admin' %}
+                            <td>
+                                <span
+                                    class="badge rounded-pill bg-{{ 'primary' if user.role == 'admin' else 'orange' if user.role == 'editor' else 'moderator' if user.role == 'moderator' else 'forest' }}">
+                                    {{ user.role|capitalize }}
+                                </span>
+
+                                {% if can_edit_role %}
+                                <select class="form-select form-select-sm mt-1 role-select custom-select"
+                                    data-user-id="{{ user.user_id }}" data-admin-count="{{ admin_count }}">
+                                    <option value="traveller" {% if user.role=='traveller' %}selected{% endif %}>
+                                        Traveller</option>
+                                    <option value="editor" {% if user.role=='editor' %}selected{% endif %}>Editor
+                                    </option>
+                                    <option value="moderator" {% if user.role=='moderator' %}selected{% endif %}>
+                                        Moderator</option> <!-- ADDED Moderator Option -->
+                                        <option value="support_tech" {% if user.role=='support_tech' %}selected{% endif %}>Support Tech</option>
+                                    <option value="admin" {% if user.role=='admin' %}selected{% endif %}>Admin</option>
+                                </select>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span
+                                    class="badge rounded-pill bg-{{ 'teal' if user.status == 'active' else 'secondary' if user.status == 'banned' else 'warning' }}">
+                                    {{ user.status|capitalize }}
+                                </span>
+
+                                {% if user.user_id != session.user_id and (user.role != 'admin' or session.user_id ==
+                                user.user_id) %}
+                                <select class="form-select form-select-sm mt-1 status-select custom-select"
+                                    data-user-id="{{ user.user_id }}" data-user-role="{{ user.role }}">
+                                    <option value="active" {% if user.status=='active' %}selected{% endif %}>Active
+                                    </option>
+                                    <option value="banned" {% if user.status=='banned' %}selected{% endif %}>Banned
+                                    </option>
+                                </select>
+                                {% endif %}
+                            </td>
+                            {% endif %}
+
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+            {% if user_list and total_pages > 1 %}
+            <nav aria-label="User pagination" class="mt-4">
+                <div class="d-flex flex-column flex-md-row align-items-center justify-content-center mb-2">
+                    <!-- {# <div class="text-center text-muted small mt-2 me-2 mt-md-0">
+                        Page {{ page }} of {{ total_pages }}{% if total_users is defined %} | Total: {{ total_users
+                        }}{% endif %}
+                    </div> #} -->
+                    <ul class="pagination mb-0 me-md-3">
+                        <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+                            <a class="page-link"
+                                href="{{ url_for('view_users', search=request.args.get('search', ''), role=request.args.get('role', ''), page=page-1) }}"
+                                tabindex="-1">Previous</a>
+                        </li>
+                        {% set start_page = page-3 if page-3 > 0 else 1 %}
+                        {% set end_page = page+3 if page+3 <= total_pages else total_pages %} {% for p in
+                            range(start_page, end_page+1) %} <li
+                            class="page-item {% if p == page %}active{% endif %}">
+                            <a class="page-link"
+                                href="{{ url_for('view_users', search=request.args.get('search', ''), role=request.args.get('role', ''), page=p) }}">{{
+                                p }}</a>
+                            </li>
+                            {% endfor %}
+                            <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+                                <a class="page-link"
+                                    href="{{ url_for('view_users', search=request.args.get('search', ''), role=request.args.get('role', ''), page=page+1) }}">Next</a>
+                            </li>
+                    </ul>
+                </div>
+            </nav>
+            {% endif %}
+            </div>
+
+            {% else %}
+            <div class="alert alert-info bg-light border-0">
+                <div class="text-center py-5">
+                    <i class="fas fa-users fa-4x text-dark mb-3"></i>
+                    <h4 class="alert-heading text-dark">No users found!</h4>
+                    {% if request.args.get('search') %}
+                    <p class="mb-3">No users found matching "{{ request.args.get('search') }}".</p>
+                    <a href="{{ url_for('view_users', role=request.args.get('role', '')) }}"
+                        class="btn btn-outline-dark mt-2">
+                        <i class="fas fa-undo me-2"></i>Clear search
+                    </a>
+                    {% else %}
+                    <p class="mb-3">There are currently no users registered in the system.</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Role update functionality
+    document.addEventListener('DOMContentLoaded', function () {
+        const roleSelects = document.querySelectorAll('.role-select');
+
+        roleSelects.forEach(select => {
+            select.addEventListener('change', async function () {
+                const userId = this.dataset.userId;
+                const newRole = this.value;
+                const adminCount = parseInt(this.dataset.adminCount);
+
+                // Prevent removing the last admin
+                if (adminCount <= 1 && this.closest('td').querySelector('.badge').textContent.trim() === 'Admin' && newRole !== 'admin') {
+                    alert("Cannot remove the last administrator. Please create another admin account first.");
+                    this.value = 'admin'; // Reset selection
+                    return;
+                }
+
+                if (confirm(`Are you sure you want to change this user's role to ${newRole}?`)) {
+                    try {
+                        const response = await fetch('/user/role/update', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                user_id: userId,
+                                role: newRole
+                            })
+                        });
+
+                        if (response.ok) {
+                            alert('Role updated successfully');
+                            // Preserve the current filter and search when reloading
+                            const urlParams = new URLSearchParams(window.location.search);
+                            location.href = `/user/view?${urlParams.toString()}`;
+                        } else {
+                            const data = await response.json();
+                            alert(data.error || 'Failed to update role');
+                        }
+                    } catch (error) {
+                        alert('Network error, unable to update role');
+                    }
+                } else {
+                    // Restore original selection
+                    this.value = this.getAttribute('data-original-value');
+                }
+            });
+
+            // Save original value for error recovery
+            select.setAttribute('data-original-value', select.value);
+        });
+
+        // Status update functionality
+        const statusSelects = document.querySelectorAll('.status-select');
+
+        statusSelects.forEach(select => {
+            select.addEventListener('change', async function () {
+                const userId = this.dataset.userId;
+                const userRole = this.dataset.userRole;
+                const newStatus = this.value;
+
+                // Check if trying to ban an admin
+                if (userRole === 'admin' && newStatus === 'banned') {
+                    alert("Administrator accounts cannot be banned.");
+                    this.value = 'active'; // Reset the selection
+                    return;
+                }
+
+                if (confirm(`Are you sure you want to set this user's status to ${newStatus}?`)) {
+                    try {
+                        const response = await fetch('/user/status/update', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                user_id: userId,
+                                status: newStatus
+                            })
+                        });
+
+                        if (response.ok) {
+                            alert(`User ${newStatus === 'active' ? 'activated' : 'banned'} successfully`);
+                            // Preserve the current filter and search when reloading
+                            const urlParams = new URLSearchParams(window.location.search);
+                            location.href = `/user/view?${urlParams.toString()}`;
+                        } else {
+                            const data = await response.json();
+                            alert(data.error || 'Failed to update status');
+                        }
+                    } catch (error) {
+                        alert('Network error, unable to update status');
+                    }
+                } else {
+                    // Restore original selection
+                    this.value = this.getAttribute('data-original-value');
+                }
+            });
+
+            // Save original value for error recovery
+            select.setAttribute('data-original-value', select.value);
+        });
+    });
+</script>
+{% endblock %}

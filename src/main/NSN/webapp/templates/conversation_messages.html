@@ -1,0 +1,23 @@
+{% if messages %}
+{% for message in messages %}
+<div class="chat-message-row {% if message.is_self %}self{% endif %}">
+    {% if message.sender_avatar_url %}
+    <img class="chat-avatar" src="{{ message.sender_avatar_url }}" alt="avatar">
+    {% else %}
+    <img class="chat-avatar" src="{{ url_for('static', filename='avatars/default.png') }}" alt="avatar">
+    {% endif %}
+    <div>
+        <div class="chat-bubble {% if message.is_self %}self{% else %}other{% endif %}">
+            {{ message.content }}
+        </div>
+        <div class="chat-meta">
+            {{ message.sender_username }} · {{ message.created_at.strftime('%Y-%m-%d %H:%M') }}
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="alert alert-info">
+    No messages yet. Say hello!
+</div>
+{% endif %}

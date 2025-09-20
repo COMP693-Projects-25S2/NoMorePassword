@@ -1,0 +1,623 @@
+{% extends "userbase.html" %}
+{% block title %}Moderation Dashboard{% endblock %}
+
+{% set active_page = 'content_moderation' %}
+
+{% block content %}
+<!-- Banner image with text overlay -->
+<div class="banner-image"
+    style="background-image: url('/static/ui_photos/private_journey.jpg'); background-size: cover; background-position: center; height: 300px; position: relative;">
+    <div class="banner-overlay"
+        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5);">
+        <div class="container h-100">
+            <div class="row h-100 align-items-center">
+                <div class="col-md-12 text-end">
+                    <h1 class="text-white fw-bold">Content Moderation Dashboard</h1>
+                    <p class="text-white lead">Review all the reported contents</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-end align-items-center mb-4">
+       
+        <div>
+            <span class="badge bg-warning fs-6">{{ reported_journeys|length }} Journey Reports</span>
+        </div>
+    </div>
+
+    <!-- 统计卡片 -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-title mb-0">Total Reports</h6>
+                            <h3 class="mb-0">{{ reported_journeys|length }}</h3>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-map fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-danger text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-title mb-0">Pending</h6>
+                            <h3 class="mb-0">{{ reported_journeys|selectattr("status", "equalto", "pending")|list|length }}</h3>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-clock fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-title mb-0">Reviewed</h6>
+                            <h3 class="mb-0">{{ reported_journeys|selectattr("status", "equalto", "reviewed")|list|length }}</h3>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-check fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-secondary text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-title mb-0">Dismissed</h6>
+                            <h3 class="mb-0">{{ reported_journeys|selectattr("status", "equalto", "dismissed")|list|length }}</h3>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-times fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- filter and search -->
+    <div class="card mb-4">
+        <div class="card-header bg-light">
+            <div class="row align-items-center">
+                <div class="col-md-4">
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-search"></i></span>
+                        <input type="text" class="form-control" id="reportSearch"
+                               placeholder="Search journeys, users...">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" id="statusFilter">
+                        <option value="">All Status</option>
+                        <option value="pending">Pending</option>
+                        <option value="reviewed">Reviewed</option>
+                        <option value="dismissed">Dismissed</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" id="reasonFilter">
+                        <option value="">All Reasons</option>
+                        <option value="spam">Spam</option>
+                        <option value="inappropriate_content">Inappropriate Content</option>
+                        <option value="false_information">False Information</option>
+                        <option value="copyright_violation">Copyright Violation</option>
+                        <option value="offensive_language">Offensive Language</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-outline-primary w-100" onclick="clearFilters()">
+                        <i class="fas fa-undo me-1"></i>Clear
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if reported_journeys %}
+    <div class="card">
+        <div class="card-header bg-dark text-white">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-map me-2"></i>Journey Reports
+                </h5>
+                <!-- {% if current_user_role == 'admin' %}
+                <div>
+                    <button class="btn btn-sm btn-outline-light me-2" onclick="selectAllReports()">
+                        <i class="fas fa-check-square me-1"></i>Select All
+                    </button>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-outline-danger dropdown-toggle"
+                                data-bs-toggle="dropdown">
+                            Batch Actions
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" onclick="batchAction('dismiss')">
+                                <i class="fas fa-times me-1"></i>Dismiss Selected
+                            </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="batchAction('hide_journey')">
+                                <i class="fas fa-eye-slash me-1"></i>Hide Selected Journeys
+                            </a></li>
+                        </ul>
+                    </div>
+                </div>
+                {% endif %} -->
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            {% if current_user_role == 'admin' %}
+                            <th width="40">
+                                <input type="checkbox" id="selectAllReports" onchange="selectAllReports()">
+                            </th>
+                            {% endif %}
+                            <th>Reported At</th>
+                            <th>Journey Title</th>
+                            <th>Journey Owner</th>
+                            <th>Reporter</th>
+                            <th>Report Reason</th>
+                            <th>Details</th>
+                            <th>Status</th>
+                            <th width="200">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for report in reported_journeys %}
+                        <tr id="journey-report-row-{{ report.report_id }}"
+                            class="{% if report.status == 'pending' %}table-warning{% elif report.status == 'reviewed' %}table-success{% elif report.status == 'dismissed' %}table-secondary{% endif %}"
+                            data-status="{{ report.status }}"
+                            data-reason="{{ report.reason }}">
+                            {% if current_user_role == 'admin' %}
+                            <td>
+                                {% if report.status == 'pending' %}
+                                <input type="checkbox" name="report_ids" value="{{ report.report_id }}">
+                                {% endif %}
+                            </td>
+                            {% endif %}
+                            <td>
+                                <small>{{ report.report_created_at.strftime('%Y-%m-%d') }}</small><br>
+                                <small class="text-muted">{{ report.report_created_at.strftime('%H:%M') }}</small>
+                            </td>
+                            <td>
+                                <div style="max-width: 200px;">
+                                    <strong
+                                        class="text-primary cursor-pointer"
+                                        onclick="showJourneyDetails({{ report.journey_id }}, {{ report.report_id }})"
+                                        title="Click to view details">
+                                        {{ report.journey_title|truncate(30) }}
+                                    </strong>
+                                    <br><small class="text-muted">ID: {{ report.journey_id }}</small>
+                                    {% if report.journey_status == 'hidden' %}
+                                    <br><span class="badge bg-danger">Hidden</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td>
+                                <span class="fw-bold">{{ report.journey_owner_username }}</span>
+                            </td>
+                            <td>
+                                <span class="text-muted">{{ report.reporter_username }}</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-warning text-dark">
+                                    {{ report.reason.replace('_', ' ').title() }}
+                                </span>
+                            </td>
+                            <td>
+                                <div style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                     title="{{ report.details }}">
+                                    {{ report.details|truncate(50) }}
+                                </div>
+                            </td>
+                            <td>
+                                <span class="badge
+                                    {% if report.status == 'pending' %}bg-warning text-dark
+                                    {% elif report.status == 'reviewed' %}bg-success
+                                    {% elif report.status == 'dismissed' %}bg-secondary
+                                    {% else %}bg-info{% endif %}">
+                                    {{ report.status.title() }}
+                                </span>
+                                {% if report.reviewed_at %}
+                                <br><small class="text-muted">{{ report.reviewed_at.strftime('%m/%d %H:%M') }}</small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if report.status == 'pending' %}
+                                <!-- Pending status: Display the processing button -->
+                                <div class="btn-group-vertical d-grid gap-1">
+                                    <button type="button" class="btn btn-sm btn-danger"
+                                            onclick="showJourneyActionModal({{ report.report_id }}, {{ report.journey_id }}, 'hide_journey', '{{ report.journey_title|e }}')">
+                                        <i class="fas fa-eye-slash me-1"></i>Hide Journey
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                                            onclick="showJourneyActionModal({{ report.report_id }}, {{ report.journey_id }}, 'dismiss', '{{ report.journey_title|e }}')">
+                                        <i class="fas fa-times me-1"></i>Dismiss
+                                    </button>
+                                    {% if current_user_role == 'admin' %}
+                                    <button type="button" class="btn btn-sm btn-outline-danger"
+                                            onclick="showJourneyActionModal({{ report.report_id }}, {{ report.journey_id }}, 'ban_user', '{{ report.journey_title|e }}', '{{ report.journey_owner_username|e }}')">
+                                        <i class="fas fa-ban me-1"></i>Ban Owner
+                                    </button>
+                                    {% endif %}
+                                </div>
+
+                                {% elif report.status in ['reviewed', 'dismissed'] %}
+                                <!-- Processed status: Displays processing information -->
+                                <small class="text-muted">
+                                    Reviewed by: {{ report.reviewer_username or 'Unknown' }}
+                                    {% if report.admin_response %}
+                                    <br><strong>Response:</strong> {{ report.admin_response|truncate(50) }}
+                                    {% endif %}
+                                </small>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        <div class="text-center py-5">
+            <i class="fas fa-clipboard-check fa-4x text-muted mb-3"></i>
+            <h4>No Journey Reports</h4>
+            <p class="mb-0">There are no journey reports requiring attention at the moment.</p>
+            <p class="text-muted">New reports will appear here when users submit them.</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Journey Action Modal -->
+<div class="modal fade" id="journeyActionModal" tabindex="-1" aria-labelledby="journeyActionModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" id="journeyActionModalHeader">
+                <h5 class="modal-title" id="journeyActionModalLabel">Confirm Action</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="journeyActionContent">
+                    <!-- Content will be populated by JavaScript -->
+                </div>
+                <div class="mt-3">
+                    <label for="adminResponse" class="form-label">Admin Response (Optional):</label>
+                    <textarea class="form-control" id="adminResponse" name="admin_response" rows="3"
+                              placeholder="Provide a response to the reporter and journey owner..."></textarea>
+                </div>
+                <input type="hidden" id="journeyActionReportId">
+                <input type="hidden" id="journeyActionType">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn" id="confirmJourneyActionBtn" onclick="executeJourneyAction()">
+                    Confirm
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Journey Details Modal -->
+<div class="modal fade" id="journeyDetailsModal" tabindex="-1" aria-labelledby="journeyDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="journeyDetailsModalLabel">Journey Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="journeyDetailsContent">
+                <!-- Content will be populated by JavaScript -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    // Display the journey operation confirmation dialog
+    function showJourneyActionModal(reportId, journeyId, actionType, journeyTitle, ownerUsername = '') {
+        document.getElementById('journeyActionReportId').value = reportId;
+        document.getElementById('journeyActionType').value = actionType;
+
+        const modal = document.getElementById('journeyActionModal');
+        const header = document.getElementById('journeyActionModalHeader');
+        const content = document.getElementById('journeyActionContent');
+        const confirmBtn = document.getElementById('confirmJourneyActionBtn');
+
+        // reset admin response
+        document.getElementById('adminResponse').value = '';
+
+        // Set the modal content according to the operation type
+        switch(actionType) {
+            case 'hide_journey':
+                header.className = 'modal-header bg-danger text-white';
+                content.innerHTML = `
+                    <div class="text-center mb-3">
+                        <i class="fas fa-eye-slash fa-3x text-danger"></i>
+                    </div>
+                    <p>Are you sure you want to <strong>hide</strong> the journey "<strong>${journeyTitle}</strong>"?</p>
+                    <p class="text-danger">This will make the journey invisible to the public but preserve the content.</p>
+                `;
+                confirmBtn.className = 'btn btn-danger';
+                confirmBtn.innerHTML = '<i class="fas fa-eye-slash me-1"></i>Hide Journey';
+                break;
+
+            case 'dismiss':
+                header.className = 'modal-header bg-secondary text-white';
+                content.innerHTML = `
+                    <div class="text-center mb-3">
+                        <i class="fas fa-times-circle fa-3x text-secondary"></i>
+                    </div>
+                    <p>Are you sure you want to <strong>dismiss</strong> this report for journey "<strong>${journeyTitle}</strong>"?</p>
+                    <p class="text-muted">The journey will remain visible and no action will be taken.</p>
+                `;
+                confirmBtn.className = 'btn btn-secondary';
+                confirmBtn.innerHTML = '<i class="fas fa-times me-1"></i>Dismiss Report';
+                break;
+
+            case 'ban_user':
+                header.className = 'modal-header bg-danger text-white';
+                content.innerHTML = `
+                    <div class="text-center mb-3">
+                        <i class="fas fa-ban fa-3x text-danger"></i>
+                    </div>
+                    <p>Are you sure you want to <strong>ban user ${ownerUsername}</strong>?</p>
+                    <p class="text-danger"><strong>Warning:</strong> This will:</p>
+                    <ul class="text-danger">
+                        <li>Permanently ban the user account</li>
+                        <li>Hide all their journeys</li>
+                        <li>Prevent them from accessing the platform</li>
+                    </ul>
+                    <p class="text-danger">This action cannot be easily undone.</p>
+                `;
+                confirmBtn.className = 'btn btn-danger';
+                confirmBtn.innerHTML = '<i class="fas fa-ban me-1"></i>Ban User';
+                break;
+        }
+
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+    }
+
+    // Execute journey operations
+    async function executeJourneyAction() {
+        const reportId = document.getElementById('journeyActionReportId').value;
+        const actionType = document.getElementById('journeyActionType').value;
+        const adminResponse = document.getElementById('adminResponse').value;
+
+        const formData = new FormData();
+        formData.append('action', actionType);
+        if (adminResponse.trim()) {
+            formData.append('admin_response', adminResponse.trim());
+        }
+
+        try {
+            const response = await fetch(`/moderation/content/action/${reportId}`, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            if (result.success) {
+                // close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('journeyActionModal'));
+                modal.hide();
+
+                showAlert('success', result.message);
+
+                // refresh the page
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            } else {
+                showAlert('danger', 'Error: ' + result.message);
+            }
+        } catch (error) {
+            console.error('Error executing journey action:', error);
+            showAlert('danger', 'An error occurred while processing your request. Please try again.');
+        }
+    }
+
+    // show alert
+    function showAlert(type, message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+
+        // insert before
+        const container = document.querySelector('.container');
+        container.insertBefore(alertDiv, container.firstChild);
+
+        // automatically remove the alert after 5s
+        setTimeout(() => {
+            alertDiv.remove();
+        }, 5000);
+    }
+
+    // Show journey details
+    function showJourneyDetails(journeyId, reportId) {
+        fetch(`/api/journey/${journeyId}/details`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const content = document.getElementById('journeyDetailsContent');
+                    content.innerHTML = `
+                        <div class="row">
+                            <div class="col-md-8">
+                                <h6><strong>Journey:</strong> ${data.journey.title}</h6>
+                                <p><strong>Owner:</strong> ${data.journey.owner_username}</p>
+                                <p><strong>Description:</strong> ${data.journey.description || 'No description'}</p>
+                                <p><strong>Created:</strong> ${data.journey.created_at}</p>
+                                <p><strong>Status:</strong> <span class="badge bg-info">${data.journey.status}</span></p>
+                                <p><strong>Events:</strong> ${data.journey.event_count}</p>
+                            </div>
+                            <div class="col-md-4">
+                                ${data.journey.cover_image ?
+                                    `<img src="/static/journeys/${data.journey.cover_image}" class="img-fluid rounded" alt="Journey cover">` :
+                                    '<div class="bg-light p-4 text-center rounded"><i class="fas fa-image fa-2x text-muted"></i><br>No Cover Image</div>'
+                                }
+                            </div>
+                        </div>
+                    `;
+
+                    const modal = new bootstrap.Modal(document.getElementById('journeyDetailsModal'));
+                    modal.show();
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching journey details:', error);
+                showAlert('danger', 'Error loading journey details.');
+            });
+    }
+
+    // Filter feature
+    function filterReports() {
+        const searchTerm = document.getElementById('reportSearch').value.toLowerCase();
+        const statusFilter = document.getElementById('statusFilter').value;
+        const reasonFilter = document.getElementById('reasonFilter').value;
+
+        const rows = document.querySelectorAll('[id^="journey-report-row-"]');
+
+        rows.forEach(row => {
+            const journeyTitle = row.querySelector('td:nth-child(3)').textContent.toLowerCase();
+            const ownerUsername = row.querySelector('td:nth-child(4)').textContent.toLowerCase();
+            const reporterUsername = row.querySelector('td:nth-child(5)').textContent.toLowerCase();
+            const status = row.dataset.status;
+            const reason = row.dataset.reason;
+
+            const matchesSearch = !searchTerm ||
+                journeyTitle.includes(searchTerm) ||
+                ownerUsername.includes(searchTerm) ||
+                reporterUsername.includes(searchTerm);
+
+            const matchesStatus = !statusFilter || status === statusFilter;
+            const matchesReason = !reasonFilter || reason === reasonFilter;
+
+            row.style.display = (matchesSearch && matchesStatus && matchesReason) ? '' : 'none';
+        });
+    }
+
+    // clear filters
+    function clearFilters() {
+        document.getElementById('reportSearch').value = '';
+        document.getElementById('statusFilter').value = '';
+        document.getElementById('reasonFilter').value = '';
+        filterReports();
+    }
+
+    // batch selecting
+    function selectAllReports() {
+        const checkboxes = document.querySelectorAll('input[name="report_ids"]');
+        const selectAllCheckbox = document.getElementById('selectAllReports');
+
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = selectAllCheckbox.checked;
+        });
+    }
+
+    // batch operating
+    function batchAction(action) {
+        const selectedReports = Array.from(document.querySelectorAll('input[name="report_ids"]:checked'))
+            .map(checkbox => checkbox.value);
+
+        if (selectedReports.length === 0) {
+            showAlert('warning', 'Please select at least one report.');
+            return;
+        }
+
+        if (confirm(`Are you sure you want to ${action.replace('_', ' ')} ${selectedReports.length} selected reports?`)) {
+            fetch('/moderation/content/journey_batch_action', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({
+                    report_ids: selectedReports,
+                    action: action
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('success', data.message);
+                    setTimeout(() => window.location.reload(), 1500);
+                } else {
+                    showAlert('danger', 'Error: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('danger', 'An error occurred during batch operation.');
+            });
+        }
+    }
+
+    // Initialization after page loading is complete
+    document.addEventListener('DOMContentLoaded', function() {
+        // Adding search and filter event listeners
+        const searchInput = document.getElementById('reportSearch');
+        const statusFilter = document.getElementById('statusFilter');
+        const reasonFilter = document.getElementById('reasonFilter');
+
+        if (searchInput) {
+            searchInput.addEventListener('input', filterReports);
+        }
+
+        if (statusFilter) {
+            statusFilter.addEventListener('change', filterReports);
+        }
+
+        if (reasonFilter) {
+            reasonFilter.addEventListener('change', filterReports);
+        }
+
+        // Adding Keyboard Shortcuts
+        document.addEventListener('keydown', function(e) {
+            // Ctrl+F Focus on search box
+            if (e.ctrlKey && e.key === 'f') {
+                e.preventDefault();
+                document.getElementById('reportSearch').focus();
+            }
+        });
+    });
+</script>
+{% endblock %}

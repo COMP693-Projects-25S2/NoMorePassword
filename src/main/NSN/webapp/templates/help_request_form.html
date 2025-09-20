@@ -1,0 +1,213 @@
+{% extends 'userbase.html' %}
+
+{% block title %}Submit Help Request - TravelTales{% endblock %}
+
+{% set active_page = 'help' %}
+
+{% block content %}
+<style>
+    :root {
+        --primary-dark: #212529;
+        --secondary-dark: #495057;
+        --light-gray: #f8f9fa;
+        --border-gray: #dee2e6;
+    }
+    
+    .unified-btn {
+        background: var(--primary-dark);
+        border: none;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        letter-spacing: 0.3px;
+        transition: all 0.3s ease;
+        text-decoration: none;
+    }
+    
+    .unified-btn:hover {
+        background: var(--secondary-dark);
+        color: white;
+        transform: translateY(-1px);
+    }
+    
+    .unified-btn-secondary {
+        background: var(--light-gray);
+        border: 1px solid var(--border-gray);
+        color: var(--primary-dark);
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        letter-spacing: 0.3px;
+        transition: all 0.3s ease;
+        text-decoration: none;
+    }
+    
+    .unified-btn-secondary:hover {
+        background: var(--border-gray);
+        color: var(--primary-dark);
+        transform: translateY(-1px);
+    }
+    
+    .unified-card-header {
+        background: var(--primary-dark);
+        color: white;
+        border-bottom: none;
+    }
+    
+    .page-title {
+        color: var(--primary-dark);
+        font-weight: 600;
+        margin-left: 8px;
+    }
+</style>
+
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card shadow">
+            <div class="card-header unified-card-header">
+                <h4 class="mb-0">
+                    <i class="fas fa-question-circle me-2"></i>
+                    Submit Help Request
+                </h4>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-4">
+                    Encountered an issue or need assistance? Please fill out the form below, and our support team will help resolve it for you.
+                </p>
+                
+                <form method="POST" action="{{ url_for('submit_help_request') }}">
+                    <!-- Subject Field -->
+                    <div class="mb-3">
+                        <label for="subject" class="form-label">
+                            <strong>Subject <span class="text-danger">*</span></strong>
+                        </label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="subject" 
+                               name="subject" 
+                               placeholder="Please briefly describe your issue"
+                               maxlength="255"
+                               required>
+                        <div class="form-text">Please describe your issue in a brief sentence (max 255 characters)</div>
+                    </div>
+
+                    <!-- Category Field -->
+                    <div class="mb-3">
+                        <label for="category" class="form-label">
+                            <strong>Category <span class="text-danger">*</span></strong>
+                        </label>
+                        <select class="form-select" id="category" name="category" required>
+                            <option value="">Please select a category</option>
+                            <option value="technical_issue">Technical Issue</option>
+                            <option value="account_help">Account Help</option>
+                            <option value="bug_report">Bug Report</option>
+                            <option value="feature_request">Feature Request</option>
+                            <option value="other">Other</option>
+                        </select>
+                        <div class="form-text">Choose the category that best matches your issue</div>
+                    </div>
+
+                    <!-- Description Field -->
+                    <div class="mb-4">
+                        <label for="description" class="form-label">
+                            <strong>Detailed Description <span class="text-danger">*</span></strong>
+                        </label>
+                        <textarea class="form-control" 
+                                  id="description" 
+                                  name="description" 
+                                  rows="6" 
+                                  placeholder="Please describe your issue in detail, including:&#10;1. Specific steps or actions&#10;2. Expected result&#10;3. What actually happened&#10;4. Error messages (if any)"
+                                  required></textarea>
+                        <div class="form-text">
+                            Please describe the issue as detailed as possible to help us resolve it faster
+                        </div>
+                    </div>
+
+                    <!-- Submit Buttons -->
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('dashboard') }}" class="unified-btn-secondary">
+                            <i class="fas fa-times me-2"></i>Cancel
+                        </a>
+                        <button type="submit" class="unified-btn">
+                            <i class="fas fa-paper-plane me-2"></i>Submit Request
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Character counter for subject field
+    const subjectField = document.getElementById('subject');
+    const maxLength = 255;
+    
+    // Create character counter element
+    const counter = document.createElement('div');
+    counter.className = 'form-text text-end';
+    counter.id = 'subject-counter';
+    subjectField.parentNode.appendChild(counter);
+    
+    function updateCounter() {
+        const remaining = maxLength - subjectField.value.length;
+        counter.textContent = `${subjectField.value.length}/${maxLength} characters`;
+        
+        if (remaining < 20) {
+            counter.className = 'form-text text-end text-warning';
+        } else if (remaining < 0) {
+            counter.className = 'form-text text-end text-danger';
+        } else {
+            counter.className = 'form-text text-end text-muted';
+        }
+    }
+    
+    subjectField.addEventListener('input', updateCounter);
+    updateCounter(); // Initial call
+    
+    // Form validation
+    const form = document.querySelector('form');
+    form.addEventListener('submit', function(e) {
+        const subject = document.getElementById('subject').value.trim();
+        const description = document.getElementById('description').value.trim();
+        const category = document.getElementById('category').value;
+        
+        if (!subject) {
+            e.preventDefault();
+            alert('Please enter a subject');
+            document.getElementById('subject').focus();
+            return;
+        }
+        
+        if (!category) {
+            e.preventDefault();
+            alert('Please select a category');
+            document.getElementById('category').focus();
+            return;
+        }
+        
+        if (!description) {
+            e.preventDefault();
+            alert('Please enter a detailed description');
+            document.getElementById('description').focus();
+            return;
+        }
+        
+        if (description.length < 10) {
+            e.preventDefault();
+            alert('Description must be at least 10 characters long');
+            document.getElementById('description').focus();
+            return;
+        }
+    });
+});
+</script>
+{% endblock %} 

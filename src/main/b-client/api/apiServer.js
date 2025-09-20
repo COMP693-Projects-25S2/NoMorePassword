@@ -1019,10 +1019,29 @@ class ApiServer {
                 console.log(`[API] Querying NSN for session info: ${registrationData.username}`);
                 const nsnSessionInfo = await this.queryNSNSessionInfo(domain_id, registrationData.username);
 
+                // Extract user_id from the actual session cookie if NSN query failed
+                let actualUserId = null;
+                if (loginResult.sessionCookie) {
+                    // Parse the session cookie to extract user_id
+                    try {
+                        const sessionCookieMatch = loginResult.sessionCookie.match(/session=([^;]+)/);
+                        if (sessionCookieMatch) {
+                            const sessionValue = sessionCookieMatch[1];
+                            // Decode base64 and parse JSON to get user_id
+                            const decoded = Buffer.from(sessionValue.split('.')[0], 'base64').toString('utf-8');
+                            const sessionData = JSON.parse(decoded);
+                            actualUserId = sessionData.user_id;
+                            console.log(`[API] Extracted user_id from session cookie: ${actualUserId}`);
+                        }
+                    } catch (error) {
+                        console.log(`[API] Failed to extract user_id from session cookie: ${error.message}`);
+                    }
+                }
+
                 // Use NSN's session data if available, otherwise fallback to login result
                 const sessionData = nsnSessionInfo.session_data || {
                     loggedin: true,
-                    user_id: loginResult.userId,
+                    user_id: actualUserId || loginResult.userId,
                     username: registrationData.username,
                     role: loginResult.userRole || 'traveller'
                 };
@@ -1030,7 +1049,7 @@ class ApiServer {
                 // Create complete session data for storage
                 const completeSessionData = {
                     nsn_session_data: sessionData,
-                    nsn_user_id: nsnSessionInfo.user_id || loginResult.userId,
+                    nsn_user_id: actualUserId || nsnSessionInfo.user_id || loginResult.userId,
                     nsn_username: nsnSessionInfo.username || registrationData.username,
                     nsn_role: nsnSessionInfo.role || loginResult.userRole || 'traveller',
                     timestamp: Date.now()
@@ -1064,12 +1083,15 @@ class ApiServer {
                         console.log(`[API] Sending session data to C-Client API for user: ${user_name}`);
                         const axios = require('axios');
 
+                        console.log(`[API] ===== B-CLIENT SENDING SESSION DATA =====`);
                         console.log(`[API] Created complete session data for C-Client:`, {
                             has_nsn_data: !!completeSessionData.nsn_session_data,
                             nsn_user_id: completeSessionData.nsn_user_id,
                             nsn_username: completeSessionData.nsn_username,
                             nsn_role: completeSessionData.nsn_role
                         });
+                        console.log(`[API] Full complete session data:`, completeSessionData);
+                        console.log(`[API] NSN Session Data details:`, completeSessionData.nsn_session_data);
 
                         // Try to find C-Client API port (assuming it's clientPort + 1000)
                         // We'll try common ports or get it from the request
@@ -1085,6 +1107,7 @@ class ApiServer {
                                     user_id: user_id,
                                     username: user_name,
                                     complete_session_data: completeSessionData,
+                                    session_cookie: loginResult.sessionCookie, // Send original session cookie
                                     registration_success: true,
                                     login_success: true
                                 }, {

@@ -1,0 +1,124 @@
+{% extends 'userbase.html' %}
+
+{% block title %}Premium{% endblock %}
+
+{# Set the active page to be highlighted in the navigation bar. #}
+{% set active_page = 'premium' %}
+
+
+{% block content %}
+<div class="banner-image"
+    style="background-image: url('/static/ui_photos/private_journey.jpg'); background-size: cover; background-position: center; height: 300px; position: relative;">
+    <div class="banner-overlay"
+        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5);">
+        <div class="container h-100">
+            <div class="row h-100 align-items-center">
+                <div class="col-md-12 text-end">
+                    <h1 class="text-white fw-bold">Premium</h1>
+                    <p class="text-white lead">Get better experiences from now on</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="contianer mt-4">
+    <div class="d-flex justify-content-center">
+        <div class="col-md-4 me-4">
+            <div>
+                <h2>Personal Information</h2>
+
+                <div class="card-body">
+
+                    <div class="row mb-3">
+                        <div class="col-md-6 fw-bold text-break">Username:</div>
+                        <div class="col-md-6 text-break">{{ memberInfo.username|default('') }}
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6 fw-bold text-break">Full Name:</div>
+                        <div class="col-md-6 text-break">{{ memberInfo.first_name|default('') }} {{
+                            memberInfo.last_name|default('') }}
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6 fw-bold text-break">Email:</div>
+                        <div class="col-md-6 text-break">{{ memberInfo.email|default('Not provided') }}</div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6 fw-bold">Country:</div>
+                        <div class="col-md-6">
+                            <form method="POST" action="{{ url_for('preview_purchase_premium') }}">
+                                <input type="hidden" name="subscription_id" value="{{subscription.s_id}}">
+                                <select name="country" onchange="this.form.submit()">
+                                    <option value=""></option>
+                                    {% for country in countryList %}
+                                    <option value="{{ country.country }}" {% if country.country==chosenCountry %}
+                                        selected {%endif%}>{{ country.country }}</option>
+                                    {% endfor %}
+                                </select>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card-header bg-dark text-white">
+                <h4 class="mb-0">{{subscription.s_name}}</h4>
+            </div>
+            <div class="card-body text-start mt-3">
+                <div class="row mb-3">
+                    <div class="col-md-6 fw-bold">Length(Months):</div>
+                    <div class="col-md-6">{{subscription.period}} days</div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6 fw-bold">Base Price:</div>
+                    <div class="col-md-6">NZ ${{subscription.base_price}}</div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6 fw-bold">Discount:</div>
+                    <div class="col-md-6">{% if subscription.discount!=0 %}{{subscription.discount}}%{% else %}-{%
+                        endif %}</div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6 fw-bold">Price:</div>
+                    <div class="col-md-6">NZ ${{subscription.price}}</div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6 fw-bold">GST:</div>
+                    <div class="col-md-6">{% if countryTax and countryTax.rate !=0 %}{{countryTax.rate}}%{% else
+                        %}-{%endif%}</div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6 fw-bold">GST Price:</div>
+                    <div class="col-md-6">NZ ${{subscription.GST_Price}}</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+
+    <form method="POST" action="{{ url_for('payway_purchase_premium') }}">
+        <input type="hidden" name="user_id" value="{{session.user_id}}">
+        <input type="hidden" name="subscription_id" value="{{subscription.s_id}}">
+        <input type="hidden" name="country_id" value="{{countryTax.c_id}}">
+        <input type="hidden" name="price" value="{{subscription.price}}">
+        <input type="hidden" name="gst_rate" value="{{countryTax.rate}}">
+        <input type="hidden" name="total_amount" value="{{subscription.GST_Price}}">
+
+        <div class="d-flex justify-content-center">
+            <a class="btn btn-secondary w-25 me-2" href="{{url_for('list_premium')}}">Back</a>
+            <button type="submit" class="btn btn-dark w-25 me-2">Pay</button>
+        </div>
+
+
+    </form>
+
+</div>
+
+{% endblock %}

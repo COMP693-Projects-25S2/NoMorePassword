@@ -1,0 +1,284 @@
+{% extends 'userbase.html' %}
+
+{% block title %}Ticket Details - TravelTales{% endblock %}
+
+{% set active_page = 'help_manage' %}
+
+{% block content %}
+<style>
+    /* unify the color */
+    :root {
+        --primary-dark: #212529;
+        --secondary-dark: #495057;
+        --light-gray: #f8f9fa;
+        --border-gray: #dee2e6;
+        --status-new: #64b5f6;
+        --status-open: #4dd0e1;
+        --status-stalled: #ffb74d;
+        --status-resolved: #66bb6a;
+    }
+    
+    /* unify the buttons */
+    .unified-btn {
+        background: var(--primary-dark);
+        border: none;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        letter-spacing: 0.3px;
+        transition: all 0.3s ease;
+        text-decoration: none;
+    }
+    
+    .unified-btn:hover {
+        background: var(--secondary-dark);
+        color: white;
+        transform: translateY(-1px);
+    }
+    
+    .unified-btn-outline {
+        background: transparent;
+        border: 1px solid var(--primary-dark);
+        color: var(--primary-dark);
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        text-decoration: none;
+    }
+    
+    .unified-btn-outline:hover {
+        background: var(--primary-dark);
+        color: white;
+        transform: translateY(-1px);
+    }
+    
+    .unified-btn-sm {
+        background: transparent;
+        border: 1px solid var(--primary-dark);
+        color: var(--primary-dark);
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        text-decoration: none;
+    }
+    
+    .unified-btn-sm:hover {
+        background: var(--primary-dark);
+        color: white;
+        transform: translateY(-1px);
+    }
+    
+    /* unify the status */
+    .status-new {
+        background: var(--status-new);
+        color: white;
+    }
+    
+    .status-open {
+        background: var(--status-open);
+        color: white;
+    }
+    
+    .status-stalled {
+        background: var(--status-stalled);
+        color: white;
+    }
+    
+    .status-resolved {
+        background: var(--status-resolved);
+        color: white;
+    }
+    
+    /* unify the title */
+    .page-title {
+        color: var(--primary-dark);
+        font-weight: 600;
+    }
+    
+    /* unify the badge */
+    .staff-badge {
+        background: var(--primary-dark);
+        color: white;
+    }
+    
+    .user-badge {
+        background: var(--status-open);
+        color: white;
+    }
+</style>
+
+<div class="row">
+    <div class="col-12 mb-3">
+        <a href="{{ url_for('manage_requests') }}" class="unified-btn-outline">
+            <i class="fas fa-arrow-left me-2"></i>Back to Ticket List
+        </a>
+    </div>
+    
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Ticket #{{ help_request.request_id }}</h5>
+            </div>
+            <div class="card-body">
+                <h4 class="page-title">{{ help_request.subject }}</h4>
+                
+                <!-- User Information -->
+                <div class="mb-3">
+                    <label class="text-muted small">Submitted by</label>
+                    <div class="d-flex align-items-center">
+                        <span class="me-2">
+                            <strong>{{ help_request.submitter_first_name }} {{ help_request.submitter_last_name }}</strong>
+                            <span class="text-muted">(@{{ help_request.submitter_username }})</span>
+                        </span>
+                        <a href="{{ url_for('view_profile', user_id=help_request.user_id) }}" 
+                           class="unified-btn-sm" 
+                           title="View User Profile">
+                            <i class="fas fa-user"></i> View Profile
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="text-muted small">Detailed Description</label>
+                    <div class="border rounded p-3 bg-light" style="white-space: pre-wrap; word-wrap: break-word; min-height: 120px;">
+                        {{ help_request.description }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Management Actions</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="status" class="form-label">Status</label>
+                        <select name="status" id="status" class="form-select" required>
+                            <option value="new" {% if help_request.status == 'new' %}selected{% endif %}>New</option>
+                            <option value="open" {% if help_request.status == 'open' %}selected{% endif %}>Open</option>
+                            <option value="stalled" {% if help_request.status == 'stalled' %}selected{% endif %}>Stalled</option>
+                            <option value="resolved" {% if help_request.status == 'resolved' %}selected{% endif %}>Resolved</option>
+                        </select>
+                        <small class="form-text text-muted">
+                            Note: Cannot change back to 'New' once opened.
+                        </small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="priority" class="form-label">Priority</label>
+                        <select name="priority" id="priority" class="form-select" required>
+                            <option value="low" {% if help_request.priority == 'low' %}selected{% endif %}>Low</option>
+                            <option value="medium" {% if help_request.priority == 'medium' %}selected{% endif %}>Medium</option>
+                            <option value="high" {% if help_request.priority == 'high' %}selected{% endif %}>High</option>
+                            <option value="urgent" {% if help_request.priority == 'urgent' %}selected{% endif %}>Urgent</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="assigned_to" class="form-label">Assign To</label>
+                        <select name="assigned_to" id="assigned_to" class="form-select">
+                            <option value="">Unassigned</option>
+                            {% for staff in support_staff %}
+                            <option value="{{ staff.user_id }}" 
+                                {% if help_request.assigned_to == staff.user_id %}selected{% endif %}>
+                                {{ staff.username }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="admin_notes" class="form-label">Internal Notes</label>
+                        <textarea name="admin_notes" id="admin_notes" class="form-control" rows="4">{{ help_request.admin_notes or '' }}</textarea>
+                    </div>
+                    
+                    <button type="submit" class="unified-btn">Update Ticket</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Conversation Section -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-comments me-2"></i>
+                    Conversation History
+                </h6>
+            </div>
+            <div class="card-body">
+                <!-- Original Request -->
+                <div class="border-bottom pb-3 mb-4">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <strong class="text-dark">{{ help_request.submitter_username }}</strong>
+                            <span class="badge bg-light text-dark ms-2">Original Request</span>
+                        </div>
+                        <small class="text-muted">{{ help_request.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                    </div>
+                    <div class="mt-2">
+                        <strong>{{ help_request.subject }}</strong>
+                    </div>
+                    <div class="mt-2 text-muted">{{ help_request.description|replace('\n', '<br>')|safe }}</div>
+                </div>
+                
+                <!-- Replies -->
+                {% if replies %}
+                    {% for reply in replies %}
+                    <div class="border-bottom pb-3 mb-3">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <strong class="{% if reply.is_staff_reply %}text-primary{% else %}text-dark{% endif %}">
+                                    {{ reply.first_name }} {{ reply.last_name }}
+                                </strong>
+                                {% if reply.is_staff_reply %}
+                                    <span class="badge staff-badge ms-2">Staff</span>
+                                {% else %}
+                                    <span class="badge user-badge ms-2">User</span>
+                                {% endif %}
+                            </div>
+                            <small class="text-muted">{{ reply.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                        </div>
+                        <div class="mt-2">{{ reply.message|replace('\n', '<br>')|safe }}</div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-comments fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">No replies yet. Be the first to respond!</p>
+                    </div>
+                {% endif %}
+                
+                <!-- Reply Form -->
+                <div class="border-top pt-4">
+                    <h6 class="mb-3">Post a Reply</h6>
+                    <form method="POST" action="{{ url_for('add_reply', request_id=help_request.request_id) }}">
+                        <div class="mb-3">
+                            <label for="message" class="form-label">Your Reply</label>
+                            <textarea name="message" id="message" class="form-control" rows="4" 
+                                      placeholder="Type your reply here..." required></textarea>
+                            <div class="form-text">Your reply will be visible to the user who submitted this request.</div>
+                        </div>
+                        <button type="submit" class="unified-btn">
+                            <i class="fas fa-paper-plane me-2"></i>Post Reply
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

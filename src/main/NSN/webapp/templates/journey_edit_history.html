@@ -1,0 +1,255 @@
+{% extends 'userbase.html' %}
+
+{% block title %}Edit History - {{ journey.title }}{% endblock %}
+
+{% set active_page = 'public_journey' %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Header Section -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="mb-1">
+                        <i class="fas fa-history me-2 text-primary"></i>Edit History
+                    </h1>
+                    <p class="text-muted mb-0">Journey: <strong>{{ journey.title }}</strong></p>
+                </div>
+                <div>
+                    <a href="{{ url_for('public_journey') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-1"></i>Back to Journeys
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <!-- Edit History Content -->
+    {% if edit_logs %}
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <i class="fas fa-edit me-2"></i>Edit Log
+                        <span class="badge bg-primary ms-2">{{ edit_logs|length }} entries</span>
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 140px;">
+                                        <i class="fas fa-clock me-1"></i>Date & Time
+                                    </th>
+                                    <th style="width: 100px;">
+                                        <i class="fas fa-user me-1"></i>Editor
+                                    </th>
+                                    <th style="width: 80px;">Type</th>
+                                    <th style="width: 100px;">Field</th>
+                                    <th style="width: 150px;">Changes</th>
+                                    <th>
+                                        <i class="fas fa-comment me-1"></i>Reason
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in edit_logs %}
+                                <tr>
+                                    <!-- Date & Time -->
+                                    <td class="text-nowrap">
+                                        <small class="text-muted">
+                                            {{ log.created_at.strftime('%Y-%m-%d') }}<br>
+                                            {{ log.created_at.strftime('%H:%M:%S') }}
+                                        </small>
+                                    </td>
+
+                                    <!-- Editor -->
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div>
+                                                <strong class="text-dark">{{ log.editor_name }}</strong>
+                                                {% if log.editor_role == 'admin' %}
+                                                <span class="badge bg-danger ms-1" style="font-size: 0.7em;">Admin</span>
+                                                {% elif log.editor_role == 'editor' %}
+                                                <span class="badge bg-warning ms-1" style="font-size: 0.7em;">Editor</span>
+                                                {% endif %}
+                                                {% if log.first_name and log.last_name %}
+                                                <br><small class="text-muted">{{ log.first_name }} {{ log.last_name }}</small>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </td>
+
+                                    <!-- Edit Type -->
+                                    <td>
+                                        {% if log.edit_type == 'journey_edit' %}
+                                        <span class="badge bg-primary">Journey</span>
+                                        {% elif log.edit_type == 'event_edit' %}
+                                        <span class="badge bg-success">Event</span>
+                                        {% if log.event_title %}
+                                        <br><small class="text-muted">{{ log.event_title[:20] }}{% if log.event_title|length > 20 %}...{% endif %}</small>
+                                        {% endif %}
+                                        {% endif %}
+                                    </td>
+
+                                    <!-- Field Changed -->
+                                    <td>
+                                        <code class="text-dark">{{ log.field_changed }}</code>
+                                    </td>
+
+                                    <!-- Changes (Before/After) -->
+                                    <td>
+                                        <details class="change-details">
+                                            <summary class="btn btn-sm btn-outline-info">View Changes</summary>
+                                            <div class="mt-2 p-2 bg-light rounded">
+                                                <div class="mb-2">
+                                                    <strong class="text-danger">Before:</strong>
+                                                    <div class="border p-2 bg-white rounded">
+                                                        <small>{{ log.old_value or '<empty>' }}</small>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <strong class="text-success">After:</strong>
+                                                    <div class="border p-2 bg-white rounded">
+                                                        <small>{{ log.new_value or '<empty>' }}</small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </details>
+                                    </td>
+
+                                    <!-- Edit Reason -->
+                                    <td>
+                                        <div class="reason-cell">
+                                            {% if log.edit_reason|length > 100 %}
+                                            <div class="reason-preview">
+                                                {{ log.edit_reason[:100] }}...
+                                                <button class="btn btn-link btn-sm p-0 ms-1 expand-reason"
+                                                        data-bs-toggle="collapse"
+                                                        data-bs-target="#reason{{ log.log_id }}">
+                                                    <small>Show more</small>
+                                                </button>
+                                            </div>
+                                            <div class="collapse reason-full" id="reason{{ log.log_id }}">
+                                                <div class="mt-2 p-2 bg-light rounded">
+                                                    {{ log.edit_reason }}
+                                                </div>
+                                            </div>
+                                            {% else %}
+                                            <div class="p-2 bg-light rounded">
+                                                {{ log.edit_reason }}
+                                            </div>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card-footer bg-light text-muted">
+                    <small>
+                        <i class="fas fa-info-circle me-1"></i>
+                        This log shows all editorial changes made to the journey and its events.
+                        Only the journey owner, editors, and administrators can view this information.
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <!-- No Edit History -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card shadow-sm">
+                <div class="card-body text-center py-5">
+                    <i class="fas fa-history fa-3x text-muted mb-3"></i>
+                    <h4 class="text-muted">No Edit History</h4>
+                    <p class="text-muted">This journey hasn't been edited by administrators or editors yet.</p>
+                    <a href="{{ url_for('public_journey') }}" class="btn btn-outline-primary">
+                        <i class="fas fa-arrow-left me-1"></i>Back to Journeys
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block head_extras %}
+<style>
+/*  the css of the editing history page */
+.change-details summary {
+    cursor: pointer;
+    font-size: 0.875rem;
+}
+
+.change-details summary:hover {
+    background-color: #e9ecef;
+}
+
+.reason-cell {
+    max-width: 300px;
+    word-wrap: break-word;
+}
+
+.reason-preview {
+    font-size: 0.9rem;
+}
+
+.reason-full {
+    font-size: 0.9rem;
+}
+
+.expand-reason {
+    text-decoration: none !important;
+    color: #0d6efd;
+}
+
+.expand-reason:hover {
+    text-decoration: underline !important;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 123, 255, 0.05);
+}
+
+code {
+    background-color: #f8f9fa;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 0.875rem;
+}
+
+.badge {
+    font-weight: 500;
+}
+
+@media (max-width: 768px) {
+    .table-responsive {
+        font-size: 0.875rem;
+    }
+
+    .reason-cell {
+        max-width: 200px;
+    }
+}
+</style>
+{% endblock %}

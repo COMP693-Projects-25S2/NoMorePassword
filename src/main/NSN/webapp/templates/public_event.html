@@ -1,0 +1,1168 @@
+{% extends 'userbase.html' %}
+
+{% block title %}Public Events{% endblock %}
+
+{# Set the active page to be highlighted in the navigation bar. #}
+{% set active_page = 'public_journey' %}
+
+{% block content %}
+
+<!-- Banner image with text overlay -->
+<div class="banner-image"
+    style="background-image: url('/static/ui_photos/private_journey.jpg'); background-size: cover; background-position: center; height: 300px; position: relative;">
+    <div class="banner-overlay"
+        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5);">
+        <div class="container h-100">
+            <div class="row h-100 align-items-center">
+                <div class="col-md-12 text-end">
+                    <h1 class="text-white fw-bold">{{ journey_title }}</h1>
+                    <p class="text-white lead">Explore events from this public journey</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-4">
+    <!-- Events List (if a journey is selected) -->
+    {% if journey_id and journey_title %}
+    {% if event_list %}
+    <div class="row mt-5 mb-5">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>Events in "{{ journey_title }}"</h2>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <div class="timeline">
+                        {% for event in event_list %}
+                        <div class="row mb-4">
+                            <div class="col-md-3 text-md-end">
+                                <p class="text-muted mb-0">Start: {{ event.start_time.strftime('%d %b %Y, %H:%M') }}</p>
+                                <p class="text-muted mb-0">End: {{ event.end_time.strftime('%d %b %Y, %H:%M') }}</p>
+
+                            </div>
+                            <div class="col-md-9">
+                                <!-- Replaced with new event card -->
+                                <div class="card">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <h5 class="mb-0">{{ event.title }}</h5>
+                                        <div class="d-flex align-items-center">
+
+
+                                            <div class="dropdown">
+                                                <button class="btn btn-sm btn-outline-secondary" type="button"
+                                                    data-bs-toggle="dropdown">
+                                                    <i class="fas fa-ellipsis-v"></i>
+                                                </button>
+                                                <ul class="dropdown-menu dropdown-menu-end">
+                                                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal"
+                                                            data-bs-target="#editEvent{{ event.event_id }}" {% if
+                                                            session.role=='admin' or session.role=='editor' %}{% else
+                                                            %}disabled{% endif %}>Edit</a></li>
+                                                    <li><a class="dropdown-item text-danger" href="#"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#deleteEvent{{ event.event_id }}" {% if
+                                                            session.role=='admin' or session.role=='editor' %}{% else
+                                                            %}disabled{% endif %}>Delete</a></li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        {% if event.event_images %}
+                                        {% for image in event.event_images %}
+                                        
+                                       <img src="{{ url_for('static', filename='events/' + image['event_image']['event_image']) }}"
+    alt="{{ event.title }}" class="img-fluid mb-3">
+                                        <br>
+                                        <a class="btn btn-sm btn-outline-danger mb-3"
+                                            href="{{url_for('admin_delete_event_image')}}?journey_id={{journey_id}}&journey_title={{journey_title}}&event_id={{image['event_image']['image_id']}}">Delete
+                                            Photo</a><br>
+                                        
+                                        {% endfor %}
+                                        <hr>
+                                        <!-- {# {% else %}
+                                        <div class="mb-3 text-center bg-light p-4 rounded">
+                                            <i class="fas fa-image text-muted fa-3x mb-2"></i>
+                                            <p class="text-muted small mb-2">No image</p>
+                                        </div> #} -->
+                                        {% endif %}
+                                        <p>{{ event.description }}</p>
+                                        {% if event.address %}
+                                        <p><small class="text-muted"><i class="fas fa-map-marker-alt me-1"></i>{{
+                                                event.address }}</small>
+                                            
+                                            <!-- Follow Location Button -->
+                                        <form
+                                            action="/{{ 'unfollow' if event.is_location_followed else 'follow' }}_location/{{ event.location_id }}"
+                                            method="POST" style="display: inline;">
+                                            <input type="hidden" name="journey_id" value="{{ journey_id }}">
+                                            <input type="hidden" name="journey_title" value="{{ journey_title }}">
+                                            <input type="hidden" name="keyword" value="{{ keyword | default('') }}">
+                                            <input type="hidden" name="filter" value="{{ filter | default('') }}">
+                                            <button type="submit"
+                                                class="follow-location-btn btn btn-sm {% if event.is_location_followed %}btn-primary{% else %}btn-outline-primary{% endif %}"
+                                                title="{% if event.is_location_followed %}Unfollow this location{% else %}Follow this location{% endif %}">
+                                                <i class="fas fa-bell"></i>
+                                                <span class="follow-text">{% if event.is_location_followed %}Unfollow
+                                                    location{% else %}Follow location{% endif %}</span>
+                                            </button>
+
+                                        </form>
+
+                                        
+                                        </p>
+                                        {% endif %}
+
+
+                                        <!-- Like Button -->
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <button type="button"
+                                                class="btn btn-sm {% if event.user_liked %}btn-primary{% else %}btn-outline-secondary{% endif %} like-btn"
+                                                data-event-id="{{ event.event_id }}"
+                                                aria-pressed="{{ 'true' if event.user_liked else 'false' }}">
+                                                <i class="fas fa-thumbs-up"></i> {% if event.user_liked %}Liked{% else
+                                                %}Like{% endif %}
+                                            </button>
+                                            <span class="text-muted ms-2 like-count"
+                                                id="like-count-{{ event.event_id }}">{{ event.like_count }} likes</span>
+                                        </div>
+                                        <!-- Comments Section -->
+                                        <div class="mt-3">
+                                            <h6>
+                                                <i class="fas fa-comments"></i>
+                                                Comments (<span class="comment-count"
+                                                    id="comment-count-{{ event.event_id }}">{{ event.comment_count
+                                                    }}</span>)
+                                            </h6>
+                                            <div class="comments-list" id="comments-{{ event.event_id }}">
+                                                {% for comment in event.comments %}
+                                                {# Check if comment should be displayed based on hidden status, author,
+                                                or moderator role #}
+                                                {% set show_comment = not comment.is_hidden or (comment.is_hidden and
+                                                comment.user_id == session.user_id and comment.removal_notice) or
+                                                session.role in ['admin', 'editor', 'moderator'] %}
+                                                {% if show_comment %}
+                                                <div class="row align-items-start mb-2 comment-item"
+                                                    id="comment-{{ comment.comment_id }}">
+                                                    <div class="col-auto">
+                                                        <img src="{{ url_for('static', filename='avatars/' + (comment.avatar or 'default.png')) }}"
+                                                            class="rounded-circle" style="width:32px;height:32px;">
+                                                    </div>
+                                                    <div class="col" style="min-width:0;">
+                                                        <strong>{{ comment.username }}</strong>
+                                                        <span class="text-muted small">
+                                                            {{ comment.created_at.strftime('%Y-%m-%d %H:%M') if
+                                                            comment.created_at else '' }}
+                                                        </span>
+                                                        {% if comment.is_hidden %}
+                                                        {% if comment.removal_notice %}
+                                                        <span class="badge bg-info text-dark ms-1">Removed</span>
+                                                        {% elif session.role in ['admin', 'editor', 'moderator'] %}
+                                                        <span class="badge bg-warning text-dark ms-1">Hidden</span>
+                                                        {% endif %}
+                                                        {% endif %}
+                                                        <div class="">
+                                                            {% if comment.removal_notice %}
+                                                            <em>{{ comment.removal_notice }}</em>
+                                                            {% else %}
+                                                            {{ comment.content }}
+                                                            {% endif %}
+                                                        </div>
+                                                        {% if session.role in ['admin', 'editor', 'moderator'] and not
+                                                        comment.is_hidden %}
+                                                        <button
+                                                            class="btn btn-link btn-sm text-danger px-0 me-2 hide-comment-btn"
+                                                            data-comment-id="{{ comment.comment_id }}">Hide</button>
+                                                        {% endif %}
+                                                        {% if session.loggedin and comment.user_id != session.user_id %}
+                                                        <button
+                                                            class="btn btn-link btn-sm text-secondary px-0 report-comment-btn"
+                                                            data-comment-id="{{ comment.comment_id }}"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#reportCommentModal{{ comment.comment_id }}">Report</button>
+                                                        {% endif %}
+                                                    </div>
+                                                    <div class="col-auto d-flex align-items-center justify-content-end"
+                                                        style="min-width:110px;">
+                                                        <button type="button"
+                                                            class="btn btn-sm me-1 comment-like-btn {% if comment.user_reaction == 'like' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+                                                            data-comment-id="{{ comment.comment_id }}">
+                                                            <i class="fas fa-thumbs-up"></i>
+                                                            <span class="comment-like-count"
+                                                                id="comment-like-{{ comment.comment_id }}">{{
+                                                                comment.like_count }}</span>
+                                                        </button>
+                                                        <button type="button"
+                                                            class="btn btn-sm comment-dislike-btn {% if comment.user_reaction == 'dislike' %}btn-danger{% else %}btn-outline-danger{% endif %}"
+                                                            data-comment-id="{{ comment.comment_id }}">
+                                                            <i class="fas fa-thumbs-down"></i>
+                                                            <span class="comment-dislike-count"
+                                                                id="comment-dislike-{{ comment.comment_id }}">{{
+                                                                comment.dislike_count }}</span>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                {% endif %}
+                                                <div class="modal fade" id="reportCommentModal{{ comment.comment_id }}"
+                                                    tabindex="-1" aria-hidden="true">
+                                                    <div class="modal-dialog modal-dialog-centered">
+                                                        <div class="modal-content">
+                                                            <div class="modal-header">
+                                                                <h5 class="modal-title">Report Comment</h5>
+                                                                <button type="button" class="btn-close"
+                                                                    data-bs-dismiss="modal" aria-label="Close"></button>
+                                                            </div>
+                                                            <form id="reportForm{{ comment.comment_id }}">
+                                                                <div class="modal-body">
+                                                                    <div class="mb-3">
+                                                                        <label class="form-label">Reason for reporting
+                                                                            this comment:</label>
+                                                                        <select class="form-select report-reason"
+                                                                            name="reason" required>
+                                                                            <option value="">Select a reason</option>
+                                                                            <option value="spam">Spam</option>
+                                                                            <option value="offensive">Offensive content
+                                                                            </option>
+                                                                            <option value="abusive">Abusive content
+                                                                            </option>
+                                                                            <option value="other">Other</option>
+                                                                        </select>
+                                                                    </div>
+                                                                    <div class="mb-3">
+                                                                        <label class="form-label">Additional details
+                                                                            (optional):</label>
+                                                                        <textarea class="form-control" name="details"
+                                                                            rows="3"></textarea>
+                                                                    </div>
+                                                                </div>
+                                                                <div class="modal-footer">
+                                                                    <button type="button" class="btn btn-secondary"
+                                                                        data-bs-dismiss="modal">Cancel</button>
+                                                                    <button type="submit" class="btn btn-danger">Submit
+                                                                        Report</button>
+                                                                </div>
+                                                            </form>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                {% endfor %}
+                                            </div>
+                                            {% if session.loggedin %}
+                                            <form class="d-flex mt-2 comment-form" data-event-id="{{ event.event_id }}">
+                                                <input type="text" class="form-control me-2" name="content"
+                                                    placeholder="Add a comment..." required maxlength="500">
+                                                <button type="submit" class="btn btn-dark">Post</button>
+                                            </form>
+                                            {% endif %}
+                                        </div>
+                                        <script>
+                                            document.addEventListener('DOMContentLoaded', function () {
+
+                                                // 1. like event functionality
+                                                document.querySelectorAll('.like-btn').forEach(function (btn) {
+                                                    btn.addEventListener('click', function () {
+                                                        const eventId = this.getAttribute('data-event-id');
+                                                        fetch(`/event/like/${eventId}`, {
+                                                            method: 'POST',
+                                                            headers: {
+                                                                'X-Requested-With': 'XMLHttpRequest'
+                                                            }
+                                                        })
+                                                            .then(response => response.json())
+                                                            .then(data => {
+                                                                if (data.success) {
+                                                                    // update button appearance
+                                                                    if (data.liked) {
+                                                                        btn.classList.remove('btn-outline-secondary');
+                                                                        btn.classList.add('btn-primary');
+                                                                        btn.setAttribute('aria-pressed', 'true');
+                                                                        btn.innerHTML = '<i class="fas fa-thumbs-up"></i> Liked';
+                                                                    } else {
+                                                                        btn.classList.remove('btn-primary');
+                                                                        btn.classList.add('btn-outline-secondary');
+                                                                        btn.setAttribute('aria-pressed', 'false');
+                                                                        btn.innerHTML = '<i class="fas fa-thumbs-up"></i> Like';
+                                                                    }
+                                                                    // update like count
+                                                                    document.getElementById('like-count-' + eventId).textContent = data.like_count + ' likes';
+                                                                } else {
+                                                                    alert(data.message || 'Failed to like.');
+                                                                }
+                                                            });
+                                                    });
+                                                });
+
+                                                // 2. submit comment functionality
+                                                document.addEventListener('submit', function (e) {
+                                                    const form = e.target;
+                                                    if (form.classList.contains('comment-form')) {
+                                                        e.preventDefault();
+
+                                                        // prevent multiple submissions
+                                                        const submitBtn = form.querySelector('button[type="submit"]');
+                                                        const input = form.querySelector('input[name="content"]');
+                                                        if (submitBtn.disabled) return;
+
+                                                        const eventId = form.getAttribute('data-event-id');
+                                                        const content = input.value.trim();
+                                                        if (!content) return;
+
+                                                        // ban the form to prevent multiple submissions
+                                                        submitBtn.disabled = true;
+                                                        input.disabled = true;
+
+                                                        fetch(`/event/comment/${eventId}`, {
+                                                            method: 'POST',
+                                                            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                                                            body: new URLSearchParams({ content })
+                                                        })
+                                                            .then(res => res.json())
+                                                            
+                                                            .then(data => {
+                                                                if (data.success) {
+
+                                                                    location.reload(); // reload the page to show the new comment
+                                                                    return;
+
+                                                                } else {
+                                                                    alert(data.message || 'Failed to post comment.');
+                                                                }
+                                                                // re-enable the submit button and input field
+                                                                submitBtn.disabled = false;
+                                                                input.disabled = false;
+                                                            })
+                                                            .catch(error => {
+                                                                console.error('Error:', error);
+                                                                alert('An error occurred while posting your comment.');
+                                                                submitBtn.disabled = false;
+                                                                input.disabled = false;
+                                                            });
+                                                    }
+                                                });
+
+                                                // 3. hide comment functionality
+                                                document.querySelectorAll('.hide-comment-btn').forEach(function (btn) {
+                                                    btn.addEventListener('click', function () {
+                                                        const commentId = this.getAttribute('data-comment-id');
+                                                        fetch(`/event/comment/hide/${commentId}`, {
+                                                            method: 'POST',
+                                                            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                                                        })
+                                                            .then(res => res.json())
+                                                            .then(data => {
+                                                                if (data.success) {
+                                                                    document.getElementById('comment-' + commentId).style.display = 'none';
+                                                                } else {
+                                                                    alert(data.message || 'Failed to hide comment.');
+                                                                }
+                                                            });
+                                                    });
+                                                });
+
+                                                // 4. like/dislike comment functionality
+                                                function bindReactionEvents(btn) {
+                                                    btn.addEventListener('click', function () {
+                                                        const commentId = this.getAttribute('data-comment-id');
+                                                        const reaction = this.classList.contains('comment-like-btn') ? 'like' : 'dislike';
+
+                                                        fetch(`/comment/react/${commentId}`, {
+                                                            method: 'POST',
+                                                            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                                                            body: new URLSearchParams({ reaction })
+                                                        })
+                                                            .then(res => res.json())
+                                                            .then(data => {
+                                                                if (data.success) {
+                                                                    // update button styles based on user reaction
+                                                                    const likeBtn = document.querySelector(`.comment-like-btn[data-comment-id="${commentId}"]`);
+                                                                    const dislikeBtn = document.querySelector(`.comment-dislike-btn[data-comment-id="${commentId}"]`);
+
+                                                                    if (data.user_reaction === 'like') {
+                                                                        likeBtn.classList.add('btn-primary');
+                                                                        likeBtn.classList.remove('btn-outline-primary');
+                                                                        dislikeBtn.classList.remove('btn-danger');
+                                                                        dislikeBtn.classList.add('btn-outline-danger');
+                                                                    } else if (data.user_reaction === 'dislike') {
+                                                                        dislikeBtn.classList.add('btn-danger');
+                                                                        dislikeBtn.classList.remove('btn-outline-danger');
+                                                                        likeBtn.classList.remove('btn-primary');
+                                                                        likeBtn.classList.add('btn-outline-primary');
+                                                                    } else {
+                                                                        likeBtn.classList.remove('btn-primary');
+                                                                        likeBtn.classList.add('btn-outline-primary');
+                                                                        dislikeBtn.classList.remove('btn-danger');
+                                                                        dislikeBtn.classList.add('btn-outline-danger');
+                                                                    }
+
+                                                                    // update like and dislike counts
+                                                                    document.getElementById('comment-like-' + commentId).textContent = data.like_count;
+                                                                    document.getElementById('comment-dislike-' + commentId).textContent = data.dislike_count;
+                                                                } else {
+                                                                    alert(data.message || 'Failed to react.');
+                                                                }
+                                                            });
+                                                    });
+                                                }
+
+                                                // bind reaction events to existing comment buttons
+                                                document.querySelectorAll('.comment-like-btn, .comment-dislike-btn').forEach(bindReactionEvents);
+
+                                                // 5. comment reporting functionality
+                                                document.querySelectorAll('[id^="reportForm"]').forEach(function (form) {
+                                                    form.addEventListener('submit', function (e) {
+                                                        e.preventDefault();
+
+                                                        const commentId = this.id.replace('reportForm', '');
+                                                        const reasonSelect = this.querySelector('select[name="reason"]');
+                                                        const detailsTextarea = this.querySelector('textarea[name="details"]');
+                                                        const submitBtn = this.querySelector('button[type="submit"]');
+                                                        if (submitBtn.disabled) return; // prevent multiple submissions
+
+                                                        if (!reasonSelect.value) {
+                                                            alert('Please select a reason for reporting.');
+                                                            return;
+                                                        }
+
+                                                        submitBtn.disabled = true; // forbid multiple submissions
+
+                                                        const modalElement = document.getElementById('reportCommentModal' + commentId);
+                                                        const modal = bootstrap.Modal.getInstance(modalElement);
+
+                                                        fetch(`/comment/report/${commentId}`, {
+                                                            method: 'POST',
+                                                            headers: {
+                                                                'Content-Type': 'application/x-www-form-urlencoded',
+                                                                'X-Requested-With': 'XMLHttpRequest'
+                                                            },
+                                                            body: new URLSearchParams({
+                                                                'reason': reasonSelect.value,
+                                                                'details': detailsTextarea.value
+                                                            })
+                                                        })
+                                                            .then(response => response.json())
+                                                            .then(data => {
+                                                                if (data.success) {
+                                                                    // close the modal
+                                                                    modal.hide();
+
+                                                                    // disable the report button and change its text
+                                                                    const reportBtn = document.querySelector(`.report-comment-btn[data-comment-id="${commentId}"]`);
+                                                                    if (reportBtn) {
+                                                                        reportBtn.disabled = true;
+                                                                        reportBtn.textContent = 'Reported';
+                                                                        reportBtn.classList.remove('text-secondary');
+                                                                        reportBtn.classList.add('text-muted');
+                                                                    }
+
+                                                                    alert(data.message);
+                                                                } else {
+                                                                    // disable the submit button and show an error
+                                                                    alert(data.message || 'Failed to report comment.');
+                                                                    if (data.message && data.message.includes('already reported')) {
+                                                                        const reportBtn = document.querySelector(`.report-comment-btn[data-comment-id="${commentId}"]`);
+                                                                        if (reportBtn) {
+                                                                            reportBtn.disabled = true;
+                                                                            reportBtn.textContent = 'Reported';
+                                                                            reportBtn.classList.remove('text-secondary');
+                                                                            reportBtn.classList.add('text-muted');
+                                                                        }
+                                                                        modal.hide();
+                                                                    }
+                                                                }
+                                                                submitBtn.disabled = false;
+                                                            })
+                                                            .catch(error => {
+                                                                console.error('Error:', error);
+                                                                alert('An error occurred while reporting the comment.');
+                                                                submitBtn.disabled = false;
+                                                            });
+                                                    });
+                                                });
+
+                                                // 6. favorite destination functionality
+                                                document.querySelectorAll('.favorite-destination-btn').forEach(function (btn) {
+                                                    btn.addEventListener('click', function () {
+                                                        const eventId = this.getAttribute('data-event-id');
+                                                        const isFavorite = this.getAttribute('data-is-favorite') === 'true';
+                                                        const location = this.getAttribute('data-location');
+                                                        const button = this;
+                                                        const tip = document.getElementById('favorite-tip-' + eventId);
+
+                                                        // switch button state
+                                                        function setFavoriteState(favorited) {
+                                                            if (favorited) {
+                                                                button.classList.remove('btn-outline-primary');
+                                                                button.classList.add('btn-primary');
+                                                                button.setAttribute('data-is-favorite', 'true');
+                                                                button.title = 'Remove from Favorite Destinations';
+                                                                button.querySelector('i').classList.remove('far');
+                                                                button.querySelector('i').classList.add('fas');
+                                                            } else {
+                                                                button.classList.remove('btn-primary');
+                                                                button.classList.add('btn-outline-primary');
+                                                                button.setAttribute('data-is-favorite', 'false');
+                                                                button.title = 'Add to Favorite Destinations';
+                                                                button.querySelector('i').classList.remove('fas');
+                                                                button.querySelector('i').classList.add('far');
+                                                            }
+                                                        }
+
+                                                        // show tip message
+                                                        function showTip(type, message) {
+                                                            if (!tip) return;
+                                                            let alertClass = type === 'success' ? 'alert-success' : 'alert-warning';
+                                                            tip.innerHTML = `
+                                                                <div class="alert ${alertClass} alert-dismissible fade show py-1 px-2 mb-0" role="alert" style="font-size:0.95em;">
+                                                                    ${message}
+                                                                    <button type="button" class="btn-close btn-sm py-2" data-bs-dismiss="alert" aria-label="Close" style="font-size:0.8em;"></button>
+                                                                </div>
+                                                            `;
+                                                            tip.style.display = 'block';
+                                                            setTimeout(() => {
+                                                                const alertElem = tip.querySelector('.alert');
+                                                                if (alertElem) {
+                                                                    alertElem.classList.remove('show');
+                                                                    alertElem.classList.add('hide');
+                                                                }
+                                                                setTimeout(() => { tip.style.display = 'none'; tip.innerHTML = ''; }, 400);
+                                                            }, 1800);
+                                                        }
+
+                                                        fetch('/event/favorite-destination', {
+                                                            method: 'POST',
+                                                            headers: { 'Content-Type': 'application/json' },
+                                                            body: JSON.stringify({
+                                                                event_id: eventId,
+                                                                location: location,
+                                                                action: isFavorite ? 'remove' : 'add'
+                                                            })
+                                                        })
+                                                        .then(response => response.json())
+                                                        .then(data => {
+                                                            // success response handling
+                                                            if (data.success) {
+                                                                if (isFavorite) {
+                                                                    setFavoriteState(false);
+                                                                    showTip('success', 'Successfully removed from your favorite destinations!');
+                                                                } else {
+                                                                    setFavoriteState(true);
+                                                                    showTip('success', 'Successfully added to your favorite destinations!');
+                                                                }
+                                                            } else if (data.message) {
+                                                                // error response handling
+                                                                const msg = data.message.toLowerCase();
+                                                                if (msg.includes('already in favorites')) {
+                                                                    setFavoriteState(true);
+                                                                    showTip('success', 'Successfully added to your favorite destinations!');
+                                                                } else if (msg.includes('not in favorites')) {
+                                                                    setFavoriteState(false);
+                                                                    showTip('success', 'Successfully removed from your favorite destinations!');
+                                                                } else {
+                                                                   
+                                                                    showTip('warning', data.message);
+                                                                }
+                                                            }
+                                                        })
+                                                        .catch(() => {
+                                                            showTip('warning', 'Network error, please try again.');
+                                                        });
+                                                    });
+                                                });
+                                            });
+                                        </script>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Edit Event Modal -->
+                        <div class="modal fade" id="editEvent{{ event.event_id }}" tabindex="-1">
+                            <div class="modal-dialog">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">Edit Event</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <form method="POST" action="{{ url_for('traveller_edit_event') }}">
+                                        <input type="hidden" name="journey_id" value="{{ journey_id }}">
+                                        <input type="hidden" name="journey_title" value="{{ journey_title }}">
+                                        <input type="hidden" name="event_id" value="{{ event.event_id }}">
+                                        <div class="modal-body">
+                                            <!-- Event edit form fields -->
+                                            <div class="d-grid mb-3">
+                                                <label for="location" class="form-label">Home Location</label>
+                                                <input type="text" class="search-input"
+                                                    id="input_location{{ event.event_id }}" name="location"
+                                                    placeholder="Please enter an address or landmark..."
+                                                    autocomplete="off" value="{{event.address}}">
+                                                <div id="suggestions{{ event.event_id }}" class="suggestions"></div>
+
+                                                {% if session.role=='admin' or session.role=='editor' %}
+                                                <div class="col-md-6 mb-3 mt-3">
+                                                    <button type="button" class="btn btn-primary btn-sm"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#mergeLocations{{event.event_id}}">Merge
+                                                        Locations</button>
+                                                </div>
+                                                {% endif %}
+
+                                                <script>
+                                                    // JS for quick search location
+                                                    document.addEventListener('DOMContentLoaded', function () {
+                                                        const searchInput = document.getElementById('input_location{{ event.event_id }}');
+                                                        const suggestionsContainer = document.getElementById('suggestions{{ event.event_id }}');
+                                                        let debounceTimer;
+                                                        let selectedIndex = -1;
+                                                        let suggestions = [];
+
+                                                        document.getElementById('original_location{{ event.event_id }}').value = searchInput.value;
+
+                                                        searchInput.addEventListener('input', function () {
+                                                            console.log('try to do addEventListener of searchInput(edit):', searchInput.value);
+                                                            const query = this.value.trim();
+                                                            clearTimeout(debounceTimer);
+
+                                                            if (query.length < 2) {
+                                                                suggestionsContainer.style.display = 'none';
+                                                                return;
+                                                            }
+
+                                                            suggestionsContainer.innerHTML = '<div class="loading">finding...</div>';
+                                                            suggestionsContainer.style.display = 'block';
+
+                                                            debounceTimer = setTimeout(function () {
+                                                                console.log('try to do fetchSuggestions(edit), query=', query);
+                                                                fetchSuggestions(query);
+                                                            }, 300);
+                                                        });
+
+                                                        searchInput.addEventListener('keydown', function (e) {
+                                                            if (!suggestions.length || suggestionsContainer.style.display === 'none') return;
+
+                                                            if (e.key === 'ArrowDown') {
+                                                                e.preventDefault();
+                                                                selectedIndex = (selectedIndex + 1) % suggestions.length;
+                                                                updateSelection();
+                                                            } else if (e.key === 'ArrowUp') {
+                                                                e.preventDefault();
+                                                                selectedIndex = selectedIndex <= 0 ? suggestions.length - 1 : selectedIndex - 1;
+                                                                updateSelection();
+                                                            } else if (e.key === 'Enter' && selectedIndex >= 0) {
+                                                                e.preventDefault();
+                                                                selectSuggestion(suggestions[selectedIndex]);
+                                                            } else if (e.key === 'Escape') {
+                                                                suggestionsContainer.style.display = 'none';
+                                                                selectedIndex = -1;
+                                                            }
+                                                        });
+
+                                                        document.addEventListener('click', function (e) {
+                                                            if (!suggestionsContainer.contains(e.target) && e.target !== searchInput) {
+                                                                suggestionsContainer.style.display = 'none';
+                                                                selectedIndex = -1;
+                                                            }
+                                                        });
+
+                                                        function fetchSuggestions(query) {
+                                                            fetch(`/location/search?keyword=${encodeURIComponent(query)}`)
+                                                                .then(response => response.json())
+                                                                .then(data => {
+                                                                    suggestions = data;
+                                                                    renderSuggestions(query, data);
+                                                                })
+                                                                .catch(error => {
+                                                                    console.error('search failed:', error);
+                                                                    suggestionsContainer.innerHTML = '<div class="no-results">no results, please retry...</div>';
+                                                                });
+                                                        }
+
+                                                        function renderSuggestions(query, suggestions) {
+                                                            suggestionsContainer.innerHTML = '';
+
+                                                            if (suggestions.length === 0) {
+                                                                suggestionsContainer.innerHTML = '<div class="no-results">no matched address</div>';
+                                                                return;
+                                                            }
+
+                                                            suggestions.forEach((suggestion, index) => {
+                                                                const item = document.createElement('div');
+                                                                item.className = 'suggestion-item';
+                                                                if (index === selectedIndex) {
+                                                                    item.classList.add('selected');
+                                                                }
+
+                                                                const highlightedText = highlightMatch(suggestion, query);
+                                                                item.innerHTML = highlightedText;
+
+                                                                item.addEventListener('click', function () {
+                                                                    selectSuggestion(suggestion);
+                                                                });
+
+                                                                item.addEventListener('mouseover', function () {
+                                                                    selectedIndex = index;
+                                                                    updateSelection();
+                                                                });
+
+                                                                suggestionsContainer.appendChild(item);
+                                                            });
+
+                                                            suggestionsContainer.style.display = 'block';
+                                                        }
+
+                                                        function highlightMatch(text, query) {
+                                                            const regex = new RegExp(escapeRegExp(query), 'gi');
+                                                            return text.replace(regex, match => `<span class="highlight">${match}</span>`);
+                                                        }
+
+                                                        function escapeRegExp(string) {
+                                                            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                                                        }
+
+                                                        function updateSelection() {
+                                                            const items = suggestionsContainer.querySelectorAll('.suggestion-item');
+                                                            items.forEach((item, index) => {
+                                                                if (index === selectedIndex) {
+                                                                    item.classList.add('selected');
+                                                                    item.scrollIntoView({ block: 'nearest' });
+                                                                } else {
+                                                                    item.classList.remove('selected');
+                                                                }
+                                                            });
+                                                        }
+
+                                                        function selectSuggestion(suggestion) {
+                                                            searchInput.value = suggestion;
+                                                            suggestionsContainer.style.display = 'none';
+                                                            document.getElementById('original_location{{ event.event_id }}').value = searchInput.value;
+                                                            selectedIndex = -1;
+                                                            searchInput.focus();
+                                                        }
+                                                    });
+                                                </script>
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <label for="title_{{event.event_id}}" class="form-label">Title</label>
+                                                <input type="text" class="form-control" id="title_{{event.event_id}}"
+                                                    name="title" placeholder="{{event.title}}" value="{{event.title}}"
+                                                    required>
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <label for="description" class="form-label">Description</label>
+                                                <textarea class="form-control" id="description" name="description"
+                                                    rows="4">{{event.description}}</textarea>
+                                            </div>
+
+                                            <div class="row">
+                                                <label for="start_time" class="form-label">Start Time</label>
+                                                <div class="col-md-6">
+                                                    <input type="date" id="start_date{{event.event_id}}"
+                                                        class="form-control" name="start_date"
+                                                        value="{{event.start_time.strftime('%Y-%m-%d')}}">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <input type="time" id="start_time{{event.event_id}}"
+                                                        class="form-control" name="start_time"
+                                                        value="{{event.start_time.strftime('%H:%M')}}">
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <label for="end_time" class="form-label">End Time</label>
+                                                <div class="col-md-6">
+                                                    <input type="date" id="end_date{{event.event_id}}"
+                                                        class="form-control" name="end_date"
+                                                        value="{{event.end_time.strftime('%Y-%m-%d')}}">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <input type="time" id="end_time{{event.event_id}}"
+                                                        class="form-control" name="end_time"
+                                                        value="{{event.end_time.strftime('%H:%M')}}">
+                                                </div>
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <label for="display" class="form-label">Visibility</label>
+                                                <select class="form-select" id="display{{ event.event_id }}"
+                                                    name="display">
+                                                    <option value="public" {% if event.display=='public' %}selected{%
+                                                        endif %}>Public</option>
+                                                    <option value="private" {% if event.display=='private' %}selected{%
+                                                        endif %}>Private</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary"
+                                                data-bs-dismiss="modal">Cancel</button>
+                                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Merge Locations Modal -->
+                        <div class="modal fade" id="mergeLocations{{event.event_id}}" tabindex="-1"
+                            aria-labelledby="modalLabel" aria-hidden="true">
+                            <div class="modal-dialog">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">Merge Locations</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <form method="POST" action="{{ url_for('merge_location') }}"
+                                        enctype="multipart/form-data">
+                                        <div class="modal-body">
+                                            <div class="d-grid mb-3">
+                                                <label for="original_location" class="form-label">Original
+                                                    Location</label>
+                                                <input type="text" name="original_location"
+                                                    id="original_location{{event.event_id}}"
+                                                    placeholder="Please enter the unwanted address or landmark..."
+                                                    value="">
+                                            </div>
+
+                                            <div class="d-grid mb-3">
+                                                <label for="target_location" class="form-label">Target Location</label>
+                                                <input type="text" class="search-input"
+                                                    id="input_location_{{event.event_id}}" name="target_location"
+                                                    placeholder="Please enter an existed address or landmark..."
+                                                    autocomplete="off" value="">
+                                                <div id="suggestions_{{event.event_id}}" class="suggestions"></div>
+                                            </div>
+
+                                            <script>
+                                                // JS for quick search location
+                                                document.addEventListener('DOMContentLoaded', function () {
+                                                    var mergeLocationModal = document.getElementById('mergeLocations{{ event.event_id }}');
+                                                    if (mergeLocationModal) {
+                                                        mergeLocationModal.addEventListener('shown.bs.modal', function () {
+                                                            const searchInput = document.getElementById('input_location_{{event.event_id}}');
+                                                            const suggestionsContainer = document.getElementById('suggestions_{{event.event_id}}');
+                                                            let debounceTimer;
+                                                            let selectedIndex = -1;
+                                                            let suggestions = [];
+
+                                                            console.log('input_location{{event.event_id}}');
+                                                            console.log('suggestions{{event.event_id}}');
+
+                                                            searchInput.addEventListener('input', function () {
+                                                                console.log('try to do addEventListener of searchInput(merge):', searchInput.value);
+                                                                const query = this.value.trim();
+                                                                clearTimeout(debounceTimer);
+
+                                                                if (query.length < 2) {
+                                                                    suggestionsContainer.style.display = 'none';
+                                                                    return;
+                                                                }
+
+                                                                suggestionsContainer.innerHTML = '<div class="loading">finding...</div>';
+                                                                suggestionsContainer.style.display = 'block';
+
+                                                                debounceTimer = setTimeout(function () {
+                                                                    console.log('try to do fetchSuggestions(merge), query=', query);
+                                                                    fetchSuggestions(query);
+                                                                }, 300);
+                                                            });
+
+                                                            searchInput.addEventListener('keydown', function (e) {
+                                                                if (!suggestions.length || suggestionsContainer.style.display === 'none') return;
+
+                                                                if (e.key === 'ArrowDown') {
+                                                                    e.preventDefault();
+                                                                    selectedIndex = (selectedIndex + 1) % suggestions.length;
+                                                                    updateSelection();
+                                                                } else if (e.key === 'ArrowUp') {
+                                                                    e.preventDefault();
+                                                                    selectedIndex = selectedIndex <= 0 ? suggestions.length - 1 : selectedIndex - 1;
+                                                                    updateSelection();
+                                                                } else if (e.key === 'Enter' && selectedIndex >= 0) {
+                                                                    e.preventDefault();
+                                                                    selectSuggestion(suggestions[selectedIndex]);
+                                                                } else if (e.key === 'Escape') {
+                                                                    suggestionsContainer.style.display = 'none';
+                                                                    selectedIndex = -1;
+                                                                }
+                                                            });
+
+                                                            document.addEventListener('click', function (e) {
+                                                                if (!suggestionsContainer.contains(e.target) && e.target !== searchInput) {
+                                                                    suggestionsContainer.style.display = 'none';
+                                                                    selectedIndex = -1;
+                                                                }
+                                                            });
+
+                                                            function fetchSuggestions(query) {
+                                                                fetch(`/location/search?keyword=${encodeURIComponent(query)}`)
+                                                                    .then(response => response.json())
+                                                                    .then(data => {
+                                                                        suggestions = data;
+                                                                        renderSuggestions(query, data);
+                                                                    })
+                                                                    .catch(error => {
+                                                                        console.error('search failed:', error);
+                                                                        suggestionsContainer.innerHTML = '<div class="no-results">no results, please retry...</div>';
+                                                                    });
+                                                            }
+
+                                                            function renderSuggestions(query, suggestions) {
+                                                                suggestionsContainer.innerHTML = '';
+
+                                                                if (suggestions.length === 0) {
+                                                                    suggestionsContainer.innerHTML = '<div class="no-results">no matched address</div>';
+                                                                    return;
+                                                                }
+
+                                                                suggestions.forEach((suggestion, index) => {
+                                                                    const item = document.createElement('div');
+                                                                    item.className = 'suggestion-item';
+                                                                    if (index === selectedIndex) {
+                                                                        item.classList.add('selected');
+                                                                    }
+
+                                                                    const highlightedText = highlightMatch(suggestion, query);
+                                                                    item.innerHTML = highlightedText;
+
+                                                                    item.addEventListener('click', function () {
+                                                                        selectSuggestion(suggestion);
+                                                                    });
+
+                                                                    item.addEventListener('mouseover', function () {
+                                                                        selectedIndex = index;
+                                                                        updateSelection();
+                                                                    });
+
+                                                                    suggestionsContainer.appendChild(item);
+                                                                });
+
+                                                                suggestionsContainer.style.display = 'block';
+                                                            }
+
+                                                            function highlightMatch(text, query) {
+                                                                const regex = new RegExp(escapeRegExp(query), 'gi');
+                                                                return text.replace(regex, match => `<span class="highlight">${match}</span>`);
+                                                            }
+
+                                                            function escapeRegExp(string) {
+                                                                return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                                                            }
+
+                                                            function updateSelection() {
+                                                                const items = suggestionsContainer.querySelectorAll('.suggestion-item');
+                                                                items.forEach((item, index) => {
+                                                                    if (index === selectedIndex) {
+                                                                        item.classList.add('selected');
+                                                                        item.scrollIntoView({ block: 'nearest' });
+                                                                    } else {
+                                                                        item.classList.remove('selected');
+                                                                    }
+                                                                });
+                                                            }
+
+                                                            function selectSuggestion(suggestion) {
+                                                                searchInput.value = suggestion;
+                                                                suggestionsContainer.style.display = 'none';
+                                                                selectedIndex = -1;
+                                                                searchInput.focus();
+                                                            }
+                                                        });
+                                                    } else {
+                                                        console.error("modal not found: mergeLocations{{ event.event_id }}");
+                                                    }
+                                                });
+                                            </script>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary"
+                                                data-bs-dismiss="modal">Cancel</button>
+                                            <button type="submit" class="btn btn-primary">Confirm to Merge</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Upload Image Modal -->
+                        <div class="modal fade" id="uploadImage{{ event.event_id }}" tabindex="-1">
+                            <div class="modal-dialog">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">Upload Event Photo</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <form method="POST" action="{{ url_for('upload_event_image') }}"
+                                        enctype="multipart/form-data">
+                                        <input type="hidden" name="journey_id" value="{{ journey_id }}">
+                                        <input type="hidden" name="journey_title" value="{{ journey_title }}">
+                                        <input type="hidden" name="event_id" value="{{ event.event_id }}">
+                                        <input type="hidden" name="from" value="public">
+                                        <div class="modal-body">
+                                            <div class="mb-3">
+                                                <label for="event_image" class="form-label">Event Image</label>
+                                                <div class="preview-container mt-1">
+                                                    <img id="imagePreview{{ event.event_id }}"
+                                                        style="max-width:100%; display:none;" alt="event_image preview">
+                                                </div>
+                                                <span class="btn btn-primary mt-1"
+                                                    style="position: relative;display:inline-block;overflow: hidden;">
+                                                    <span>choose</span>
+                                                    <input type="file" id="imageUpload{{ event.event_id }}"
+                                                        name="event_image" accept="image/*"
+                                                        style="position: absolute;right:0;top:0; opacity: 0;">
+                                                </span>
+                                                <script>
+                                                    document.addEventListener('DOMContentLoaded', function () {
+                                                        var addEventModal = document.getElementById('uploadImage{{ event.event_id }}');
+                                                        if (addEventModal) {
+                                                            addEventModal.addEventListener('shown.bs.modal', function () {
+                                                                console.log("modal loaded, initialize form...");
+                                                                const imageUpload = document.getElementById('imageUpload{{event.event_id}}');
+                                                                const imagePreview = document.getElementById('imagePreview{{event.event_id}}');
+                                                                imageUpload.addEventListener('change', function () {
+                                                                    const file = imageUpload.files[0];
+                                                                    if (file) {
+                                                                        const reader = new FileReader();
+                                                                        reader.onload = function (e) {
+                                                                            imagePreview.src = e.target.result;
+                                                                            imagePreview.alt = file.name;
+                                                                            imagePreview.style.display = "block";
+                                                                        };
+                                                                        reader.readAsDataURL(file);
+                                                                    } else {
+                                                                        imagePreview.style.display = "none";
+                                                                    }
+                                                                });
+                                                            });
+                                                        } else {
+                                                            console.error("modal not found: addEvent4Journey{{ event.event_id }}");
+                                                        }
+                                                    });
+                                                </script>
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary"
+                                                data-bs-dismiss="modal">Cancel</button>
+                                            <button type="submit" class="btn btn-primary">Upload</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Delete Event Confirmation Modal -->
+                        <div class="modal fade" id="deleteEvent{{ event.event_id }}" tabindex="-1">
+                            <div class="modal-dialog">
+                                <div class="modal-content">
+                                    <div class="modal-header bg-danger text-white">
+                                        <h5 class="modal-title">Confirm Deletion</h5>
+                                        <button type="button" class="btn-close btn-close-white"
+                                            data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="text-center mb-3">
+                                            <i class="fas fa-exclamation-triangle text-danger fa-3x"></i>
+                                        </div>
+                                        <p>Are you sure you want to delete the event "<strong>{{ event.title
+                                                }}</strong>"?</p>
+                                        <p class="text-danger">This action cannot be undone.</p>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-outline-secondary"
+                                            data-bs-dismiss="modal">Cancel</button>
+                                        {% if session.role=='admin' or session.role=='editor' %}
+                                        <a href="{{ url_for('admin_delete_event', event_id=event.event_id) }}?journey_id={{ journey_id }}&journey_title={{ journey_title }}"
+                                            class="btn btn-danger">Delete Event</a>
+                                        {% else %}
+                                        <a href="{{ url_for('traveller_delete_event', event_id=event.event_id) }}?journey_id={{ journey_id }}&journey_title={{ journey_title }}"
+                                            class="btn btn-danger">Delete Event</a>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+
+    <div class="row mt-5 mb-5">
+        <div class="col-md-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body bg-light p-4 text-center">
+                    <i class="fas fa-calendar-times fa-3x mb-3 text-secondary"></i>
+                    <h4 class="text-dark">No events found</h4>
+                    <p class="text-muted mb-3">This journey doesn't have any events yet.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    {% if request.args.get('from') == 'departure_board' %}
+    <a href="{{ url_for('departure_board', page=request.args.get('page', 1)) }}" class="btn btn-dark w-auto"
+        style="position: fixed;left: 50%;bottom: 10%;transform: translateX(-50%);z-index: 1000;">
+        <i class="fas fa-arrow-left me-2"></i>Back to Departure Board
+    </a>
+    {% elif not request.args.get('from') in ['departure_board', 'manage_followed'] %}
+    <a href="{{ url_for('public_journey', keyword=keyword, filter=filter) }}" class="btn btn-dark w-auto"
+        style="position: fixed;left: 50%;bottom: 10%;transform: translateX(-50%);z-index: 1000;">Back To Journeys In The
+        World</a>
+    {% endif %}
+
+    <div class="invisible">event_successful: {{event_successful}}</div>
+
+
+
+
+    {% endblock %}
+
+    {% block head_extras %}
+    <style>
+        .suggestions {
+            position: absolute;
+            z-index: 1000;
+            width: 100%;
+            max-height: 200px;
+            overflow-y: auto;
+            background-color: white;
+            border: 1px solid #ced4da;
+            border-radius: 0.25rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-top: 2px;
+            display: none;
+        }
+
+        .suggestion-item {
+            padding: 8px 12px;
+            cursor: pointer;
+        }
+
+        .suggestion-item:hover,
+        .suggestion-item.selected {
+            background-color: #f8f9fa;
+        }
+
+        .highlight {
+            font-weight: bold;
+            color: #343a40;
+        }
+
+        .loading,
+        .no-results {
+            padding: 8px 12px;
+            text-align: center;
+            color: #6c757d;
+            font-style: italic;
+        }
+    </style>
+    {% endblock %}

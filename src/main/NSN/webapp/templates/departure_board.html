@@ -1,0 +1,1044 @@
+{% extends 'userbase.html' %}
+
+{% block title %}Departure Board{% endblock %}
+
+{% set active_page = 'departure_board' %}
+
+{% block content %}
+<!-- Banner image with text overlay -->
+<div class="banner-image"
+    style="background-image: url('/static/ui_photos/private_journey.jpg'); background-size: cover; background-position: center; height: 300px; position: relative;">
+    <div class="banner-overlay"
+        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5);">
+        <div class="container h-100">
+            <div class="row h-100 align-items-center">
+                <div class="col-md-12 text-end">
+                    <h1 class="text-white fw-bold">My Journeys</h1>
+                    <p class="text-white lead">Explore and manage your personal travel experiences</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <!-- <h1><i class="fas fa-train"></i> Departure Board</h1> -->
+                <!-- <div class="d-flex gap-2 align-items-center">
+                    <div class="badge bg-info fs-6" id="followed-counts-badge">
+                    Following {{ followed_journeys|length }} journey{{ 's' if followed_journeys|length != 1 else '' }},
+                    {{ followed_users|length }} user{{ 's' if followed_users|length != 1 else '' }},
+                    {{ followed_locations|length }} location{{ 's' if followed_locations|length != 1 else '' }}
+                    </div> -->
+                    <a href="{{ url_for('manage_followed_content') }}" class="btn btn-dark btn-sm">
+                        <i class="fas fa-cog me-2"></i>Manage Followed Content
+                    </a>
+                </div>
+            </div>
+
+            {% if not followed_journeys and not followed_users and not followed_locations %}
+                <!-- No followed content message -->
+                <div class="card border-0 shadow-sm" id="no-followed-content">
+                    <div class="card-body text-center py-5">
+                        <i class="fas fa-map-marked-alt fa-4x text-muted mb-4"></i>
+                        <h4 class="text-muted">No Followed Content</h4>
+                        <p class="text-muted mb-4">You haven't followed any journeys, users, or locations yet. Start following to see their latest events here!</p>
+                        <div class="d-flex gap-2 justify-content-center">
+                        <a href="{{ url_for('public_journey') }}" class="btn btn-dark">
+                            <i class="fas fa-search me-2"></i>Browse Public Journeys
+                        </a>
+                            <a href="{{ url_for('manage_followed_content') }}" class="btn btn-outline-primary">
+                                <i class="fas fa-cog me-2"></i>Manage Content
+                            </a>
+                                                </div>
+                                            </div>
+                                        </div>
+            {% else %}
+                <!-- Recent events from followed content -->
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center" style="display: none !important;">
+                        <h5 class="mb-0"><i class="fas fa-clock me-2"></i>Events from Followed Content</h5>
+                        <span class="badge bg-secondary" id="events-count-badge">
+                        {% if total_events > 0 %}
+                            Showing {{ (current_page - 1) * per_page + 1 }} - {{ ((current_page - 1) * per_page + followed_events|length) }} of {{ total_events }} events
+                        {% endif %}
+                        </span>
+                    </div>
+                    <div class="card-body">
+                        <!-- Loading indicator -->
+                        <div id="events-loading" class="text-center py-5" style="display: none;">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="text-muted mt-3">Updating events...</p>
+                        </div>
+                        
+                        <!-- Events container -->
+                        <div id="events-container">
+                        {% if not followed_events %}
+                                <div class="text-center py-5" id="no-events-message">
+                                <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+                                <h5 class="text-muted">No Events</h5>
+                                <p class="text-muted">No events from your followed content</p>
+                                <p class="text-muted small">Events will appear here when:</p>
+                                <ul class="list-unstyled text-muted small">
+                                    <li>• New events are added to followed journeys, users & locations</li>
+                                    <li>• Existing events are updated</li>
+                                </ul>
+                            </div>
+                        {% else %}
+                                <div class="row" id="events-row">
+                                {% for event in followed_events %}
+                                        <!-- Event cards will be dynamically generated here -->
+                                {% endfor %}
+                            </div>
+                            
+                            <!-- Pagination Section -->
+                                <div id="pagination-container">
+                            {% if total_pages > 1 %}
+                            <div class="d-flex justify-content-between align-items-center mt-4">
+                                <div class="text-muted">
+                                            <small id="pagination-info">
+                                        Page {{ current_page }} of {{ total_pages }} 
+                                        ({{ total_events }} total events)
+                                    </small>
+                                </div>
+                                
+                                <nav aria-label="Departure Board Pagination">
+                                            <ul class="pagination pagination-sm mb-0" id="pagination-nav">
+                                                <!-- Pagination will be dynamically generated -->
+                                    </ul>
+                                </nav>
+                            </div>
+                            {% endif %}
+                                </div>
+                        {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block head_extras %}
+<style>
+.hover-card {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hover-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15) !important;
+}
+
+.border-start {
+    border-left-width: 4px !important;
+}
+
+.badge {
+    font-size: 0.75em;
+}
+
+.btn-group-sm .btn {
+    font-size: 0.75rem;
+}
+
+.bg-gradient {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+}
+
+.card-img-top {
+    transition: transform 0.3s ease;
+}
+
+.card:hover .card-img-top {
+    transform: scale(1.02);
+}
+
+.opacity-75 {
+    opacity: 0.75;
+}
+
+.fs-6 {
+    font-size: 1rem !important;
+}
+
+/* Pagination styling */
+.pagination-sm .page-link {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.pagination .page-item.active .page-link {
+    background-color: #007bff;
+    border-color: #007bff;
+}
+
+.pagination .page-item.disabled .page-link {
+    color: #6c757d;
+    pointer-events: none;
+    cursor: auto;
+    background-color: #fff;
+}
+
+/* Source badge styling */
+.badge.bg-success {
+    background-color: #198754 !important;
+}
+
+.badge.bg-info {
+    background-color: #0dcaf0 !important;
+}
+
+.badge.bg-warning {
+    background-color: #ffc107 !important;
+    color: #000 !important;
+}
+
+/* Clickable source badges */
+.clickable-badge {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    padding-right: 25px !important;
+}
+
+.clickable-badge:hover {
+    transform: scale(1.05);
+    opacity: 0.8;
+}
+
+.unfollow-icon {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.7em;
+    opacity: 0.7;
+}
+
+.clickable-badge:hover .unfollow-icon {
+    opacity: 1;
+    color: #dc3545 !important;
+}
+
+
+.recommendation-card {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 1px solid #dee2e6;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.recommendation-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    color: #495057;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.recommendation-title {
+    color: #6c757d;
+}
+
+.recommendation-content {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.recommendation-btn {
+    display: flex;
+    align-items: center;
+    background: white;
+    border: 1.5px solid #e9ecef;
+    border-radius: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    color: inherit;
+    min-width: 0;
+    flex: 1;
+    max-width: 100%;
+}
+
+.recommendation-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-color: #007bff;
+    background: #f8f9ff;
+}
+
+.rec-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 10px;
+    flex-shrink: 0;
+}
+
+.journey-icon {
+    background: linear-gradient(135deg, #28a745, #20c997);
+    color: white;
+}
+
+.user-icon {
+    background: linear-gradient(135deg, #17a2b8, #20c997);
+    color: white;
+}
+
+.location-icon {
+    background: linear-gradient(135deg, #ffc107, #fd7e14);
+    color: white;
+}
+
+.rec-text {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+}
+
+.rec-label {
+    font-size: 0.7rem;
+    color: #6c757d;
+    font-weight: 500;
+    line-height: 1;
+    margin-bottom: 2px;
+}
+
+.rec-name {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #212529;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+.source-badge {
+    font-size: 0.7rem !important;
+    padding: 0.3rem 0.6rem !important;
+}
+
+
+@media (max-width: 768px) {
+    .recommendation-btn {
+        flex: 1 1 100%;
+        max-width: 100%;
+    }
+    
+    .recommendation-content {
+        flex-direction: column;
+    }
+}
+
+@media (min-width: 769px) {
+    .recommendation-btn {
+        flex: 1 1 calc(50% - 4px);
+        max-width: calc(50% - 4px);
+    }
+}
+
+/* Loading state for buttons */
+.btn-loading {
+    position: relative;
+    pointer-events: none;
+}
+
+.btn-loading::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 16px;
+    height: 16px;
+    margin: -8px 0 0 -8px;
+    border: 2px solid transparent;
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Toast message styling */
+.toast-message {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #28a745;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1050;
+    transform: translateX(100%);
+    opacity: 0;
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.toast-message.show {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.toast-message i {
+    margin-right: 8px;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Detect page refresh and redirect to first page
+    (function() {
+        const currentPage = {{ current_page }};
+        
+        console.log('🚀 Page load detected - currentPage:', currentPage);
+        
+     
+        if (performance && performance.getEntriesByType) {
+            const navigationEntries = performance.getEntriesByType('navigation');
+            if (navigationEntries.length > 0) {
+                const navigationType = navigationEntries[0].type;
+                console.log('🚀 Navigation type:', navigationType);
+                
+                if (navigationType === 'reload' && currentPage > 1) {
+                    console.log('🚀 Refresh detected on page', currentPage, '- redirecting to page 1');
+                    window.location.replace('/departure_board');
+                    return;
+                }
+            }
+        }
+        
+        
+        if (performance && performance.navigation) {
+            const navigationType = performance.navigation.type;
+            console.log('🚀 Legacy navigation type:', navigationType);
+            
+            // TYPE_RELOAD = 1 Indicates refresh
+            if (navigationType === 1 && currentPage > 1) {
+                console.log('🚀 Legacy refresh detected on page', currentPage, '- redirecting to page 1');
+                window.location.replace('/departure_board');
+                return;
+            }
+        }
+        
+        // Use sessionStorage as fallback detection 
+        const pageKey = 'departureBoard_currentPage';
+        const lastVisitedPage = sessionStorage.getItem(pageKey);
+        
+        console.log('🚀 SessionStorage check - lastVisitedPage:', lastVisitedPage, 'currentPage:', currentPage);
+        
+        // If the last page visited is the same page and the current page is greater than 1, it is considered a refresh
+        if (lastVisitedPage && parseInt(lastVisitedPage) === currentPage && currentPage > 1) {
+            console.log('🚀 Same page reload detected via sessionStorage - redirecting to page 1');
+            sessionStorage.removeItem(pageKey);
+            window.location.replace('/departure_board');
+            return;
+        }
+        
+       
+        sessionStorage.setItem(pageKey, currentPage.toString());
+        
+        console.log('🚀 Page load completed normally');
+    })();
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 DEPARTURE BOARD SCRIPT LOADED');
+    
+    let currentPage = {{ current_page }};
+    let isLoading = false;
+    let totalEventsPages = {{ total_pages }};
+    
+    // Initial render of events
+    renderEventsFromServerData();
+    
+    // Handle click on source badges, unfollow buttons, and follow recommendation buttons
+    document.addEventListener('click', function(e) {
+        const unfollowTarget = e.target.closest('.clickable-badge, .unfollow-btn');
+        const followTarget = e.target.closest('.follow-recommendation-btn');
+        const paginationTarget = e.target.closest('.pagination-link');
+        
+        if (unfollowTarget) {
+            handleUnfollow(e, unfollowTarget);
+        } else if (followTarget) {
+            handleFollow(e, followTarget);
+        } else if (paginationTarget) {
+            handlePaginationClick(e, paginationTarget);
+        }
+    });
+    
+    // Handle unfollow action
+    function handleUnfollow(e, target) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const sourceType = target.dataset.sourceType;
+        const sourceId = target.dataset.sourceId;
+        const sourceName = target.dataset.sourceName;
+        
+        if (!sourceType || !sourceId || !sourceName) {
+            console.error('Missing unfollow data:', { sourceType, sourceId, sourceName });
+            return;
+        }
+        
+        const confirmed = confirm(`Are you sure you want to unfollow "${sourceName}"?`);
+        if (!confirmed) return;
+        
+        performAction('/unfollow_source', { source_type: sourceType, source_id: sourceId }, target, sourceName, 'unfollow');
+    }
+    
+    // Handle follow action
+    function handleFollow(e, target) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const sourceType = target.dataset.sourceType;
+        const sourceId = target.dataset.sourceId;
+        const sourceName = target.dataset.sourceName;
+        
+        if (!sourceType || !sourceId || !sourceName) {
+            console.error('Missing follow data:', { sourceType, sourceId, sourceName });
+            return;
+        }
+        
+        const confirmed = confirm(`Are you sure you want to follow "${sourceName}"?`);
+        if (!confirmed) return;
+        
+        performAction('/follow_source', { source_type: sourceType, source_id: sourceId }, target, sourceName, 'follow');
+    }
+    
+    // Handle pagination clicks
+    function handlePaginationClick(e, target) {
+        e.preventDefault();
+        const page = parseInt(target.dataset.page);
+        
+        // Check if trying to go beyond the last page
+        if (page > totalEventsPages) {
+            console.log('Pagination: No more content');
+            showToastMessage('No more content');
+            return;
+        }
+        
+        if (page && page !== currentPage && !isLoading) {
+            loadEventsPage(page);
+        }
+    }
+    
+    // Unified function to perform follow/unfollow actions
+    function performAction(url, data, target, sourceName, action) {
+        console.log(`🚀 ${action} action:`, data);
+        
+        // Disable the clicked element
+        target.style.pointerEvents = 'none';
+        target.style.opacity = '0.6';
+        
+        // Update button text
+        const originalText = target.innerHTML;
+        target.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${action === 'follow' ? 'Following...' : 'Unfollowing...'}`;
+        
+        // Make AJAX request
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(responseData => {
+            console.log('🚀 Response:', responseData);
+            
+            if (responseData.success) {
+                const actionText = action === 'follow' ? 'Followed' : 'Unfollowed';
+                
+                // Show success message
+                showToastMessage(`${actionText}: ${sourceName}`);
+                
+                // Refresh events after successful action
+                refreshEvents();
+                
+            } else {
+                alert('Error: ' + responseData.message);
+                // Re-enable the element
+                target.style.pointerEvents = '';
+                target.style.opacity = '';
+                target.innerHTML = originalText;
+            }
+        })
+        .catch(error => {
+            console.error(`🚀 ${action} error:`, error);
+            alert('Network error, please try again.');
+            // Re-enable the element
+            target.style.pointerEvents = '';
+            target.style.opacity = '';
+            target.innerHTML = originalText;
+        });
+    }
+    
+    // Function to refresh events
+    function refreshEvents() {
+        loadEventsPage(currentPage);
+    }
+    
+    // Function to load events for a specific page
+    function loadEventsPage(page) {
+        if (isLoading) return;
+        
+        isLoading = true;
+        showLoadingIndicator();
+        
+        fetch('/get_departure_board_events', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ page: page })
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('🚀 Events loaded:', data);
+            
+            if (data.success) {
+                currentPage = data.current_page;
+                renderEvents(data);
+                updateFollowedCounts(data.followed_counts);
+                } else {
+                console.error('Failed to load events:', data.message);
+                showErrorMessage('Failed to load events: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('🚀 Load events error:', error);
+            showErrorMessage('Network error, please try again.');
+        })
+        .finally(() => {
+            isLoading = false;
+            hideLoadingIndicator();
+        });
+    }
+    
+    // Function to show loading indicator
+    function showLoadingIndicator() {
+        document.getElementById('events-loading').style.display = 'block';
+        document.getElementById('events-container').style.opacity = '0.5';
+    }
+    
+    // Function to hide loading indicator
+    function hideLoadingIndicator() {
+        document.getElementById('events-loading').style.display = 'none';
+        document.getElementById('events-container').style.opacity = '1';
+    }
+    
+    // Function to render events from server data (initial load)
+    function renderEventsFromServerData() {
+        const serverEvents = {{ followed_events | tojson }};
+        const serverData = {
+            events: serverEvents,
+            total_events: {{ total_events }},
+            total_pages: {{ total_pages }},
+            current_page: {{ current_page }},
+            has_prev: {{ has_prev | tojson }},
+            has_next: {{ has_next | tojson }}
+        };
+        renderEvents(serverData);
+    }
+    
+    // Function to render events
+    function renderEvents(data) {
+        const eventsContainer = document.getElementById('events-container');
+        const eventsRow = document.getElementById('events-row');
+        const noEventsMessage = document.getElementById('no-events-message');
+        const paginationContainer = document.getElementById('pagination-container');
+        const eventsCountBadge = document.getElementById('events-count-badge');
+        
+        if (data.events && data.events.length > 0) {
+            // Hide no events message
+            if (noEventsMessage) {
+                noEventsMessage.style.display = 'none';
+            }
+            
+            // Create or show events row
+            if (!eventsRow) {
+                const newEventsRow = document.createElement('div');
+                newEventsRow.className = 'row';
+                newEventsRow.id = 'events-row';
+                eventsContainer.appendChild(newEventsRow);
+            }
+            
+            // Clear existing events
+            const currentEventsRow = document.getElementById('events-row');
+            currentEventsRow.innerHTML = '';
+            
+            // Render each event
+            data.events.forEach(event => {
+                const eventCard = createEventCard(event);
+                currentEventsRow.appendChild(eventCard);
+            });
+            
+            // Update events count badge
+            const startIndex = (data.current_page - 1) * 6 + 1;
+            const endIndex = (data.current_page - 1) * 6 + data.events.length;
+            eventsCountBadge.textContent = `Showing ${startIndex} - ${endIndex} of ${data.total_events} events`;
+            
+            // Update total pages count
+            totalEventsPages = data.total_pages;
+            
+            // Render pagination
+            renderPagination(data);
+            
+        } else {
+            // Show no events message
+            if (eventsRow) {
+                eventsRow.style.display = 'none';
+            }
+            if (!noEventsMessage) {
+                const noEventsDiv = createNoEventsMessage();
+                eventsContainer.appendChild(noEventsDiv);
+            } else {
+                noEventsMessage.style.display = 'block';
+            }
+            
+            // Hide pagination
+            if (paginationContainer) {
+                paginationContainer.style.display = 'none';
+            }
+            
+            // Update events count badge
+            eventsCountBadge.textContent = '';
+        }
+    }
+    
+    // Function to create event card HTML
+    function createEventCard(event) {
+        const eventCol = document.createElement('div');
+        eventCol.className = 'col-md-6 col-lg-4 mb-4';
+        
+        const eventCard = document.createElement('div');
+        eventCard.className = 'card h-100 border-0 shadow-sm hover-card';
+        eventCard.setAttribute('data-event-id', event.event_id);
+        
+        // Create event image
+        let imageHtml;
+        // if (event.event_image) {
+        //     imageHtml = `<img src="/static/events/${event.event_image}" class="card-img-top" style="height: 200px; object-fit: cover;" alt="Event Image">`;
+        // } else {
+        //     // imageHtml = `<div class="card-img-top bg-gradient d-flex align-items-center justify-content-center" style="height: 200px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"><i class="fas fa-calendar-alt fa-3x text-white opacity-75"></i></div>`;
+        // }
+        
+        // Create source badges
+        let sourceBadgesHtml = '';
+        if (event.all_sources && event.all_sources.length > 0) {
+            event.all_sources.forEach(source => {
+                if (source === 'followed_journey') {
+                    sourceBadgesHtml += `
+                        <span class="badge bg-success rounded-pill source-badge clickable-badge" 
+                              title="Click to unfollow this journey"
+                              data-source-type="journey" 
+                              data-source-id="${event.source_journey_id}"
+                              data-source-name="${event.journey_title}">
+                            <i class="fas fa-route me-1"></i>Following Journey
+                            <i class="fas fa-times ms-1 unfollow-icon"></i>
+                        </span>`;
+                } else if (source === 'followed_user') {
+                    sourceBadgesHtml += `
+                        <span class="badge bg-info rounded-pill source-badge clickable-badge" 
+                              title="Click to unfollow this author"
+                              data-source-type="user" 
+                              data-source-id="${event.source_user_id}"
+                              data-source-name="${event.journey_owner}">
+                            <i class="fas fa-user-friends me-1"></i>Following Author
+                            <i class="fas fa-times ms-1 unfollow-icon"></i>
+                        </span>`;
+                } else if (source === 'followed_location') {
+                    sourceBadgesHtml += `
+                        <span class="badge bg-warning text-dark rounded-pill source-badge clickable-badge" 
+                              title="Click to unfollow this location"
+                              data-source-type="location" 
+                              data-source-id="${event.source_location_id}"
+                              data-source-name="${event.location_address}">
+                            <i class="fas fa-map-marker-alt me-1"></i>Following Location
+                            <i class="fas fa-times ms-1 unfollow-icon"></i>
+                        </span>`;
+                }
+            });
+        } else {
+            sourceBadgesHtml = `<span class="badge bg-secondary rounded-pill"><i class="fas fa-question me-1"></i>Unknown Source</span>`;
+        }
+        
+        // Create recommendations
+        let recommendationsHtml = '';
+        if (event.recommendations && event.recommendations.length > 0) {
+            recommendationsHtml = `
+                <div class="recommendation-card mb-3">
+                    <div class="recommendation-header">
+                        <i class="fas fa-star me-2"></i>
+                        <span class="recommendation-title">Click to follow</span>
+                    </div>
+                    <div class="recommendation-content">`;
+            
+            event.recommendations.forEach(rec => {
+                let iconClass, iconBg;
+                if (rec.type === 'journey') {
+                    iconClass = 'fas fa-route';
+                    iconBg = 'journey-icon';
+                } else if (rec.type === 'user') {
+                    iconClass = 'fas fa-user-plus';
+                    iconBg = 'user-icon';
+                } else if (rec.type === 'location') {
+                    iconClass = 'fas fa-map-marker-alt';
+                    iconBg = 'location-icon';
+                }
+                
+                const displayName = rec.name.length > 20 ? rec.name.substring(0, 20) + '...' : rec.name;
+                recommendationsHtml += `
+                    <button type="button" 
+                            class="recommendation-btn follow-recommendation-btn"
+                            data-source-type="${rec.type}" 
+                            data-source-id="${rec.id}"
+                            data-source-name="${rec.name}"
+                            title="${rec.reason}">
+                        <div class="rec-icon ${iconBg}">
+                            <i class="${iconClass}"></i>
+                        </div>
+                        <div class="rec-text">
+                            <div class="rec-label">${rec.type.charAt(0).toUpperCase() + rec.type.slice(1)}</div>
+                            <div class="rec-name">${displayName}</div>
+                        </div>
+                    </button>`;
+            });
+            
+            recommendationsHtml += `
+                    </div>
+                </div>`;
+        }
+        
+        // Create event details
+        let eventDetailsHtml = '';
+        if (event.start_time_str) {
+            eventDetailsHtml += `<div class="mb-1"><i class="fas fa-calendar text-primary me-1"></i>${event.start_time_str}</div>`;
+        }
+        if (event.end_time_str) {
+            eventDetailsHtml += `<div class="mb-1"><i class="fas fa-clock text-success me-1"></i>Until ${event.end_time_str}</div>`;
+        }
+        if (event.location_address) {
+            eventDetailsHtml += `<div class="mb-1"><i class="fas fa-map-marker-alt text-danger me-1"></i>${event.location_address}</div>`;
+        }
+        if (event.last_update_str) {
+            eventDetailsHtml += `<div class="mb-1"><i class="fas fa-sync text-info me-1"></i>Updated ${event.last_update_str}</div>`;
+        }
+        
+        eventCard.innerHTML = `
+            <div class="card-body">
+                <div class="mb-2 d-flex flex-wrap gap-1">
+                    ${sourceBadgesHtml}
+                </div>
+                
+                ${recommendationsHtml}
+                
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <h6 class="card-title fw-bold mb-0">${event.journey_title}</h6>
+                    <small class="text-muted ms-2">
+                        <i class="fas fa-user me-1"></i>${event.journey_owner}
+                    </small>
+                </div>
+                
+                ${event.event_description ? `
+                    <p class="card-text text-muted small">
+                        ${event.event_description.length > 100 ? event.event_description.substring(0, 100) + '...' : event.event_description}
+                    </p>
+                ` : ''}
+                
+                <div class="small text-muted">
+                    ${eventDetailsHtml}
+                </div>
+            </div>
+            
+            <div class="card-footer bg-transparent border-top-0">
+                <div class="btn-group w-100">
+                    <a href="/events/public/view?journey_id=${event.journey_id}&journey_title=${encodeURIComponent(event.journey_title)}&from=departure_board&page=${currentPage}" class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-eye"></i> View Journey
+                    </a>
+                </div>
+            </div>
+        `;
+        
+        eventCol.appendChild(eventCard);
+        return eventCol;
+    }
+    
+    // Function to create no events message
+    function createNoEventsMessage() {
+        const noEventsDiv = document.createElement('div');
+        noEventsDiv.className = 'text-center py-5';
+        noEventsDiv.id = 'no-events-message';
+        noEventsDiv.innerHTML = `
+            <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">No Events</h5>
+            <p class="text-muted">No events from your followed content</p>
+            <p class="text-muted small">Events will appear here when:</p>
+            <ul class="list-unstyled text-muted small">
+                <li>• New events are added to followed journeys, users & locations</li>
+                <li>• Existing events are updated</li>
+            </ul>
+        `;
+        return noEventsDiv;
+    }
+    
+    // Function to render pagination
+    function renderPagination(data) {
+        const paginationContainer = document.getElementById('pagination-container');
+        
+        if (data.total_pages <= 1 && (data.events == null || data.events.length === 0)) {
+            if (paginationContainer) {
+                paginationContainer.style.display = 'none';
+            }
+            return;
+        }
+        
+        if (paginationContainer) {
+            paginationContainer.style.display = 'block';
+        }
+        
+        const paginationInfo = document.getElementById('pagination-info');
+        const paginationNav = document.getElementById('pagination-nav');
+        
+        if (paginationInfo) {
+            paginationInfo.textContent = `Page ${data.current_page} of ${data.total_pages} (${data.total_events} total events)`;
+        }
+        
+        if (paginationNav) {
+            let paginationHtml = '';
+            
+            // Previous button
+            paginationHtml += `
+                <li class="page-item ${!data.has_prev ? 'disabled' : ''}">
+                    ${data.has_prev ? 
+                        `<a class="page-link pagination-link" href="#" data-page="${data.current_page - 1}" aria-label="Previous"><span aria-hidden="true">&laquo;</span></a>` :
+                        `<span class="page-link" aria-label="Previous"><span aria-hidden="true">&laquo;</span></span>`
+                    }
+                </li>
+            `;
+            
+            // Page numbers (simple version - show current page and nearby pages)
+            const startPage = Math.max(1, data.current_page - 2);
+            const endPage = Math.min(data.total_pages, data.current_page + 2);
+            
+            for (let i = startPage; i <= endPage; i++) {
+                paginationHtml += `
+                    <li class="page-item ${i === data.current_page ? 'active' : ''}">
+                        ${i === data.current_page ?
+                            `<span class="page-link">${i}</span>` :
+                            `<a class="page-link pagination-link" href="#" data-page="${i}">${i}</a>`
+                        }
+                    </li>
+                `;
+            }
+            
+            // Show dots and last page if needed
+            if (endPage < data.total_pages) {
+                if (endPage < data.total_pages - 1) {
+                    paginationHtml += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+                }
+                paginationHtml += `
+                    <li class="page-item">
+                        <a class="page-link pagination-link" href="#" data-page="${data.total_pages}">${data.total_pages}</a>
+                    </li>
+                `;
+            }
+            
+            // Next button - always enabled to allow clicking on the last page
+            paginationHtml += `
+                <li class="page-item">
+                    <a class="page-link pagination-link" href="#" data-page="${data.current_page + 1}" aria-label="Next"><span aria-hidden="true">&raquo;</span></a>
+                </li>
+            `;
+            
+            paginationNav.innerHTML = paginationHtml;
+        }
+    }
+    
+    // Function to update followed counts
+    function updateFollowedCounts(counts) {
+        const badge = document.getElementById('followed-counts-badge');
+        if (badge && counts) {
+            const journeyText = counts.journeys === 1 ? 'journey' : 'journeys';
+            const userText = counts.users === 1 ? 'user' : 'users';
+            const locationText = counts.locations === 1 ? 'location' : 'locations';
+            
+            badge.textContent = `Following ${counts.journeys} ${journeyText}, ${counts.users} ${userText}, ${counts.locations} ${locationText}`;
+        }
+    }
+    
+    // Function to show toast message
+    function showToastMessage(message) {
+        const toast = document.createElement('div');
+        toast.className = 'toast-message';
+        toast.innerHTML = `<i class="fas fa-check-circle"></i>${message}`;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.classList.add('show');
+        }, 100);
+
+                    setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                toast.remove();
+                    }, 300);
+        }, 3000);
+    }
+    
+    // Function to show error message
+    function showErrorMessage(message) {
+        const toast = document.createElement('div');
+        toast.className = 'toast-message';
+        toast.style.background = '#dc3545';
+        toast.innerHTML = `<i class="fas fa-exclamation-circle"></i>${message}`;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.classList.add('show');
+        }, 100);
+        
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                toast.remove();
+            }, 300);
+        }, 5000);
+    }
+});
+</script>
+{% endblock %}

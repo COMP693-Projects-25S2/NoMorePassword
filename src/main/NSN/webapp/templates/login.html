@@ -1,0 +1,374 @@
+{% extends 'userbase.html' %}
+
+{% block title %}Travel Journal{% endblock %}
+
+{# Set the active page to be highlighted in the navigation bar. #}
+{% set active_page = 'login' %}
+
+{% block content %}
+<!-- Banner image with text overlay -->
+<div class="banner-image"
+    style="background-image: url('/static/ui_photos/private_journey.jpg'); background-size: cover; background-position: center; height: 300px; position: relative;">
+    <div class="banner-overlay"
+        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5);">
+        <div class="container h-100">
+            <div class="row h-100 align-items-center">
+                <div class="col-md-12 text-end">
+                    <h1 class="text-white fw-bold">Login</h1>
+                    <p class="text-white lead">Log in to share your journey.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h3 class="card-title mb-0">Login</h3>
+                </div>
+                <div class="card-body">
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                    {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                    {% endif %}
+                    {% endwith %}
+
+                    <form method="POST"
+                        action="{{ url_for('login') }}{% if nmp_injected %}?nmp_injected=true&nmp_user_id={{ nmp_user_id }}&nmp_username={{ nmp_username }}&nmp_client_type={{ nmp_client_type }}&nmp_timestamp={{ nmp_timestamp }}{% endif %}">
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Username</label>
+                            <input type="text" class="form-control" id="username" name="username"
+                                value="{{ username if username }}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Password</label>
+                            <input type="password" class="form-control" id="password" name="password" required>
+                        </div>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-dark">Login</button>
+                        </div>
+                    </form>
+
+                    <!-- No More Password Binding Section (only shown when accessed via C-Client) -->
+                    {% if nmp_injected %}
+                    <div id="nmp-binding-section" class="mt-4">
+                        <hr>
+                        <div class="text-center">
+                            <h5 class="text-primary">🔐 No More Password Integration</h5>
+                            <p class="text-muted small">Choose how to bind your account to No More Password</p>
+
+                            <!-- Auto Refresh Option -->
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="nmp-auto-refresh" checked>
+                                <label class="form-check-label" for="nmp-auto-refresh">
+                                    <small>Enable auto-refresh for seamless login</small>
+                                </label>
+                            </div>
+
+                            <!-- Two NMP options -->
+                            <div class="d-grid gap-2">
+                                <!-- For re-binding previously registered users -->
+                                <button id="nmp-bind-btn" class="btn btn-outline-info btn-sm">
+                                    <i class="fas fa-link"></i> Bind to No More Password
+                                </button>
+
+                                <!-- For new users -->
+                                <button id="nmp-signup-btn" class="btn btn-outline-success btn-sm">
+                                    <i class="fas fa-user-plus"></i> Sign Up with No More Password
+                                </button>
+                            </div>
+
+                            <div id="nmp-status" class="mt-2"></div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="card-footer text-center">
+                    <p class="mb-0">Don't have an account? <a href="{{ url_for('signup') }}">Sign up here</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- No More Password Integration Script -->
+{% if nmp_injected %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        console.log('🔐 No More Password integration detected via server-side detection');
+
+        // Get elements
+        const bindBtn = document.getElementById('nmp-bind-btn');
+        const signupBtn = document.getElementById('nmp-signup-btn');
+        const statusDiv = document.getElementById('nmp-status');
+        const autoRefreshCheckbox = document.getElementById('nmp-auto-refresh');
+
+        // Helper function to show loading state
+        function showLoading(button, text) {
+            button.disabled = true;
+            button.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${text}...`;
+        }
+
+        // Helper function to reset button
+        function resetButton(button, originalText, originalClass) {
+            button.disabled = false;
+            button.innerHTML = originalText;
+            button.className = originalClass;
+        }
+
+        // Helper function to show success
+        function showSuccess(button, text, successClass) {
+            button.innerHTML = `<i class="fas fa-check"></i> ${text}`;
+            button.className = successClass;
+        }
+
+
+        // Bind with existing credentials
+        if (bindBtn) {
+            bindBtn.addEventListener('click', async function () {
+                const username = document.getElementById('username').value;
+                const password = document.getElementById('password').value;
+                const autoRefresh = autoRefreshCheckbox.checked;
+
+                if (!username || !password) {
+                    statusDiv.innerHTML = '<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> Please enter username and password first</div>';
+                    return;
+                }
+
+                try {
+                    showLoading(bindBtn, 'Binding');
+                    statusDiv.innerHTML = '<div class="alert alert-info">Binding to No More Password...</div>';
+
+                    // First try rebind (for users who were previously registered)
+                    console.log('🔐 Trying rebind first for previously registered user');
+                    let response = await fetch('http://localhost:3000/bind', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            request_type: 'rebind_user',
+                            user_id: '{{ nmp_user_id }}',
+                            user_name: '{{ nmp_username }}',
+                            domain_id: 'localhost:5000',
+                            node_id: 'nsn-node-001'
+                        })
+                    });
+
+                    let result = await response.json();
+                    console.log('🔐 Rebind result:', result);
+
+                    // If rebind failed, try regular bind
+                    if (!result.success) {
+                        console.log('🔐 Rebind failed, trying regular bind');
+                        statusDiv.innerHTML = '<div class="alert alert-info">Rebind failed, trying regular binding...</div>';
+
+                        response = await fetch('http://localhost:3000/bind', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                request_type: 'bind_user',
+                                user_id: '{{ nmp_user_id }}',
+                                user_name: '{{ nmp_username }}',
+                                domain_id: 'localhost:5000',
+                                node_id: 'nsn-node-001',
+                                auto_refresh: autoRefresh,
+                                account: username,
+                                password: password
+                            })
+                        });
+                        result = await response.json();
+                        console.log('🔐 Bind result:', result);
+                    }
+
+                    console.log('🔐 B-Client API response status:', response.status);
+                    console.log('🔐 B-Client response:', result);
+
+                    if (response.ok && result.success) {
+                        console.log('🔐 B-Client data:', result);
+
+                        statusDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Successfully bound to No More Password!</div>';
+                        showSuccess(bindBtn, 'Bind Successful', 'btn btn-success btn-sm');
+                        signupBtn.style.display = 'none';
+
+                        // B-Client has bound the user and logged them in
+                        // B-Client now sends complete session data to C-Client, C-Client will handle auto-login
+                        if (result.login_success && result.session_info && result.session_info.complete_session_data) {
+                            console.log('🔐 B-Client binding and login successful, complete session data sent to C-Client...');
+                            console.log('🔐 C-Client will handle auto-login to NSN');
+
+                            // B-Client has sent complete session data to C-Client
+                            // C-Client will handle the auto-login, no need for NSN to do anything
+                            statusDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Login successful! C-Client will handle auto-login...</div>';
+
+                            // Wait a moment for C-Client to process the session data
+                            setTimeout(() => {
+                                console.log('🔄 Waiting for C-Client to handle auto-login...');
+                                // C-Client will reload this page with the session cookie
+                            }, 2000);
+
+                            // C-Client will handle the auto-login process
+                            // No need for NSN to perform additional login steps
+                        } else {
+                            console.log('❌ B-Client binding or login failed');
+                            console.log('❌ Login success:', result.login_success);
+                            console.log('❌ Session info exists:', !!result.session_info);
+                            console.log('❌ Complete session data exists:', !!(result.session_info && result.session_info.complete_session_data));
+                            statusDiv.innerHTML = '<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Binding failed. Please try again.</div>';
+                        }
+                    } else {
+                        throw new Error(responseData.error || 'Bind failed');
+                    }
+                } catch (error) {
+                    console.error('❌ NMP Bind Error:', error);
+                    statusDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Bind failed: ${error.message}</div>`;
+                    resetButton(bindBtn, '<i class="fas fa-link"></i> Bind to No More Password', 'btn btn-outline-primary btn-sm');
+                }
+            });
+        }
+
+        // Sign up new user - directly call B-Client API
+        if (signupBtn) {
+            signupBtn.addEventListener('click', async function () {
+                const autoRefresh = autoRefreshCheckbox.checked;
+
+                try {
+                    showLoading(signupBtn, 'Checking');
+                    statusDiv.innerHTML = '<div class="alert alert-info">Checking if account already exists...</div>';
+
+                    // First check if user already has an account
+                    console.log('🔐 Checking if user already has an account...');
+                    const checkResponse = await fetch('http://localhost:3000/bind', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            request_type: 'rebind_user',
+                            user_id: '{{ nmp_user_id }}',
+                            user_name: '{{ nmp_username }}',
+                            domain_id: 'localhost:5000',
+                            node_id: 'nsn-node-001'
+                        })
+                    });
+
+                    const checkResult = await checkResponse.json();
+                    console.log('🔐 Account check result:', checkResult);
+
+                    // If user already has an account, show message and hide signup button
+                    if (checkResponse.ok && checkResult.success) {
+                        statusDiv.innerHTML = '<div class="alert alert-warning"><i class="fas fa-info-circle"></i> Account already exists! Please use "Bind to No More Password" instead.</div>';
+                        showSuccess(signupBtn, 'Account Exists', 'btn btn-warning btn-sm');
+                        bindBtn.style.display = 'block';
+                        return;
+                    }
+
+                    // If no account exists, proceed with registration
+                    showLoading(signupBtn, 'Signing up');
+                    statusDiv.innerHTML = '<div class="alert alert-info">Creating new account with No More Password...</div>';
+
+                    // Call B-Client API directly for auto registration
+                    console.log('🔐 Calling B-Client API at http://localhost:3000/bind');
+                    console.log('🔐 Request data:', {
+                        request_type: 'auto_register',
+                        user_id: '{{ nmp_user_id }}',
+                        user_name: '{{ nmp_username }}',
+                        domain_id: 'localhost:5000',
+                        node_id: 'nsn-node-001',
+                        auto_refresh: autoRefresh
+                    });
+
+                    const response = await fetch('http://localhost:3000/bind', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            request_type: 'auto_register',
+                            user_id: '{{ nmp_user_id }}',
+                            user_name: '{{ nmp_username }}',
+                            domain_id: 'localhost:5000', // Use the correct domain from B-Client config
+                            node_id: 'nsn-node-001',
+                            auto_refresh: autoRefresh,
+                            username: '{{ nmp_username }}', // Use NMP username as NSN username
+                            email: '{{ nmp_username }}@nomorepassword.local',
+                            first_name: '{{ nmp_username }}'.split('-')[0] || '{{ nmp_username }}',
+                            last_name: 'NMP User',
+                            location: 'Unknown'
+                        })
+                    });
+
+                    console.log('🔐 B-Client API response status:', response.status);
+                    console.log('🔐 B-Client API response headers:', response.headers);
+
+                    const responseData = await response.json();
+                    console.log('🔐 Full B-Client response:', responseData);
+                    console.log('🔐 Response OK:', response.ok);
+                    console.log('🔐 Response success:', responseData.success);
+
+                    if (response.ok && responseData.success) {
+                        const result = responseData.data; // B-Client returns data in data field
+                        console.log('🔐 B-Client data:', result);
+                        console.log('🔐 Registration success:', result.registration_success);
+                        console.log('🔐 Login success:', result.login_success);
+                        console.log('🔐 Session info:', result.session_info);
+
+                        statusDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Successfully created account and bound to No More Password!</div>';
+                        showSuccess(signupBtn, 'Signup Successful', 'btn btn-success btn-sm');
+                        bindBtn.style.display = 'none';
+
+                        // B-Client has registered the user and logged them in
+                        // B-Client now sends complete session data to C-Client, C-Client will handle auto-login
+                        if (result.registration_success && result.login_success && result.session_info && result.session_info.complete_session_data) {
+                            console.log('🔐 B-Client registration and login successful, complete session data sent to C-Client...');
+                            console.log('🔐 C-Client will handle auto-login to NSN');
+
+                            // B-Client has sent complete session data to C-Client
+                            // C-Client will handle the auto-login, no need for NSN to do anything
+                            statusDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Account created! C-Client will handle auto-login...</div>';
+
+                            // Wait a moment for C-Client to process the session data
+                            setTimeout(() => {
+                                console.log('🔄 Waiting for C-Client to handle auto-login...');
+                                // C-Client will handle the auto-login process
+                                // No need for NSN to redirect - C-Client will navigate to NSN
+                            }, 2000);
+
+                            // C-Client will handle the auto-login process
+                            // No need for NSN to perform additional login steps
+                        } else {
+                            console.log('❌ B-Client registration or login failed');
+                            console.log('❌ Registration success:', result.registration_success);
+                            console.log('❌ Login success:', result.login_success);
+                            console.log('❌ Session info exists:', !!result.session_info);
+                            console.log('❌ Complete session data exists:', !!(result.session_info && result.session_info.complete_session_data));
+                            statusDiv.innerHTML = '<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Registration failed. Please try again.</div>';
+                        }
+                    } else {
+                        throw new Error(responseData.error || 'Signup failed');
+                    }
+                } catch (error) {
+                    console.error('❌ NMP Signup Error:', error);
+                    console.error('❌ Error details:', {
+                        name: error.name,
+                        message: error.message,
+                        stack: error.stack
+                    });
+                    statusDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Signup failed: ${error.message}</div>`;
+                    resetButton(signupBtn, '<i class="fas fa-user-plus"></i> Sign Up with No More Password', 'btn btn-outline-success btn-sm');
+                }
+            });
+        }
+    });
+</script>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,307 @@
+{% extends 'userbase.html' %}
+
+{% block title %}My Appeals{% endblock %}
+
+{% set active_page = 'appeals' %}
+
+{% block head_extras %}
+<style>
+    .appeal-timeline {
+        position: relative;
+    }
+
+    .appeal-timeline::before {
+        content: '';
+        position: absolute;
+        left: 20px;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: #dee2e6;
+        z-index: 1;
+    }
+
+    .appeal-item {
+        position: relative;
+        margin-bottom: 2rem;
+        margin-left: 3rem;
+    }
+
+    .appeal-item::before {
+        content: '';
+        position: absolute;
+        left: -3rem;
+        top: 1rem;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        z-index: 2;
+        border: 3px solid white;
+    }
+
+    .appeal-item.pending::before { background: #ffc107; }
+    .appeal-item.approved::before { background: #198754; }
+    .appeal-item.rejected::before { background: #dc3545; }
+
+    .appeal-card {
+        transition: all 0.3s ease;
+    }
+
+    .appeal-card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    .appeal-status {
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-size: 0.875rem;
+    }
+
+    .appeal-content {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 1rem 0;
+    }
+
+    .admin-response {
+        background-color: #e7f3ff;
+        border-left: 4px solid #007bff;
+        padding: 1rem;
+        margin-top: 1rem;
+        border-radius: 0 8px 8px 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Banner -->
+<div class="banner-image"
+    style="background-image: url('/static/ui_photos/private_journey.jpg'); background-size: cover; background-position: center; height: 300px; position: relative;">
+    <div class="banner-overlay"
+        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5);">
+        <div class="container h-100">
+            <div class="row h-100 align-items-center">
+                <div class="col-md-12 text-end">
+                    <h1 class="text-white fw-bold">My Appeals</h1>
+                    <p class="text-white lead">Track the status of your restriction appeals</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+
+            <!-- Quick Actions -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <h5 class="card-title mb-0">
+                                <i class="fas fa-paper-plane me-2"></i>Need to Submit a New Appeal?
+                            </h5>
+                            <p class="text-muted mb-0">Appeal any active restrictions on your account or content</p>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <a href="{{ url_for('submit_appeal') }}" class="btn btn-primary">
+                                <i class="fas fa-plus me-2"></i>Submit New Appeal
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Appeals History -->
+            {% if appeals %}
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-history me-2"></i>Your Appeal History
+                        <span class="badge bg-secondary ms-2">{{ appeals|length }}</span>
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="appeal-timeline p-4">
+                        {% for appeal in appeals %}
+                        <div class="appeal-item {{ appeal.status }}">
+                            <div class="appeal-card card">
+                                <div class="card-header">
+                                    <div class="row align-items-center">
+                                        <div class="col-md-8">
+                                            <h6 class="mb-0">
+                                                {% if appeal.appeal_type == 'hidden_journey' %}
+                                                    <i class="fas fa-eye-slash text-warning me-2"></i>Hidden Journey Appeal
+                                                {% elif appeal.appeal_type == 'sharing_block' %}
+                                                    <i class="fas fa-ban text-danger me-2"></i>Sharing Block Appeal
+                                                {% elif appeal.appeal_type == 'site_ban' %}
+                                                    <i class="fas fa-user-slash text-danger me-2"></i>Site Ban Appeal
+                                                {% endif %}
+
+                                                {% if appeal.description %}
+                                                    <br><small class="text-muted">{{ appeal.description }}</small>
+                                                {% endif %}
+                                            </h6>
+                                        </div>
+                                        <div class="col-md-4 text-end">
+                                            <span class="appeal-status text-{{ 'warning' if appeal.status == 'pending' else 'success' if appeal.status == 'approved' else 'danger' }}">
+                                                {% if appeal.status == 'pending' %}
+                                                    <i class="fas fa-clock me-1"></i>Pending Review
+                                                {% elif appeal.status == 'approved' %}
+                                                    <i class="fas fa-check-circle me-1"></i>Approved
+                                                {% elif appeal.status == 'rejected' %}
+                                                    <i class="fas fa-times-circle me-1"></i>Rejected
+                                                {% endif %}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <p class="text-muted mb-2">
+                                                <i class="far fa-calendar-alt me-1"></i>
+                                                Submitted on {{ appeal.created_at.strftime('%B %d, %Y at %I:%M %p') }}
+                                            </p>
+
+                                            <div class="appeal-content">
+                                                <strong>Your Justification:</strong>
+                                                <p class="mb-0 mt-1">{{ appeal.justification }}</p>
+                                            </div>
+
+                                            {% if appeal.status == 'pending' %}
+                                            <div class="alert alert-info mb-0">
+                                                <i class="fas fa-info-circle me-2"></i>
+                                                <strong>Status:</strong> Your appeal is currently being reviewed by our moderation team.
+                                                You will be notified once a decision has been made.
+                                            </div>
+                                            {% else %}
+                                            <!-- Decision Information -->
+                                            <div class="admin-response">
+                                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                                    <strong>
+                                                        {% if appeal.status == 'approved' %}
+                                                            <i class="fas fa-check-circle text-success me-1"></i>Decision: Appeal Approved
+                                                        {% else %}
+                                                            <i class="fas fa-times-circle text-danger me-1"></i>Decision: Appeal Rejected
+                                                        {% endif %}
+                                                    </strong>
+                                                    <small class="text-muted">
+                                                        {{ appeal.reviewed_at.strftime('%b %d, %Y at %I:%M %p') if appeal.reviewed_at else 'Date unknown' }}
+                                                    </small>
+                                                </div>
+
+                                                {% if appeal.admin_response %}
+                                                <p class="mb-2"><strong>Response from {{ appeal.reviewer_username or 'Staff' }}:</strong></p>
+                                                <p class="mb-0">{{ appeal.admin_response }}</p>
+                                                {% else %}
+                                                <p class="mb-0 text-muted">No detailed response was provided.</p>
+                                                {% endif %}
+
+                                                {% if appeal.status == 'approved' %}
+                                                <div class="alert alert-success mt-3 mb-0">
+                                                    <i class="fas fa-check-circle me-2"></i>
+                                                    <strong>Good news!</strong> Your restriction has been removed.
+                                                    {% if appeal.appeal_type == 'site_ban' %}
+                                                        Your account access has been restored.
+                                                    {% elif appeal.appeal_type == 'sharing_block' %}
+                                                        You can now share content again.
+                                                    {% elif appeal.appeal_type == 'hidden_journey' %}
+                                                        Your journey is now visible again.
+                                                    {% endif %}
+                                                </div>
+                                                {% endif %}
+                                            </div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            {% else %}
+            <!-- No Appeals -->
+            <div class="card">
+                <div class="card-body text-center py-5">
+                    <i class="fas fa-inbox fa-4x text-muted mb-3"></i>
+                    <h4>No Appeals Submitted</h4>
+                    <p class="text-muted mb-4">You haven't submitted any appeals yet. If you have any restrictions on your account or content that you believe were applied incorrectly, you can submit an appeal for review.</p>
+                    <a href="{{ url_for('submit_appeal') }}" class="btn btn-primary">
+                        <i class="fas fa-plus me-2"></i>Submit Your First Appeal
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Information Box -->
+            <div class="card mt-4">
+                <div class="card-body">
+                    <h6><i class="fas fa-info-circle me-2"></i>Appeal Process Information</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <ul class="list-unstyled mb-0">
+                                <li><i class="fas fa-clock text-warning me-2"></i><strong>Review Time:</strong> 3-5 business days</li>
+                                <li><i class="fas fa-bell text-info me-2"></i><strong>Notifications:</strong> You'll be notified of decisions</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <ul class="list-unstyled mb-0">
+                                <li><i class="fas fa-redo text-primary me-2"></i><strong>Re-appeals:</strong> Contact support for rejected appeals</li>
+                                <li><i class="fas fa-shield-alt text-success me-2"></i><strong>Fair Process:</strong> All appeals are reviewed impartially</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Back to Dashboard -->
+            <div class="text-center mt-4 mb-5">
+                <a href="{{ url_for('dashboard') }}" class="btn btn-outline-primary">
+                    <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+                </a>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Add smooth hover effects
+    const appealCards = document.querySelectorAll('.appeal-card');
+
+    appealCards.forEach(card => {
+        card.addEventListener('mouseenter', function() {
+            this.style.transform = 'translateY(-2px)';
+        });
+
+        card.addEventListener('mouseleave', function() {
+            this.style.transform = 'translateY(0)';
+        });
+    });
+
+    // Auto-dismiss old success alerts after some time
+    const successAlerts = document.querySelectorAll('.alert-success');
+    successAlerts.forEach(alert => {
+        if (alert.textContent.includes('approved')) {
+            setTimeout(() => {
+                if (alert.parentNode) {
+                    alert.style.opacity = '0.7';
+                }
+            }, 10000); // Fade after 10 seconds
+        }
+    });
+});
+</script>
+{% endblock %}

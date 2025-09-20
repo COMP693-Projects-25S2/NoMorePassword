@@ -1,0 +1,76 @@
+{% extends 'userbase.html' %}
+
+{% block title %}TravelTales - Record Your Journey{% endblock %}
+
+{# Set the active page to be highlighted in the navigation bar. #}
+{% set active_page = 'home' %}
+
+{% block content %}
+<!-- Hero Section with Banner Image -->
+<div class="banner-image"
+    style="background-image: url('/static/ui_photos/homepage.jpg'); background-size: cover; background-position: center; height: 500px; position: relative;">
+    <div class="banner-overlay"
+        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5);">
+        <div class="container h-100">
+            <div class="row h-100 align-items-center">
+                <div class="col-md-12 text-center">
+                    <h1 class="display-4 fw-bold text-white">Record Your Travel Adventures</h1>
+                    <p class="lead text-white">Create beautiful travel journals, share experiences, and connect with
+                        fellow travelers</p>
+                    <div class="mt-4">
+                        <a href="{{ url_for('guest') }}" class="btn btn-dark btn-lg me-3">Get Started As Guests</a>
+                        {% if nmp_injected %}
+                        <a href="{{ url_for('login') }}?nmp_injected={{ nmp_injected }}&nmp_user_id={{ nmp_user_id }}&nmp_username={{ nmp_username }}&nmp_client_type={{ nmp_client_type }}&nmp_timestamp={{ nmp_timestamp }}"
+                            class="btn btn-outline-light btn-lg">
+                            <i class="fas fa-sign-in-alt"></i> Login
+                        </a>
+                        {% else %}
+                        <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">Login</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Features Section -->
+<section class="py-5">
+    <div class="container">
+        <h2 class="text-center mb-5">Why Choose TravelTales?</h2>
+        <div class="row g-4">
+            <div class="col-md-4 text-center">
+                <div class="text-dark mb-3">
+                    <i class="fas fa-book-open fs-1"></i>
+                </div>
+                <h3>Create Journals</h3>
+                <p>Document your adventures with rich text, photos, and location data. Organize your travels by journey
+                    and events.</p>
+            </div>
+            <div class="col-md-4 text-center">
+                <div class="text-dark mb-3">
+                    <i class="fas fa-share-alt fs-1"></i>
+                </div>
+                <h3>Share Experiences</h3>
+                <p>Share your journeys with friends or the public. Keep private journals for personal memories.</p>
+            </div>
+            <div class="col-md-4 text-center">
+                <div class="text-dark mb-3">
+                    <i class="fas fa-map-marked-alt fs-1"></i>
+                </div>
+                <h3>Track Locations</h3>
+                <p>Map your journey across countries and cities. Find inspiration for your next adventure.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Call to Action Section -->
+<section class="py-5 bg-light">
+    <div class="container text-center">
+        <h2>Ready to Start Your Travel Journal?</h2>
+        <p class="lead mb-4">Join thousands of travelers documenting their adventures</p>
+        <a href="{{ url_for('signup') }}" class="btn btn-dark btn-lg">Sign Up Now</a>
+    </div>
+</section>
+{% endblock %}

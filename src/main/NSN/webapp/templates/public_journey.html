@@ -1,0 +1,853 @@
+{% extends 'userbase.html' %}
+
+{% block title %}Public Journeys{% endblock %}
+
+{# Set the active page to be highlighted in the navigation bar. #}
+{% set active_page = 'public_journey' %}
+
+{% block content %}
+
+<!-- Banner image with text overlay -->
+<div class="banner-image"
+    style="background-image: url('/static/ui_photos/private_journey.jpg'); background-size: cover; background-position: center; height: 300px; position: relative;">
+    <div class="banner-overlay"
+        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5);">
+        <div class="container h-100">
+            <div class="row h-100 align-items-center">
+                <div class="col-md-12 text-end">
+                    <h1 class="text-white fw-bold">Public Journeys</h1>
+                    <p class="text-white lead">Discover travel experiences shared by others</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <!-- Search Form with improved styling -->
+            <div class="card mb-4 border-0 shadow-sm">
+                <div class="card-body bg-light">
+                    <form method="POST" action="{{ url_for('public_journey') }}">
+                        <div class="input-group">
+                            <span class="input-group-text bg-white border-end-0">
+                                <i class="fas fa-search text-muted"></i>
+                            </span>
+                            <input type="text" class="form-control border-start-0" name="keyword"
+                                placeholder="Search journeys..." value="{{ keyword }}">
+                            <select name="filter" id="filter" class="form-select" style="max-width: 20%;">
+                                <option value="content" {% if filter=='location' %}{% else %}selected{% endif %}>by
+                                    content</option>
+                                <option value="location" {% if filter=='location' %}selected{% endif %}>by location
+                                </option>
+                            </select>
+                            <button class="btn btn-dark ms-2" type="submit">Search</button>
+                            {% if keyword %}
+                            <a href="{{ url_for('public_journey') }}" class="btn btn-outline-secondary ms-2">Reset</a>
+                            {% endif %}
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Announcements -->
+            {% if announcement_list %}
+            <div class="card mb-4 border-0 shadow-sm">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">Announcements</h5>
+                </div>
+                <div class="card-body">
+                    {% for announcement in announcement_list %}
+                    <div class="mb-3 {% if not loop.last %}border-bottom pb-3{% endif %}">
+                        <h5>{{ announcement.title }}</h5>
+                        <p>{{ announcement.content }}</p>
+                        <small class="text-muted">
+                            <i class="far fa-calendar-alt me-1"></i>
+                            Valid from {{ announcement.start_date.strftime('%d %b %Y') }} to {{
+                            announcement.end_date.strftime('%d %b %Y') }}
+                        </small>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            <!-- Edit Logging Information for Admins/Editors -->
+            {% if session.role in ['admin', 'editor','support_tech','moderator'] %}
+            <div class="alert alert-info mb-4">
+                <h6><i class="fas fa-info-circle me-2"></i>Edit Logging Information</h6>
+                <ul class="mb-0">
+                    <li><strong>All edits are logged:</strong> Every change made by editors or administrators is
+                        recorded with a timestamp and reason.</li>
+                    <li><strong>Edit reasons are required:</strong> A minimum 10-character explanation must be provided
+                        for each edit.</li>
+                    <li><strong>Journey owners are notified:</strong> Content owners will receive notifications when
+                        their content is edited.</li>
+                    <li><strong>Edit history is available:</strong> Journey owners, editors, and administrators can view
+                        the complete edit history.</li>
+
+                </ul>
+            </div>
+            {% endif %}
+
+            <!-- Journey List -->
+            {% if journey_list %}
+            <div class="row mb-5">
+                {% for journey in journey_list %}
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <div class="card h-100 border-0 shadow-sm hover-card">
+                        <div
+                            class="card-header bg-white d-flex justify-content-between align-items-center border-bottom-0 pb-0">
+                            <div>
+                                <span
+                                    class="badge bg-{{ 'dark' if journey.display == 'published' else 'secondary' }} rounded-pill">
+                                    {{ journey.display }}
+                                </span>
+                                {% if journey.status == 'hidden' %}
+                                <span class="badge bg-danger rounded-pill">Hidden</span>
+                                {% endif %}
+                                {% if journey.no_edits_flag %}
+                                <span class="badge bg-warning rounded-pill"
+                                    title="This journey is protected from editing">
+                                    <i class="fas fa-shield-alt"></i> Good
+                                </span>
+                                {% endif %}
+                                <small class="text-muted ms-2">by {{ journey.username }}</small>
+                            </div>
+                            <div class="dropdown">
+                                <a href="#" class="text-dark text-decoration-none" type="button"
+                                    data-bs-toggle="dropdown">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </a>
+                                <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                                    <!-- 报告功能 - 对所有登录用户可见 -->
+                                    
+                                    <li>
+                                        <a class="dropdown-item text-warning {% if session.user_id and session.user_id != journey.user_id %}{% else %}disabled{% endif %}" href="#" data-bs-toggle="modal"
+                                            data-bs-target="#reportJourney{{ journey.journey_id }}"
+                                            >
+                                            <i class="fas fa-flag me-2"></i>Report Journey
+                                        </a>
+                                    </li>
+                             
+                                    <!-- 管理员/编辑者功能 -->
+                                    {% if session.role in ['admin', 'editor','support_tech','moderator'] %}
+                                    <li>
+                                        <hr class="dropdown-divider">
+                                    </li>
+                                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal"
+                                            data-bs-target="#editJourney{{ journey.journey_id }}">
+                                            <i class="fas fa-edit me-2 text-dark"></i>Edit
+                                        </a></li>
+                                    {% if journey.cover_image %}
+                                    <li>
+                                        <a class="dropdown-item" href="#" data-bs-toggle="modal"
+                                            data-bs-target="#removeJourneyCover{{ journey.journey_id }}">
+                                            <i class="fas fa-edit me-2 text-dark"></i>Remove Cover Image
+                                        </a>
+                                    </li>
+                                    {% endif %}
+                                    <li>
+                                        <hr class="dropdown-divider">
+                                    </li>
+                                    <li><a class="dropdown-item text-danger" href="#" data-bs-toggle="modal"
+                                            data-bs-target="#deleteJourney{{ journey.journey_id }}">
+                                            <i class="fas fa-trash-alt me-2"></i>Delete
+                                        </a></li>
+                                    {% endif %}
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="card-body">
+
+                            {% if journey.cover_image %}
+                            <img src="{{ url_for('static', filename='journeys/' + journey.cover_image) }}"
+                                alt="{{ journey.title }}" class="img-fluid mb-3">
+                            <br>
+                            {% endif %}
+
+                            <h5 class="card-title">
+                                <a href="{{ url_for('public_events', journey_id=journey.journey_id, journey_title=journey.title, keyword=keyword, filter=filter) }}"
+                                    class="text-decoration-none text-dark">
+                                    {{ journey.title }}
+                                </a>
+                            </h5>
+                            <p class="card-text text-truncate">{{ journey.description }}</p>
+                            <p class="card-text">
+                                <small class="text-muted">
+                                    <i class="far fa-calendar-alt me-1"></i>
+                                    Started: {{ journey.start_date.strftime('%d %b %Y') }}
+                                </small>
+                                {% if journey.last_update %}
+                                <br>
+                                <small class="text-muted">
+                                    <i class="far fa-calendar-alt me-1"></i>
+                                    Last updated: {{ journey.last_update.strftime('%d %b %Y') }}
+                                </small>
+                                {% endif %}
+                            </p>
+                            <!-- 新增：编辑历史和保护按钮 -->
+                            {% if session.role in ['admin', 'editor','support_tech','moderator'] or session.user_id == journey.user_id %}
+                            <div class="mt-2">
+                                <!-- 查看编辑历史按钮 -->
+                                <a href="{{ url_for('view_journey_edit_history', journey_id=journey.journey_id) }}"
+                                    class="btn btn-sm btn-outline-info me-2">
+                                    <i class="fas fa-history me-1"></i>Edit History
+                                </a>
+
+                                <!--                                &lt;!&ndash; 禁止编辑标记按钮（如果是旅程所有者或管理员） &ndash;&gt;-->
+                                <!--                                {% if session.user_id == journey.user_id or session.role == 'admin' %}-->
+                                <!--                                <button class="btn btn-sm {% if journey.no_edits_flag %}btn-warning{% else %}btn-outline-warning{% endif %} toggle-no-edits-btn"-->
+                                <!--                                        data-journey-id="{{ journey.journey_id }}"-->
+                                <!--                                        title="{% if journey.no_edits_flag %}Disable edit protection{% else %}Enable edit protection{% endif %}">-->
+                                <!--                                    <i class="fas fa-shield-alt me-1"></i>-->
+                                <!--                                    {% if journey.no_edits_flag %}Protected{% else %}Protect{% endif %}-->
+                                <!--                                </button>-->
+                                <!--                                {% endif %}-->
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- Updated card-footer with follow functionality -->
+                        <div class="card-footer bg-white border-top-0 pt-0">
+                            <div class="btn-group w-100" role="group">
+                                <a href="{{ url_for('public_events', journey_id=journey.journey_id, journey_title=journey.title, keyword=keyword, filter=filter) }}"
+                                    class="text-dark text-decoration-none link-hover flex-grow-1 text-center d-block">
+                                    <i class="fas fa-eye me-1"></i>View Events
+                                </a>
+
+
+
+                                {% if session.loggedin %}
+                                {% if journey.user_id != session.user_id %}
+                                <!-- Only show follow button if not the journey owner -->
+                                {% set user_role = session.get('role', '') %}
+                                {% set is_premium = session.get('premium', 0) %}
+                                {% if user_role in ['admin', 'editor','support_tech','moderator'] or is_premium == 1 %}
+                                <!-- User has permission to follow -->
+                                <button type="button" class="btn btn-outline-primary btn-sm follow-btn"
+                                    data-journey-id="{{ journey.journey_id }}"
+                                    onclick="handleFollowClick(this, {{ journey.journey_id }})"
+                                    title="Follow this journey to see updates on your Departure Board">
+                                    <i class="far fa-heart"></i> Follow
+                                </button>
+                                {% else %}
+                                <!-- User needs premium to follow -->
+                                <a href="{{ url_for('list_premium') }}" class="btn btn-outline-warning btn-sm"
+                                    title="Upgrade to Premium to follow journeys">
+                                    <i class="fas fa-star"></i> Premium
+                                </a>
+                                {% endif %}
+                                {% else %}
+                                <!-- User's own journey -->
+                                <span class="btn btn-outline-secondary btn-sm disabled">
+                                    <i class="fas fa-user"></i> Your Journey
+                                </span>
+                                {% endif %}
+                                {% else %}
+                                <!-- Not logged in -->
+                                <a href="{{ url_for('login') }}" class="btn btn-outline-secondary btn-sm">
+                                    <i class="fas fa-sign-in-alt"></i> Login to Follow
+                                </a>
+                                {% endif %}
+
+                                <!-- 新增：Report Journey Modal -->
+                                {% if session.user_id and session.user_id != journey.user_id %}
+                                <div class="modal fade" id="reportJourney{{ journey.journey_id }}" tabindex="-1"
+                                    data-bs-backdrop="static">
+                                    <div class="modal-dialog modal-dialog-centered">
+                                        <div class="modal-content border-0 shadow">
+                                            <div class="modal-header bg-warning text-dark">
+                                                <h5 class="modal-title">
+                                                    <i class="fas fa-flag me-2"></i>Report Journey: "{{ journey.title
+                                                    }}"
+                                                </h5>
+                                                <button type="button" class="btn-close"
+                                                    data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <form method="POST" action="{{ url_for('report_journey') }}">
+                                                <input type="hidden" name="journey_id" value="{{ journey.journey_id }}">
+                                                <div class="modal-body">
+                                                    <div class="mb-3">
+                                                        <label for="reportReason{{ journey.journey_id }}"
+                                                            class="form-label">
+                                                            <i
+                                                                class="fas fa-exclamation-triangle me-1 text-warning"></i>Report
+                                                            Reason *
+                                                        </label>
+                                                        <select class="form-select"
+                                                            id="reportReason{{ journey.journey_id }}" name="reason"
+                                                            required>
+                                                            <option value="">Select a reason...</option>
+                                                            <option value="spam">Spam or repetitive content</option>
+                                                            <option value="inappropriate_content">Inappropriate content
+                                                            </option>
+                                                            <option value="false_information">False or misleading
+                                                                information</option>
+                                                            <option value="copyright_violation">Copyright violation
+                                                            </option>
+                                                            <option value="offensive_language">Offensive language or
+                                                                hate speech</option>
+                                                            <option value="other">Other (please specify in details)
+                                                            </option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label for="reportDetails{{ journey.journey_id }}"
+                                                            class="form-label">
+                                                            <i class="fas fa-comment me-1 text-warning"></i>Details *
+                                                        </label>
+                                                        <textarea class="form-control"
+                                                            id="reportDetails{{ journey.journey_id }}" name="details"
+                                                            rows="4"
+                                                            placeholder="Please provide specific details about why you're reporting this journey (minimum 10 characters)..."
+                                                            required minlength="10"></textarea>
+                                                        <div class="form-text">
+                                                            Please be specific about the issue you're reporting. This
+                                                            helps our moderation team review your report more
+                                                            effectively.
+                                                        </div>
+                                                        <div class="character-count text-muted small mt-1">
+                                                            Characters: <span
+                                                                id="char-count-report-{{ journey.journey_id }}">0</span>/10
+                                                            minimum
+                                                        </div>
+                                                    </div>
+                                                    <div class="alert alert-info">
+                                                        <i class="fas fa-info-circle me-2"></i>
+                                                        <small>
+                                                            <strong>Note:</strong> False reports may result in
+                                                            restrictions on your account.
+                                                            Only report content that genuinely violates our community
+                                                            guidelines.
+                                                        </small>
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-outline-secondary"
+                                                        data-bs-dismiss="modal">
+                                                        <i class="fas fa-times me-1"></i>Cancel
+                                                    </button>
+                                                    <button type="submit" class="btn btn-warning"
+                                                        id="submitReport{{ journey.journey_id }}" disabled>
+                                                        <i class="fas fa-flag me-1"></i>Submit Report
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </div>
+
+                                    </div>
+                                </div>
+                                {% endif %}
+
+                                <!-- 修改后的编辑旅程模态框 - 添加编辑原因 -->
+                                {% if session.role in ['admin', 'editor','support_tech','moderator'] %}
+                                <div class="modal fade" id="editJourney{{ journey.journey_id }}" tabindex="-1"
+                                    data-bs-backdrop="static">
+                                    <div class="modal-dialog modal-dialog-centered modal-lg">
+                                        <div class="modal-content border-0 shadow">
+                                            <div class="modal-header bg-dark text-white">
+                                                <h5 class="modal-title">
+                                                    <i class="fas fa-edit me-2"></i>Edit Journey (Admin)
+                                                </h5>
+                                                <button type="button" class="btn-close btn-close-white"
+                                                    data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <form method="POST" action="{{ url_for('admin_edit_journey') }}">
+                                                <input type="hidden" name="journey_id" value="{{ journey.journey_id }}">
+                                                <div class="modal-body">
+                                                    <div class="mb-3">
+                                                        <label for="editTitle{{ journey.journey_id }}"
+                                                            class="form-label">
+                                                            <i class="fas fa-heading me-1"></i>Title *
+                                                        </label>
+                                                        <input type="text" class="form-control"
+                                                            id="editTitle{{ journey.journey_id }}" name="title"
+                                                            value="{{ journey.title }}" maxlength="100" required>
+                                                        <div class="form-text">Maximum 100 characters</div>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label for="editDescription{{ journey.journey_id }}"
+                                                            class="form-label">
+                                                            <i class="fas fa-align-left me-1"></i>Description
+                                                        </label>
+                                                        <textarea class="form-control"
+                                                            id="editDescription{{ journey.journey_id }}"
+                                                            name="description"
+                                                            rows="4">{{ journey.description }}</textarea>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label for="editStatus{{ journey.journey_id }}"
+                                                            class="form-label">
+                                                            <i class="fas fa-eye me-1"></i>Status *
+                                                        </label>
+                                                        <select class="form-select"
+                                                            id="editStatus{{ journey.journey_id }}" name="status">
+                                                            <option value="open" {% if journey.status=='open'
+                                                                %}selected{% endif %}>Open</option>
+                                                            <option value="hidden" {% if journey.status=='hidden'
+                                                                %}selected{% endif %}>Hidden</option>
+                                                        </select>
+                                                        <div class="form-text">Hidden journeys are not visible to the
+                                                            public
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- 新增：编辑原因字段 -->
+                                                    <div class="mb-3">
+                                                        <label for="edit_reason_{{ journey.journey_id }}"
+                                                            class="form-label">
+                                                            <i class="fas fa-comment me-1 text-danger"></i>Edit Reason *
+                                                            <span class="badge bg-danger">Required</span>
+                                                        </label>
+                                                        <textarea class="form-control"
+                                                            id="edit_reason_{{ journey.journey_id }}" name="edit_reason"
+                                                            rows="3"
+                                                            placeholder="Please provide a detailed reason for this edit (minimum 10 characters)..."
+                                                            required></textarea>
+                                                        <div class="form-text text-danger">
+                                                            <i class="fas fa-info-circle me-1"></i>
+                                                            This reason will be logged and visible to the journey owner.
+                                                            Minimum
+                                                            10 characters required.
+                                                        </div>
+                                                        <div class="character-count text-muted small mt-1">
+                                                            Characters: <span
+                                                                id="char-count-{{ journey.journey_id }}">0</span>/10
+                                                            minimum
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- 警告提示 -->
+                                                    <div class="alert alert-warning">
+                                                        <i class="fas fa-exclamation-triangle me-2"></i>
+                                                        <strong>Notice:</strong> All changes will be logged and the
+                                                        journey
+                                                        owner will be notified.
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-outline-secondary"
+                                                        data-bs-dismiss="modal">
+                                                        <i class="fas fa-times me-1"></i>Cancel
+                                                    </button>
+                                                    <button type="submit" class="btn btn-dark"
+                                                        id="saveBtn{{ journey.journey_id }}" disabled>
+                                                        <i class="fas fa-save me-1"></i>Save Changes
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Remove Journey Cover Image -->
+                                <div class="modal fade" id="removeJourneyCover{{ journey.journey_id }}" tabindex="-1">
+                                    <div class="modal-dialog modal-dialog-centered">
+                                        <div class="modal-content border-0">
+                                            <div class="modal-header bg-dark text-white">
+                                                <h5 class="modal-title">Confirm Removal</h5>
+                                                <button type="button" class="btn-close btn-close-white"
+                                                    data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <div class="text-center mb-3">
+                                                    <i class="fas fa-exclamation-triangle text-dark fa-3x"></i>
+                                                </div>
+                                                <p>Are you sure you want to remove the cover image of journey
+                                                    "<strong>{{
+                                                        journey.title
+                                                        }}</strong>"?
+                                                </p>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-outline-secondary"
+                                                    data-bs-dismiss="modal">Cancel</button>
+                                                <a href="{{ url_for('admin_remove_cover_journey',user_id=journey.user_id, journey_id=journey.journey_id) }}"
+                                                    class="btn btn-dark">Remove Journey Cover</a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Delete Journey Confirmation Modal -->
+                                <div class="modal fade" id="deleteJourney{{ journey.journey_id }}" tabindex="-1">
+                                    <div class="modal-dialog modal-dialog-centered">
+                                        <div class="modal-content border-0">
+                                            <div class="modal-header bg-danger text-white">
+                                                <h5 class="modal-title">Confirm Deletion</h5>
+                                                <button type="button" class="btn-close btn-close-white"
+                                                    data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <div class="text-center mb-3">
+                                                    <i class="fas fa-exclamation-triangle text-danger fa-3x"></i>
+                                                </div>
+                                                <p>Are you sure you want to delete the journey "<strong>{{ journey.title
+                                                        }}</strong>"?</p>
+                                                <p class="text-danger">This action cannot be undone and will delete all
+                                                    events
+                                                    in this journey.</p>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-outline-secondary"
+                                                    data-bs-dismiss="modal">Cancel</button>
+                                                <a href="{{ url_for('admin_delete_journey', journey_id=journey.journey_id) }}"
+                                                    class="btn btn-danger">Delete Journey</a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="alert alert-info bg-light border-0 shadow-sm">
+                <div class="text-center py-5">
+                    <i class="fas fa-suitcase-rolling fa-4x text-dark mb-3"></i>
+                    <h4 class="alert-heading text-dark">No journeys found!</h4>
+                    <p class="mb-3">There are currently no public journeys of "{{keyword}}" available. Check
+                        back later
+                        or create your own journey and share it with others.</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block head_extras %}
+<style>
+    .hover-card {
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .hover-card:hover {
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1) !important;
+    }
+
+    /* Link hover effect with underline */
+    .link-hover {
+        transition: all 0.3s ease;
+    }
+
+    .link-hover:hover {
+        text-decoration: underline !important;
+    }
+
+    /* Follow button styles */
+    .follow-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .btn-group .btn {
+        transition: all 0.2s ease;
+    }
+
+    .disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .fa-heart.text-danger {
+        color: #dc3545 !important;
+    }
+
+    /* 编辑日志功能样式 */
+    .toggle-no-edits-btn {
+        transition: all 0.2s ease;
+    }
+
+    .toggle-no-edits-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .character-count {
+        font-size: 0.875rem;
+    }
+
+    .text-success {
+        color: #198754 !important;
+    }
+
+    .text-danger {
+        color: #dc3545 !important;
+    }
+
+    /* 报告模态框样式 */
+    .modal-header.bg-warning {
+        background-color: #ffc107 !important;
+    }
+
+    .text-warning {
+        color: #f57c00 !important;
+    }
+
+    .btn-warning {
+        background-color: #ffc107;
+        border-color: #ffc107;
+        color: #000;
+    }
+
+    .btn-warning:hover {
+        background-color: #ffb300;
+        border-color: #ffb300;
+        color: #000;
+    }
+
+    .btn-warning:disabled {
+        background-color: #ffca2c;
+        border-color: #ffca2c;
+        opacity: 0.6;
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const modals = document.querySelectorAll('.modal');
+        modals.forEach(modal => {
+            modal.addEventListener('show.bs.modal', function () {
+                document.body.style.overflow = 'hidden';
+                document.body.style.paddingRight = '0px';
+            });
+
+            modal.addEventListener('hidden.bs.modal', function () {
+                document.body.style.overflow = '';
+                document.body.style.paddingRight = '';
+            });
+        });
+        // 新增：处理禁止编辑标记切换
+        document.querySelectorAll('.toggle-no-edits-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                const journeyId = this.getAttribute('data-journey-id');
+                const isCurrentlyProtected = this.classList.contains('btn-warning');
+
+                if (confirm(`Are you sure you want to ${isCurrentlyProtected ? 'disable' : 'enable'} edit protection for this journey?`)) {
+                    fetch(`/journey/${journeyId}/toggle_no_edits`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                // 更新按钮状态
+                                if (data.no_edits_flag) {
+                                    this.classList.remove('btn-outline-warning');
+                                    this.classList.add('btn-warning');
+                                    this.innerHTML = '<i class="fas fa-shield-alt me-1"></i>Protected';
+                                    this.title = 'Disable edit protection';
+                                } else {
+                                    this.classList.remove('btn-warning');
+                                    this.classList.add('btn-outline-warning');
+                                    this.innerHTML = '<i class="fas fa-shield-alt me-1"></i>Protect';
+                                    this.title = 'Enable edit protection';
+                                }
+
+                                alert(data.message);
+                                location.reload(); // 刷新页面以更新保护状态徽章
+                            } else {
+                                alert(`Error: ${data.error}`);
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            alert('An error occurred while updating the protection status.');
+                        });
+                }
+            });
+        });
+
+        // 新增：编辑原因字符计数和验证
+        document.querySelectorAll('[id^="edit_reason_"]').forEach(function (textarea) {
+            const journeyId = textarea.id.split('_')[2];
+            const charCountSpan = document.getElementById(`char-count-${journeyId}`);
+            const saveBtn = document.getElementById(`saveBtn${journeyId}`);
+
+            if (charCountSpan && saveBtn) {
+                textarea.addEventListener('input', function () {
+                    const length = this.value.length;
+                    charCountSpan.textContent = length;
+
+                    if (length >= 10) {
+                        charCountSpan.parentElement.classList.remove('text-danger');
+                        charCountSpan.parentElement.classList.add('text-success');
+                        saveBtn.disabled = false;
+                        this.classList.remove('is-invalid');
+                        this.classList.add('is-valid');
+                    } else {
+                        charCountSpan.parentElement.classList.remove('text-success');
+                        charCountSpan.parentElement.classList.add('text-danger');
+                        saveBtn.disabled = true;
+                        this.classList.remove('is-valid');
+                        this.classList.add('is-invalid');
+                    }
+                });
+            }
+        });
+
+        // 新增：报告功能字符计数和验证
+        document.querySelectorAll('[id^="reportDetails"]').forEach(function (textarea) {
+            const journeyId = textarea.id.replace('reportDetails', '');
+            const charCountSpan = document.getElementById(`char-count-report-${journeyId}`);
+            const submitBtn = document.getElementById(`submitReport${journeyId}`);
+
+            if (charCountSpan && submitBtn) {
+                textarea.addEventListener('input', function () {
+                    const length = this.value.length;
+                    charCountSpan.textContent = length;
+
+                    // 同时检查reason是否已选择
+                    const reasonSelect = document.getElementById(`reportReason${journeyId}`);
+                    const reasonSelected = reasonSelect && reasonSelect.value !== '';
+
+                    if (length >= 10 && reasonSelected) {
+                        charCountSpan.parentElement.classList.remove('text-danger');
+                        charCountSpan.parentElement.classList.add('text-success');
+                        submitBtn.disabled = false;
+                        this.classList.remove('is-invalid');
+                        this.classList.add('is-valid');
+                    } else {
+                        charCountSpan.parentElement.classList.remove('text-success');
+                        charCountSpan.parentElement.classList.add('text-danger');
+                        submitBtn.disabled = true;
+                        this.classList.remove('is-valid');
+                        this.classList.add('is-invalid');
+                    }
+                });
+            }
+        });
+
+        // 新增：报告原因选择验证
+        document.querySelectorAll('[id^="reportReason"]').forEach(function (select) {
+            const journeyId = select.id.replace('reportReason', '');
+            const detailsTextarea = document.getElementById(`reportDetails${journeyId}`);
+            const submitBtn = document.getElementById(`submitReport${journeyId}`);
+
+            if (detailsTextarea && submitBtn) {
+                select.addEventListener('change', function () {
+                    const reasonSelected = this.value !== '';
+                    const detailsLength = detailsTextarea.value.length;
+
+                    if (reasonSelected && detailsLength >= 10) {
+                        submitBtn.disabled = false;
+                    } else {
+                        submitBtn.disabled = true;
+                    }
+                });
+            }
+        });
+
+        // 新增：测试表单提交（仅管理员）
+        const testForm = document.getElementById('testEditForm');
+        if (testForm) {
+            testForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                const data = Object.fromEntries(formData);
+
+                fetch(`/api/admin/journey/${data.journey_id}/edit`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert(data.success ? 'Test successful!' : `Error: ${data.error}`);
+                        if (data.success) {
+                            location.reload();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Test failed');
+                    });
+            });
+        }
+
+
+        // Initialize follow buttons
+        const followButtons = document.querySelectorAll('.follow-btn');
+        followButtons.forEach(button => {
+            const journeyId = button.getAttribute('data-journey-id');
+            updateFollowButton(journeyId, button);
+        });
+    });
+
+    // Function to check if user can follow journeys (premium or staff)
+    function canFollowJourneys() {
+        // This will be set by the server-side template
+        {% if session.loggedin %}
+        {% set user_role = session.get('role', '') %}
+        {% if user_role in ['admin', 'editor','support_tech','moderator'] %}
+        return true;
+        {% else %}
+        // Check premium status from server
+        return {{ 'true' if session.get('premium') == 1 else 'false' }};
+    {% endif %}
+    {% else %}
+    return false;
+    {% endif %}
+    }
+
+    // Function to check follow status and update button accordingly
+    function updateFollowButton(journeyId, buttonElement) {
+        if (!canFollowJourneys()) {
+            return;
+        }
+
+        fetch(`/api/check_follow_status/${journeyId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.following) {
+                    buttonElement.innerHTML = '<i class="fas fa-heart text-danger"></i> Following';
+                    buttonElement.className = 'btn btn-outline-success btn-sm';
+                    buttonElement.disabled = true;
+                    buttonElement.title = 'You are following this journey';
+                } else {
+                    buttonElement.innerHTML = '<i class="far fa-heart"></i> Follow';
+                    buttonElement.className = 'btn btn-outline-primary btn-sm follow-btn';
+                    buttonElement.disabled = false;
+                    buttonElement.title = 'Follow this journey to see updates';
+                }
+            })
+            .catch(error => {
+                console.error('Error checking follow status:', error);
+                buttonElement.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error';
+                buttonElement.className = 'btn btn-outline-secondary btn-sm';
+                buttonElement.disabled = true;
+            });
+    }
+
+    // Handle follow button clicks
+    function handleFollowClick(button, journeyId) {
+        if (button.disabled) return;
+
+        // Show loading state
+        const originalText = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Following...';
+        button.disabled = true;
+
+        // Create form and submit
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/journey/follow/${journeyId}`;
+        form.style.display = 'none';
+        document.body.appendChild(form);
+        form.submit();
+    }
+</script>
+{% endblock %}

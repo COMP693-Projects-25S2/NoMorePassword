@@ -1,0 +1,294 @@
+{% extends 'userbase.html' %}
+
+{% block title %}TravelTales - Home{% endblock %}
+
+{# Set the active page to be highlighted in the navigation bar. #}
+{% set active_page = 'dashboard' %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="hero-section">
+    <div class="hero-content">
+        <h1 class="hero-title">Share Your Journeys</h1>
+        <p class="hero-subtitle">Document your adventures and inspire others with your travel experiences</p>
+        <a href="{{ url_for('add_journey') }}" class="hero-link">Get Started</a>
+    </div>
+</section>
+
+<!-- Features Section -->
+<section class="py-5">
+    <div class="container">
+        <div class="row gy-4">
+            <!-- Start a New Journey -->
+            <div class="col-md-4">
+                <div class="feature-card" data-bs-toggle="modal" data-bs-target="#addJourney">
+                    <img src="{{ url_for('static', filename='ui_photos/new journey.jpg') }}" alt="New Journey"
+                        class="feature-image">
+                    <div class="feature-content">
+                        <h3 class="feature-title">Start a New Journey</h3>
+                        <p class="feature-description">Record your travel experiences by creating a new journey</p>
+                        <a href="#" class="feature-link" data-bs-toggle="modal" data-bs-target="#addJourney">Create
+                            Journey</a>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- View My Journeys -->
+            <div class="col-md-4">
+                <a href="{{ url_for('private_journey') }}" style="text-decoration: none; color: inherit;">
+                    <div class="feature-card">
+                        <img src="{{ url_for('static', filename='ui_photos/view my journey.jpg') }}"
+                            alt="View My Journey" class="feature-image">
+                        <div class="feature-content">
+                            <h3 class="feature-title">View My Journeys</h3>
+                            <div class="feature-count">
+                                {{ statistics.private_journeys if statistics and statistics.private_journeys else 0 }}
+                            </div>
+                            <a href="{{ url_for('private_journey') }}" class="feature-link">My Journeys</a>
+                        </div>
+                    </div>
+                </a>
+            </div>
+
+            <!-- Journeys In the World -->
+            <div class="col-md-4">
+                <a href="{{ url_for('public_journey') }}" style="text-decoration: none; color: inherit;">
+                    <div class="feature-card">
+                        <img src="{{ url_for('static', filename='ui_photos/in the world.jpg') }}"
+                            alt="Journeys In The World" class="feature-image">
+                        <div class="feature-content">
+                            <h3 class="feature-title">Journeys In the World</h3>
+                            <div class="feature-count">
+                                {{ statistics.public_journeys if statistics and statistics.public_journeys else 0 }}
+                            </div>
+                            <a href="{{ url_for('public_journey') }}" class="feature-link">Explore</a>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Appeals Section (only visible to restricted users) -->
+{% if session.loggedin %}
+<div class="container">
+    <div id="appeals-section" style="display: none;">
+        <div class="card border-warning mb-4">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Account Restrictions
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="mb-3">You have active restrictions on your account. You can appeal these restrictions if you
+                    believe they were applied incorrectly.</p>
+                <div class="d-flex gap-2">
+                    <a href="{{ url_for('submit_appeal') }}" class="btn btn-warning">
+                        <i class="fas fa-paper-plane me-2"></i>Submit Appeal
+                    </a>
+                    <a href="{{ url_for('my_appeals') }}" class="btn btn-outline-warning">
+                        <i class="fas fa-history me-2"></i>View My Appeals
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Add Journey Modal -->
+<div class="modal fade" id="addJourney" tabindex="-1" aria-labelledby="modalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Journey</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('add_journey') }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="title" class="form-label">Title</label>
+                        <input type="text" class="form-control" id="title" name="title"
+                            placeholder="Please enter a title" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" name="description" rows="4"
+                            placeholder="Please enter description here."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="start_date" class="form-label">Start Date</label>
+                        <input type="date" class="form-control" id="start_date" name="start_date">
+                    </div>
+                    <div class="mb-3">
+                        <label for="display" class="form-label">Visibility</label>
+                        <select class="form-select" id="display" name="display">
+
+                            <option value="public" selected>Public</option>
+                            {% if is_member %}
+                            <option value="published" selected>Published</option>
+                            {% endif %}
+                            <option value="private">Private</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-dark">Create Journey</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block head_extras %}
+<style>
+    .hero-section {
+        position: relative;
+        height: 60vh;
+        min-height: 400px;
+        background-image: url("{{ url_for('static', filename='ui_photos/homepage.jpg') }}");
+        background-size: cover;
+        background-position: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        text-align: center;
+        margin-top: -1.5rem;
+        /* To offset the container mt-4 in userbase.html */
+        margin-left: -12px;
+        margin-right: -12px;
+    }
+
+    .hero-content {
+        position: relative;
+        z-index: 1;
+        max-width: 800px;
+        padding: 20px;
+    }
+
+    .hero-title {
+        font-size: 3.5rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    }
+
+    .hero-subtitle {
+        font-size: 1.5rem;
+        margin-bottom: 2rem;
+        text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
+    }
+
+    .hero-link {
+        color: white;
+        text-decoration: underline;
+        font-weight: 500;
+        font-size: 1.5rem;
+        transition: all 0.3s;
+    }
+
+    .hero-link:hover {
+        color: white;
+        text-decoration: underline;
+    }
+
+    .feature-card {
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        transition: transform 0.3s, box-shadow 0.3s;
+        height: 100%;
+        cursor: pointer;
+    }
+
+    .feature-card:hover {
+        transform: translateY(-10px);
+        box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2);
+    }
+
+    .feature-image {
+        height: 250px;
+        object-fit: cover;
+        width: 100%;
+    }
+
+    .feature-content {
+        padding: 25px;
+        text-align: center;
+    }
+
+    .feature-title {
+        font-weight: 600;
+        font-size: 1.5rem;
+        margin-bottom: 15px;
+        color: #333;
+    }
+
+    .feature-count {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 15px;
+    }
+
+    .feature-description {
+        color: #666;
+        margin-bottom: 20px;
+    }
+
+    .feature-link {
+        color: #333;
+        text-decoration: underline;
+        font-weight: 500;
+        position: relative;
+        transition: all 0.3s;
+    }
+
+    .feature-link:hover {
+        text-decoration: underline;
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        const formattedDate = `${year}-${month}-${day}`;
+
+        const startDateInput = document.getElementById('start_date');
+        if (startDateInput) {
+            startDateInput.value = formattedDate;
+        }
+
+       // Check if the user has restrictions
+        checkUserRestrictions();
+    });
+
+    function checkUserRestrictions() {
+        fetch('/api/user/restrictions', {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.has_restrictions) {
+                    document.getElementById('appeals-section').style.display = 'block';
+                }
+            })
+            .catch(error => {
+                console.log('Error checking restrictions:', error);
+            });
+    }
+</script>
+{% endblock %}

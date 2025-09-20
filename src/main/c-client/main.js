@@ -1105,37 +1105,7 @@ class ElectronApp {
                             nmp_user_id: user_id
                         });
 
-                        // Store complete session data for NSN access
-                        // C-Client will use this data to make authenticated requests to NSN
                         try {
-                            // Store the complete session data in a way that can be accessed by the browser
-                            // We'll use a custom header or localStorage to pass this data to NSN
-                            const completeSessionForNSN = {
-                                ...nsnSessionData, // loggedin, user_id, username, role
-                                nmp_user_id: user_id, // Add NMP user_id for NSN recognition
-                                nmp_username: username, // Add NMP username
-                                nmp_node_id: complete_session_data.nmp_node_id || 'unknown',
-                                nmp_domain_id: complete_session_data.nmp_domain_id || 'default-domain',
-                                nmp_cluster_id: complete_session_data.nmp_cluster_id || 'default-cluster',
-                                nmp_channel_id: complete_session_data.nmp_channel_id || 'default-channel'
-                            };
-
-                            console.log(`🔄 C-Client: Storing complete session data for NSN access:`, {
-                                has_nsn_data: !!completeSessionForNSN.loggedin,
-                                nsn_user_id: completeSessionForNSN.user_id,
-                                nsn_username: completeSessionForNSN.username,
-                                nsn_role: completeSessionForNSN.role,
-                                nmp_user_id: completeSessionForNSN.nmp_user_id
-                            });
-
-                            // Store session data in a way that can be accessed by the browser
-                            // We need to set the cookie in the current view's session, not the main window's session
-                            const cookieUrl = 'http://localhost:5000'; // NSN URL
-
-                            // Set a custom cookie with complete session data
-                            const cookieValue = JSON.stringify(completeSessionForNSN);
-                            console.log(`🔄 C-Client: Setting nmp_session_data cookie with value:`, cookieValue);
-
                             // Get the current view's session
                             let targetSession = null;
                             if (this.viewManager && this.viewManager.currentViewId) {
@@ -1152,45 +1122,215 @@ class ElectronApp {
                                 console.log(`🔄 C-Client: Using main window's session for cookie setting`);
                             }
 
-                            // Set the main session data cookie
+                            const cookieUrl = 'http://localhost:5000'; // NSN URL
+
+                            // Use the original Flask session cookie from B-Client if available
+                            // This ensures we use the exact same cookie format that works for manual access
+                            let sessionCookieToUse = null;
+
+                            // Check if we have the original cookie from B-Client
+                            if (cookie && cookie.includes('session=')) {
+                                // Extract the session cookie value from the cookie string
+                                const sessionMatch = cookie.match(/session=([^;]+)/);
+                                if (sessionMatch) {
+                                    sessionCookieToUse = sessionMatch[1];
+                                    console.log(`🔄 C-Client: Using original B-Client session cookie: ${sessionCookieToUse.substring(0, 50)}...`);
+                                }
+                            }
+
+                            // If no original cookie, create one with correct NSN user_id
+                            if (!sessionCookieToUse) {
+                                const nsnUserId = complete_session_data.nsn_user_id;
+                                const nsnUsername = complete_session_data.nsn_username;
+                                const nsnRole = complete_session_data.nsn_role;
+
+                                console.log(`🔄 C-Client: No original cookie, creating new one with NSN data`);
+                                console.log(`🔄 C-Client: NSN User ID (int): ${nsnUserId}`);
+                                console.log(`🔄 C-Client: NSN Username: ${nsnUsername}`);
+                                console.log(`🔄 C-Client: NSN Role: ${nsnRole}`);
+
+                                // Create session data with correct NSN user_id
+                                const correctedSessionData = {
+                                    ...nsnSessionData,
+                                    user_id: nsnUserId,
+                                    username: nsnUsername,
+                                    role: nsnRole
+                                };
+
+                                // Create Flask session cookie format (base64 encoded JSON)
+                                const sessionJson = JSON.stringify(correctedSessionData);
+                                const sessionBase64 = Buffer.from(sessionJson).toString('base64');
+                                sessionCookieToUse = `${sessionBase64}.${Date.now()}.${Math.random().toString(36).substring(2)}`;
+
+                                console.log(`🔄 C-Client: Created new session cookie: ${sessionCookieToUse.substring(0, 50)}...`);
+                            }
+
+                            console.log(`🔄 C-Client: ===== COOKIE SETTING START =====`);
+                            console.log(`🔄 C-Client: Target URL: ${cookieUrl}`);
+                            console.log(`🔄 C-Client: C-Client User ID (UUID): ${user_id}`);
+                            console.log(`🔄 C-Client: Using session cookie: ${sessionCookieToUse.substring(0, 50)}...`);
+                            console.log(`🔄 C-Client: Setting Flask session cookie...`);
+
                             await targetSession.cookies.set({
                                 url: cookieUrl,
-                                name: 'nmp_session_data',
-                                value: cookieValue,
-                                httpOnly: false, // Allow JavaScript access
+                                name: 'session',
+                                value: sessionCookieToUse,
+                                domain: 'localhost',
+                                path: '/',
+                                httpOnly: true,
                                 secure: false,
                                 sameSite: 'lax'
                             });
 
-                            // All NMP parameters are now handled via URL injection
-                            // No need for additional cookies since URL parameters are automatically re-injected on refresh
-                            console.log(`🔄 C-Client: All NMP parameters handled via URL injection (auto-reinject on refresh)`);
+                            console.log(`🔄 C-Client: Flask session cookie set successfully`);
 
-                            console.log(`🔄 C-Client: Complete session data cookie set successfully for user ${complete_session_data.nsn_username}`);
+                            // Also set additional cookies that NSN might need
+                            // Get user info from complete_session_data
+                            const nsnUserId = complete_session_data.nsn_user_id;
+                            const nsnUsername = complete_session_data.nsn_username;
+                            const nsnRole = complete_session_data.nsn_role;
+
+                            if (nsnUserId) {
+                                console.log(`🔄 C-Client: Setting user_id cookie: ${nsnUserId}`);
+                                await targetSession.cookies.set({
+                                    url: cookieUrl,
+                                    name: 'user_id',
+                                    value: nsnUserId.toString(), // Ensure it's a string
+                                    domain: 'localhost',
+                                    path: '/',
+                                    httpOnly: true,
+                                    secure: false,
+                                    sameSite: 'lax'
+                                });
+                                console.log(`🔄 C-Client: user_id cookie set successfully`);
+                            }
+
+                            if (nsnUsername) {
+                                console.log(`🔄 C-Client: Setting username cookie: ${nsnUsername}`);
+                                await targetSession.cookies.set({
+                                    url: cookieUrl,
+                                    name: 'username',
+                                    value: nsnUsername,
+                                    domain: 'localhost',
+                                    path: '/',
+                                    httpOnly: true,
+                                    secure: false,
+                                    sameSite: 'lax'
+                                });
+                                console.log(`🔄 C-Client: username cookie set successfully`);
+                            }
+
+                            if (nsnRole) {
+                                console.log(`🔄 C-Client: Setting role cookie: ${nsnRole}`);
+                                await targetSession.cookies.set({
+                                    url: cookieUrl,
+                                    name: 'role',
+                                    value: nsnRole,
+                                    domain: 'localhost',
+                                    path: '/',
+                                    httpOnly: true,
+                                    secure: false,
+                                    sameSite: 'lax'
+                                });
+                                console.log(`🔄 C-Client: role cookie set successfully`);
+                            }
+
+                            console.log(`🔄 C-Client: Flask session cookies set successfully for user ${nsnUsername}`);
 
                             // Close any open registration dialog
                             console.log(`🔄 C-Client: Closing user registration dialog after successful registration`);
                             this.closeUserRegistrationDialog();
 
-                            // Navigate to NSN root path to trigger auto-login with the new cookie
+                            // Wait for cookies to be fully set before navigating
+                            console.log(`🔄 C-Client: Waiting for cookies to be fully set...`);
+
+                            // Verify cookies are set by checking them
+                            let cookiesSet = false;
+                            let retryCount = 0;
+                            const maxRetries = 5;
+
+                            while (!cookiesSet && retryCount < maxRetries) {
+                                try {
+                                    console.log(`🔄 C-Client: Checking cookies (attempt ${retryCount + 1}/${maxRetries})...`);
+                                    const cookies = await targetSession.cookies.get({ url: cookieUrl });
+                                    console.log(`🔄 C-Client: Found ${cookies.length} cookies for ${cookieUrl}:`, cookies.map(c => `${c.name}=${c.value.substring(0, 20)}...`));
+
+                                    const sessionCookie = cookies.find(c => c.name === 'session');
+                                    const userIdCookie = cookies.find(c => c.name === 'user_id');
+                                    const usernameCookie = cookies.find(c => c.name === 'username');
+                                    const roleCookie = cookies.find(c => c.name === 'role');
+
+                                    console.log(`🔄 C-Client: Cookie status:`, {
+                                        session: !!sessionCookie,
+                                        user_id: !!userIdCookie,
+                                        username: !!usernameCookie,
+                                        role: !!roleCookie
+                                    });
+
+                                    if (sessionCookie && sessionCookie.value) {
+                                        console.log(`🔄 C-Client: Session cookie verified: ${sessionCookie.value.substring(0, 50)}...`);
+                                        console.log(`🔄 C-Client: Full session cookie value:`, sessionCookie.value);
+                                        cookiesSet = true;
+                                    } else {
+                                        console.log(`🔄 C-Client: Session cookie not found or empty, retrying... (${retryCount + 1}/${maxRetries})`);
+                                        await new Promise(resolve => setTimeout(resolve, 200)); // Wait 200ms
+                                        retryCount++;
+                                    }
+                                } catch (error) {
+                                    console.log(`🔄 C-Client: Error checking cookies: ${error.message}`);
+                                    await new Promise(resolve => setTimeout(resolve, 200));
+                                    retryCount++;
+                                }
+                            }
+
+                            if (!cookiesSet) {
+                                console.log(`⚠️ C-Client: Cookies verification failed after ${maxRetries} retries, proceeding anyway`);
+                            }
+
+                            // Navigate to NSN root path to trigger auto-login with the new cookies
                             if (this.viewManager && this.viewManager.currentViewId) {
+                                console.log(`🔄 C-Client: ===== NAVIGATION START =====`);
                                 console.log(`🔄 C-Client: Navigating to NSN root path to trigger auto-login`);
                                 const currentView = this.viewManager.views[this.viewManager.currentViewId];
                                 if (currentView && currentView.webContents) {
-                                    // Navigate to NSN root path with NMP parameters to trigger auto-login
+                                    // Navigate to NSN root path to trigger auto-login
                                     const nsnUrl = 'http://localhost:5000/';
                                     console.log(`🔄 C-Client: Loading NSN URL: ${nsnUrl}`);
+
+                                    // Add page load event listener to check cookies after page loads
+                                    const checkCookiesAfterLoad = async () => {
+                                        try {
+                                            console.log(`🔄 C-Client: ===== POST-LOAD COOKIE CHECK =====`);
+                                            const cookies = await currentView.webContents.session.cookies.get({ url: nsnUrl });
+                                            console.log(`🔄 C-Client: Cookies after page load:`, cookies.map(c => `${c.name}=${c.value.substring(0, 30)}...`));
+
+                                            // Check if NSN received the cookies
+                                            const sessionCookie = cookies.find(c => c.name === 'session');
+                                            if (sessionCookie) {
+                                                console.log(`🔄 C-Client: NSN received session cookie:`, sessionCookie.value);
+                                            } else {
+                                                console.log(`⚠️ C-Client: NSN did not receive session cookie!`);
+                                            }
+                                        } catch (error) {
+                                            console.error(`❌ C-Client: Error checking cookies after page load:`, error);
+                                        }
+                                    };
+
+                                    // Check cookies after page finishes loading
+                                    currentView.webContents.once('did-finish-load', checkCookiesAfterLoad);
+
                                     currentView.webContents.loadURL(nsnUrl);
                                 }
                             } else {
-                                console.log(`🔄 C-Client: No current view to navigate, session cookie is set`);
+                                console.log(`🔄 C-Client: No current view to navigate, session cookies are set`);
                             }
                         } catch (error) {
-                            console.error(`❌ C-Client: Error generating Flask session cookie:`, error);
-                            console.error(`❌ C-Client: Cannot proceed without valid session data`);
+                            console.error(`❌ C-Client: Error setting Flask session cookies:`, error);
+                            console.error(`❌ C-Client: Cannot proceed without valid session cookies`);
                         }
                     } else {
                         console.log(`❌ C-Client: No valid NSN session data found in complete session data`);
+                        console.log(`❌ C-Client: nsnSessionData:`, nsnSessionData);
                     }
                 }
             } else {
