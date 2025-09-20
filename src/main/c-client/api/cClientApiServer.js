@@ -274,6 +274,40 @@ class CClientApiServer {
                 });
             }
         });
+
+        // Logout endpoint
+        this.app.post('/api/logout', (req, res) => {
+            const { user_id, username, action } = req.body;
+            console.log(`[C-Client API] ===== LOGOUT REQUEST RECEIVED =====`);
+            console.log(`[C-Client API] Logout request for user: ${username} (${user_id})`);
+            console.log(`[C-Client API] Action: ${action}`);
+
+            try {
+                // Clear stored cookie and session data
+                this.storedCookie = null;
+                this.pendingReload = null;
+
+                // Notify main process to clear sessions
+                if (this.mainWindow) {
+                    console.log(`[C-Client API] Notifying main process to clear sessions for user: ${username}`);
+                    this.mainWindow.webContents.send('clear-user-session', { user_id, username });
+                }
+
+                console.log(`[C-Client API] ===== LOGOUT SUCCESS =====`);
+                res.json({
+                    success: true,
+                    message: `Successfully logged out user ${username}`,
+                    user_id: user_id,
+                    username: username
+                });
+            } catch (error) {
+                console.error(`[C-Client API] Error during logout:`, error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
     }
 
     // Trigger C-Client to reload with cookie

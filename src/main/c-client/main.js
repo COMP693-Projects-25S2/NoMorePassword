@@ -1008,6 +1008,12 @@ class ElectronApp {
                 this.handleCookieReload(reloadData);
             });
 
+            // Handle logout request
+            ipcMain.on('clear-user-session', (event, logoutData) => {
+                console.log(`🔓 C-Client: Received logout request for user: ${logoutData.username}`);
+                this.handleUserLogout(logoutData);
+            });
+
             console.log(`🔄 C-Client: Cookie reload listener set up successfully`);
         } catch (error) {
             console.error(`❌ C-Client: Error setting up cookie reload listener:`, error);
@@ -1338,6 +1344,46 @@ class ElectronApp {
 
         } catch (error) {
             console.error(`❌ C-Client: Error handling cookie reload:`, error);
+        }
+    }
+
+    async handleUserLogout(logoutData) {
+        try {
+            console.log(`🔓 C-Client: Handling logout for user: ${logoutData.username}`);
+            const { user_id, username } = logoutData;
+
+            // Get all views and clear their sessions
+            const views = this.viewManager.getAllViews();
+            console.log(`🔓 C-Client: Found ${Object.keys(views).length} views to clear`);
+
+            for (const [viewId, view] of Object.entries(views)) {
+                if (view && view.webContents && !view.webContents.isDestroyed()) {
+                    try {
+                        console.log(`🔓 C-Client: Clearing session for view ${viewId}`);
+
+                        // Clear all storage data for this view
+                        await view.webContents.session.clearStorageData({
+                            storages: ['cookies', 'localStorage', 'sessionStorage', 'indexeddb', 'websql', 'cache']
+                        });
+
+                        // Navigate to a neutral page or refresh
+                        const currentUrl = view.webContents.getURL();
+                        if (currentUrl && currentUrl.includes('localhost:5000')) {
+                            console.log(`🔓 C-Client: Navigating to NSN homepage for view ${viewId}`);
+                            await view.webContents.loadURL('http://localhost:5000/');
+                        }
+
+                        console.log(`🔓 C-Client: Successfully cleared session for view ${viewId}`);
+                    } catch (error) {
+                        console.error(`❌ C-Client: Error clearing session for view ${viewId}:`, error);
+                    }
+                }
+            }
+
+            console.log(`🔓 C-Client: Logout completed for user ${username}`);
+
+        } catch (error) {
+            console.error(`❌ C-Client: Error handling user logout:`, error);
         }
     }
 

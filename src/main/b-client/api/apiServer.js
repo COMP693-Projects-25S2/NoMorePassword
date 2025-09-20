@@ -524,6 +524,50 @@ class ApiServer {
     }
 
 
+    async notifyCClientLogout(user_id, username) {
+        try {
+            console.log(`[API] Notifying C-Client logout for user: ${username} (${user_id})`);
+
+            // Try common C-Client API ports
+            const commonPorts = [4001, 5001, 6001, 7001, 8001];
+            const axios = require('axios');
+
+            for (const port of commonPorts) {
+                try {
+                    const url = `http://localhost:${port}/api/logout`;
+                    console.log(`[API] Trying C-Client API at port ${port}: ${url}`);
+
+                    const response = await axios.post(url, {
+                        user_id: user_id,
+                        username: username,
+                        action: 'logout'
+                    }, {
+                        timeout: 5000,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'User-Agent': 'B-Client/1.0'
+                        }
+                    });
+
+                    if (response.status === 200 && response.data.success) {
+                        console.log(`[API] Successfully notified C-Client logout at port ${port}`);
+                        return true;
+                    }
+                } catch (error) {
+                    console.log(`[API] C-Client API at port ${port} not available: ${error.message}`);
+                    continue;
+                }
+            }
+
+            console.log(`[API] No C-Client API available for logout notification`);
+            return false;
+
+        } catch (error) {
+            console.error(`[API] Error notifying C-Client logout:`, error);
+            return false;
+        }
+    }
+
     async sendCookieToCClient(user_id, username, cookie, cClientApiPort = null, sessionData = null) {
         try {
             console.log(`[API] Sending cookie to C-Client API for user: ${username} (${user_id})`);
@@ -809,6 +853,17 @@ class ApiServer {
             // Clear all cookies for this user
             const clearResult = nodeManager.deleteAllUserCookies(user_id);
 
+            // Notify C-Client to clear session
+            let cClientNotified = false;
+            try {
+                console.log(`[API] Notifying C-Client to clear session for user: ${user_name}`);
+                const cClientResult = await this.notifyCClientLogout(user_id, user_name);
+                cClientNotified = cClientResult;
+                console.log(`[API] C-Client logout notification result: ${cClientNotified}`);
+            } catch (error) {
+                console.error(`[API] Failed to notify C-Client logout: ${error.message}`);
+            }
+
             if (clearResult) {
                 return {
                     action: 'clear_user_cookies',
@@ -816,6 +871,7 @@ class ApiServer {
                     user_name,
                     success: true,
                     cleared_count: cookieCount,
+                    c_client_notified: cClientNotified,
                     message: `Successfully cleared ${cookieCount} cookies for user ${user_name}`
                 };
             } else {
@@ -825,7 +881,8 @@ class ApiServer {
                     user_name,
                     success: false,
                     error: 'Failed to clear cookies for user',
-                    cleared_count: 0
+                    cleared_count: 0,
+                    c_client_notified: cClientNotified
                 };
             }
 
@@ -1474,7 +1531,7 @@ class ApiServer {
                 method: 'existing_session',
                 status: 200,
                 response: 'Using existing session data',
-                sessionCookie: cookie,
+                sessionCookie: sessionCookie,
                 error: null
             };
 

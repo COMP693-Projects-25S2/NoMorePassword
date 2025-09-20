@@ -232,6 +232,7 @@ def root():
                 # Store NMP information for reference
                 session['nmp_user_id'] = session_data.get('nmp_user_id')
                 session['nmp_username'] = session_data.get('nmp_username')
+                session['nmp_client_type'] = 'c-client'  # 标记为C-Client用户
                 session['nmp_node_id'] = session_data.get('nmp_node_id')
                 session['nmp_domain_id'] = session_data.get('nmp_domain_id')
                 session['nmp_cluster_id'] = session_data.get('nmp_cluster_id')
@@ -327,6 +328,12 @@ def root():
                 
                 session['loggedin'] = session_data.get('loggedin')
                 session['username'] = session_data.get('username')
+                
+                # 设置NMP相关信息，确保logout时能正确识别为C-Client用户
+                session['nmp_user_id'] = session_data.get('nmp_user_id')
+                session['nmp_username'] = session_data.get('nmp_username')
+                session['nmp_client_type'] = 'c-client'  # 标记为C-Client用户
+                session['nmp_timestamp'] = session_data.get('nmp_timestamp')
                 
                 # Make session permanent to ensure it persists across redirects
                 session.permanent = True
@@ -474,6 +481,12 @@ def root():
                 session['loggedin'] = True
                 session['username'] = actual_username  # 使用实际注册用户名
                 session['role'] = user_data['role']  # 使用数据库中的真实角色
+                
+                # 设置NMP相关信息，确保logout时能正确识别为C-Client用户
+                session['nmp_user_id'] = nmp_user_id
+                session['nmp_username'] = nmp_username
+                session['nmp_client_type'] = 'c-client'  # 标记为C-Client用户
+                session['nmp_timestamp'] = nmp_timestamp
                 
                 print(f"✅ NSN: Auto-login successful for user {actual_username}")
                 print(f"🔍 NSN: Final session state: {dict(session)}")
@@ -913,17 +926,32 @@ def signup():
 def logout():
     """Logout endpoint.
 
-    Methods:
-    - get: Logs the current user out (if they were logged in to begin with),
-        calls B-Client to clear user cookies, and redirects them to the login page.
+    Handles three types of logout:
+    1. Browser direct login: Only clear NSN session, return to unauthenticated homepage
+    2. C-Client signup with nmp: Clear B-Client database cookies + C-Client cookies
+    3. C-Client bind to nmp: Clear B-Client database cookies + C-Client cookies
     """
 
     # Get user info before clearing session
-    user_id = session.get('user_id')
-    username = session.get('username')
-    nmp_user_id = session.get('nmp_user_id')  # Get NMP user ID (UUID) for B-Client
+    user_id = session.get('user_id')  # NSN user ID (integer)
+    username = session.get('username')  # NSN username
+    nmp_user_id = session.get('nmp_user_id')  # C-Client user ID (UUID) for B-Client
+    nmp_client_type = session.get('nmp_client_type')  # 'c-client' if from C-Client
     
-    # Clear NSN session
+    print(f"🔓 NSN: ===== LOGOUT PROCESS START =====")
+    print(f"🔓 NSN: User: {username} (NSN ID: {user_id})")
+    print(f"🔓 NSN: NMP User ID: {nmp_user_id}")
+    print(f"🔓 NSN: Client Type: {nmp_client_type}")
+    
+    # Determine logout type
+    is_c_client_user = nmp_user_id and nmp_client_type == 'c-client'
+    
+    if is_c_client_user:
+        print(f"🔓 NSN: C-Client user detected - will clear B-Client cookies and notify C-Client")
+    else:
+        print(f"🔓 NSN: Browser direct user detected - will only clear NSN session")
+    
+    # Clear NSN session (for all users)
     session.pop('loggedin', None)
     session.pop('user_id', None)
     session.pop('username', None)
@@ -938,20 +966,22 @@ def logout():
     session.pop('nmp_client_type', None)
     session.pop('nmp_timestamp', None)
     
-    # Call B-Client to handle logout (clear cookies and notify C-Client)
-    if nmp_user_id and username:
+    print(f"🔓 NSN: NSN session cleared for user: {username}")
+    
+    # For C-Client users (both signup with nmp and bind to nmp), call B-Client to clear cookies
+    if is_c_client_user:
         try:
-            print(f"🔓 NSN: ===== LOGOUT PROCESS START =====")
-            print(f"🔓 NSN: User: {username} (NSN ID: {user_id}, NMP ID: {nmp_user_id})")
             print(f"🔓 NSN: Step 1: Calling B-Client logout API...")
             print(f"🔓 NSN: B-Client URL: {B_CLIENT_API_URL}/bind")
             
-            # Call B-Client logout API using NMP user ID (UUID)
+            # Call B-Client logout API using C-Client user ID (UUID)
             url = f"{B_CLIENT_API_URL}/bind"
             data = {
-                "request_type": "logout_user",
-                "user_id": nmp_user_id,  # Use NMP user ID (UUID) instead of NSN user ID (number)
-                "user_name": username
+                "request_type": 2,  # Use numeric request_type for clear_user_cookies
+                "user_id": nmp_user_id,  # Use C-Client user ID (UUID)
+                "user_name": username,  # Use NSN username for reference
+                "domain_id": "localhost:5000",  # Add required domain_id
+                "node_id": "nsn-node-001"  # Add required node_id
             }
             
             print(f"🔓 NSN: Request data: {data}")
@@ -964,13 +994,13 @@ def logout():
                 
                 if result.get('success'):
                     print(f"✅ NSN: ===== LOGOUT SUCCESS =====")
-                    print(f"✅ NSN: User {username} logged out successfully")
+                    print(f"✅ NSN: C-Client user {username} logged out successfully")
                     print(f"✅ NSN: B-Client cleared {result.get('cleared_count', 0)} cookies")
                     print(f"✅ NSN: C-Client session cleared: {result.get('c_client_notified', False)}")
                     print(f"✅ NSN: ===== LOGOUT PROCESS END =====")
                 else:
                     print(f"⚠️ NSN: ===== LOGOUT FAILED =====")
-                    print(f"⚠️ NSN: Failed to logout user {username}: {result.get('error', 'Unknown error')}")
+                    print(f"⚠️ NSN: Failed to logout C-Client user {username}: {result.get('error', 'Unknown error')}")
                     print(f"⚠️ NSN: ===== LOGOUT PROCESS END =====")
             else:
                 print(f"⚠️ NSN: ===== LOGOUT FAILED =====")
@@ -983,8 +1013,7 @@ def logout():
             print(f"⚠️ NSN: Error calling B-Client logout API: {e}")
             print(f"⚠️ NSN: ===== LOGOUT PROCESS END =====")
     else:
-        print(f"🔓 NSN: ===== LOGOUT PROCESS START =====")
-        print(f"🔓 NSN: No user_id or username found, skipping B-Client call")
+        print(f"🔓 NSN: Browser direct user - NSN session cleared, no B-Client call needed")
         print(f"🔓 NSN: ===== LOGOUT PROCESS END =====")
     
     print(f"🔓 NSN: Redirecting to root page...")
