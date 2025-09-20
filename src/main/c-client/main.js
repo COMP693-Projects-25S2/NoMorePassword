@@ -1124,6 +1124,11 @@ class ElectronApp {
 
                             const cookieUrl = 'http://localhost:5000'; // NSN URL
 
+                            // Get user info from complete_session_data (used for both cookie creation and additional cookies)
+                            const nsnUserId = complete_session_data.nsn_user_id;
+                            const nsnUsername = complete_session_data.nsn_username;
+                            const nsnRole = complete_session_data.nsn_role;
+
                             // Use the original Flask session cookie from B-Client if available
                             // This ensures we use the exact same cookie format that works for manual access
                             let sessionCookieToUse = null;
@@ -1140,10 +1145,6 @@ class ElectronApp {
 
                             // If no original cookie, create one with correct NSN user_id
                             if (!sessionCookieToUse) {
-                                const nsnUserId = complete_session_data.nsn_user_id;
-                                const nsnUsername = complete_session_data.nsn_username;
-                                const nsnRole = complete_session_data.nsn_role;
-
                                 console.log(`🔄 C-Client: No original cookie, creating new one with NSN data`);
                                 console.log(`🔄 C-Client: NSN User ID (int): ${nsnUserId}`);
                                 console.log(`🔄 C-Client: NSN Username: ${nsnUsername}`);
@@ -1185,10 +1186,7 @@ class ElectronApp {
                             console.log(`🔄 C-Client: Flask session cookie set successfully`);
 
                             // Also set additional cookies that NSN might need
-                            // Get user info from complete_session_data
-                            const nsnUserId = complete_session_data.nsn_user_id;
-                            const nsnUsername = complete_session_data.nsn_username;
-                            const nsnRole = complete_session_data.nsn_role;
+                            // Get user info from complete_session_data (already defined above)
 
                             if (nsnUserId) {
                                 console.log(`🔄 C-Client: Setting user_id cookie: ${nsnUserId}`);
