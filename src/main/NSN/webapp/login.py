@@ -990,3 +990,48 @@ def logout():
     print(f"🔓 NSN: Redirecting to root page...")
     return redirect(url_for('root'))
 
+
+@app.route('/api/current-user', methods=['GET'])
+def api_current_user():
+    """API endpoint for B-Client to get current user information from session.
+    
+    This endpoint returns the current user's information based on the session cookie.
+    B-Client can call this after successful login to get user_id and role.
+    
+    Returns:
+        JSON response containing current user information.
+    """
+    try:
+        print(f"🔍 NSN: Current user API called")
+        
+        # Check if user is logged in
+        if not session.get('loggedin') or not session.get('user_id'):
+            print(f"❌ NSN: No valid session found")
+            return jsonify({
+                'success': False,
+                'error': 'No valid session found'
+            }), 401
+        
+        user_id = session.get('user_id')
+        username = session.get('username')
+        role = session.get('role')
+        
+        print(f"✅ NSN: Current user info - user_id: {user_id}, username: {username}, role: {role}")
+        
+        return jsonify({
+            'success': True,
+            'user_id': int(user_id),
+            'username': username,
+            'role': role,
+            'loggedin': True
+        })
+        
+    except Exception as e:
+        print(f"❌ NSN: Error in api_current_user: {e}")
+        import traceback
+        print(f"   Traceback: {traceback.format_exc()}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
+

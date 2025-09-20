@@ -266,8 +266,8 @@
     <script>
         // Initialize environment selection
         document.addEventListener('DOMContentLoaded', () => {
-            // Get current environment from localStorage or default to production
-            const currentEnv = localStorage.getItem('bclient-environment') || 'production';
+            // Get current environment from localStorage or default to local
+            const currentEnv = localStorage.getItem('bclient-environment') || 'local';
             updateEnvironmentUI(currentEnv);
         });
 

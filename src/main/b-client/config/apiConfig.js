@@ -86,6 +86,7 @@ const config = {
         if (['local', 'production'].includes(environment)) {
             this.currentEnvironment = environment;
             process.env.B_CLIENT_ENVIRONMENT = environment; // Also update environment variable
+            console.log(`[API Config] Environment set to: ${environment}`);
             return true;
         }
         return false;

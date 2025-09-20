@@ -15,6 +15,7 @@ app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HT
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour
 
+
 db.init_db(app, connect.dbuser, connect.dbpass, connect.dbhost, connect.dbname)
 from webapp import announcement
 from webapp import event

@@ -418,51 +418,9 @@ class ApiServer {
                     } catch (error) {
                         console.log(`[API] Cookie is in old format, need to update to new format`);
 
-                        // This is an old format cookie, we need to update it
-                        // Query NSN to get complete session information
-                        console.log(`[API] Querying NSN for session info to update old cookie: ${targetCookie.username}`);
-                        const nsnSessionInfo = await this.queryNSNSessionInfo('localhost:5000', targetCookie.username);
-
-                        if (nsnSessionInfo.session_data) {
-                            // Create complete session data object
-                            const completeSessionData = {
-                                nsn_session_data: nsnSessionInfo.session_data,
-                                nsn_user_id: nsnSessionInfo.user_id,
-                                nsn_username: nsnSessionInfo.username,
-                                nsn_role: nsnSessionInfo.role,
-                                timestamp: Date.now()
-                            };
-
-                            console.log(`[API] Created updated session data for old cookie:`, {
-                                has_nsn_data: !!completeSessionData.nsn_session_data,
-                                nsn_user_id: completeSessionData.nsn_user_id,
-                                nsn_username: completeSessionData.nsn_username,
-                                nsn_role: completeSessionData.nsn_role
-                            });
-
-                            // Update the cookie in database
-                            const BClientNodeManager = require('../nodeManager/bClientNodeManager');
-                            const nodeManager = new BClientNodeManager();
-
-                            const updateResult = nodeManager.updateUserCookie(
-                                user_id,
-                                targetCookie.username,
-                                targetCookie.node_id,
-                                JSON.stringify(completeSessionData),
-                                targetCookie.auto_refresh,
-                                targetCookie.refresh_time
-                            );
-
-                            if (updateResult) {
-                                console.log(`[API] Successfully updated cookie to new format`);
-                                cookieToSend = JSON.stringify(completeSessionData);
-                                sessionData = completeSessionData;
-                            } else {
-                                console.log(`[API] Failed to update cookie, using original`);
-                            }
-                        } else {
-                            console.log(`[API] Could not get NSN session info, using original cookie`);
-                        }
+                        // This is an old format cookie, we can't update it without NSN session info
+                        // Just use the original cookie as-is
+                        console.log(`[API] Old format cookie found, using as-is: ${targetCookie.username}`);
                     }
 
                     // Send cookie directly to C-Client API instead of returning to NSN
@@ -565,40 +523,6 @@ class ApiServer {
         }
     }
 
-    async queryNSNSessionInfo(domain_id, username) {
-        try {
-            const websiteDomain = this.getCurrentEnvironmentDomain();
-            const nsnUrl = `http://${websiteDomain}/api/session-info`;
-
-            console.log(`[API] Querying NSN for session info: ${username} at ${nsnUrl}`);
-
-            const response = await axios.post(nsnUrl, {
-                username: username
-            }, {
-                timeout: 10000,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'B-Client/1.0'
-                }
-            });
-
-            if (response.status === 200 && response.data.success) {
-                console.log(`[API] Successfully queried NSN session info for ${username}:`, response.data);
-                return {
-                    session_data: response.data.session_data,
-                    user_id: response.data.user_id,
-                    role: response.data.role,
-                    username: response.data.username
-                };
-            } else {
-                console.log(`[API] NSN session query failed for ${username}:`, response.data);
-                return { session_data: null, user_id: null, role: null, username: username };
-            }
-        } catch (error) {
-            console.error(`[API] Error querying NSN session info for user ${username}:`, error.message);
-            return { session_data: null, user_id: null, role: null, username: username };
-        }
-    }
 
     async sendCookieToCClient(user_id, username, cookie, cClientApiPort = null, sessionData = null) {
         try {
@@ -720,8 +644,11 @@ class ApiServer {
                     user_name,
                     domain_id,
                     success: false,
-                    error: 'account and password are required for request_type=1',
-                    suggestion: 'Provide both account and password parameters for login'
+                    error: 'Missing login credentials',
+                    message: 'Please enter your NSN username and password to bind with No More Password',
+                    suggestion: 'Enter your NSN account credentials in the login form and try again',
+                    error_type: 'missing_credentials',
+                    user_friendly: true
                 };
             }
 
@@ -731,12 +658,8 @@ class ApiServer {
             const loginResult = await this.loginToTargetWebsite(domain_id, account, password);
 
             if (loginResult.success) {
-                // Query NSN to get complete session information
-                console.log(`[API] Querying NSN for session info: ${account}`);
-                const nsnSessionInfo = await this.queryNSNSessionInfo(domain_id, account);
-
-                // Use NSN's session data if available, otherwise fallback to login result
-                const sessionData = nsnSessionInfo.session_data || {
+                // Use login result data directly
+                const sessionData = {
                     loggedin: true,
                     user_id: loginResult.userId,
                     username: account,
@@ -763,7 +686,7 @@ class ApiServer {
                 // Create complete session data object for storage
                 const completeSessionData = {
                     nsn_session_data: sessionData,
-                    nsn_user_id: nsnSessionInfo.user_id || loginResult.userId,
+                    nsn_user_id: actualUserId || nsnSessionInfo.user_id || loginResult.userId,
                     nsn_username: nsnSessionInfo.username || account,
                     nsn_role: nsnSessionInfo.role || loginResult.userRole || 'traveller',
                     timestamp: Date.now()
@@ -848,7 +771,11 @@ class ApiServer {
                     success: false,
                     method: 'login_with_credentials',
                     login_success: false,
-                    error: 'Failed to login with provided credentials',
+                    error: 'Invalid login credentials',
+                    message: 'The username or password you entered is incorrect. Please check your credentials and try again.',
+                    suggestion: 'Make sure you are using the correct NSN account username and password',
+                    error_type: 'invalid_credentials',
+                    user_friendly: true,
                     details: loginResult.error
                 };
             }
@@ -861,7 +788,12 @@ class ApiServer {
                 user_name,
                 domain_id,
                 success: false,
-                error: error.message
+                error: 'Bind request failed',
+                message: 'An unexpected error occurred while trying to bind your account. Please try again.',
+                suggestion: 'If the problem persists, please contact support',
+                error_type: 'system_error',
+                user_friendly: true,
+                details: error.message
             };
         }
     }
@@ -1015,33 +947,10 @@ class ApiServer {
                 console.log(`[API] Attempting login to get session cookie for user: ${registrationData.username}`);
                 const loginResult = await this.loginToTargetWebsite(domain_id, registrationData.username, registrationData.password);
 
-                // Query NSN to get complete session information
-                console.log(`[API] Querying NSN for session info: ${registrationData.username}`);
-                const nsnSessionInfo = await this.queryNSNSessionInfo(domain_id, registrationData.username);
-
-                // Extract user_id from the actual session cookie if NSN query failed
-                let actualUserId = null;
-                if (loginResult.sessionCookie) {
-                    // Parse the session cookie to extract user_id
-                    try {
-                        const sessionCookieMatch = loginResult.sessionCookie.match(/session=([^;]+)/);
-                        if (sessionCookieMatch) {
-                            const sessionValue = sessionCookieMatch[1];
-                            // Decode base64 and parse JSON to get user_id
-                            const decoded = Buffer.from(sessionValue.split('.')[0], 'base64').toString('utf-8');
-                            const sessionData = JSON.parse(decoded);
-                            actualUserId = sessionData.user_id;
-                            console.log(`[API] Extracted user_id from session cookie: ${actualUserId}`);
-                        }
-                    } catch (error) {
-                        console.log(`[API] Failed to extract user_id from session cookie: ${error.message}`);
-                    }
-                }
-
-                // Use NSN's session data if available, otherwise fallback to login result
-                const sessionData = nsnSessionInfo.session_data || {
+                // Use login result data directly
+                const sessionData = {
                     loggedin: true,
-                    user_id: actualUserId || loginResult.userId,
+                    user_id: loginResult.userId,
                     username: registrationData.username,
                     role: loginResult.userRole || 'traveller'
                 };
@@ -1049,9 +958,9 @@ class ApiServer {
                 // Create complete session data for storage
                 const completeSessionData = {
                     nsn_session_data: sessionData,
-                    nsn_user_id: actualUserId || nsnSessionInfo.user_id || loginResult.userId,
-                    nsn_username: nsnSessionInfo.username || registrationData.username,
-                    nsn_role: nsnSessionInfo.role || loginResult.userRole || 'traveller',
+                    nsn_user_id: loginResult.userId,
+                    nsn_username: registrationData.username,
+                    nsn_role: loginResult.userRole || 'traveller',
                     timestamp: Date.now()
                 };
 
@@ -1378,13 +1287,12 @@ class ApiServer {
                 throw new Error(`Unsupported domain for auto-login: ${domain_id}`);
             }
 
-            const targetUrl = websiteConfig.loginUrl;
+            console.log(`[API] Attempting login via NSN login API for user: ${username}`);
 
-            console.log(`[API] Attempting login on: ${targetUrl}`);
-            console.log(`[API] Login credentials: username=${username}, password=${password.substring(0, 3)}***`);
+            // Use NSN's login API to authenticate and get session cookie
+            const loginUrl = websiteConfig.loginUrl;
 
-            // Make HTTP POST request to the target website login endpoint
-            const response = await this.makeHttpRequest(targetUrl, {
+            const response = await this.makeHttpRequest(loginUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -1396,52 +1304,98 @@ class ApiServer {
                 })
             });
 
-            // Collect all cookies from the entire request chain (including redirects)
-            let allCookies = [];
-            if (response.headers['set-cookie']) {
-                allCookies = response.headers['set-cookie'];
-                console.log(`[API] Final response cookies:`, allCookies);
-            }
+            console.log(`[API] NSN login response status: ${response.status}`);
 
-            // NSN login success is indicated by:
-            // 1. 302 redirect (Flask redirect after successful login)
-            // 2. 200 status after following redirects (dashboard page)
-            // 3. Presence of session cookie in response headers
-            const hasSessionCookie = response.headers['set-cookie'] &&
-                response.headers['set-cookie'].some(cookie => cookie.includes('session='));
-
-            // Use HTTP status codes and session cookie for reliable success detection
-            const isSuccess = response.status === 302 ||
-                (response.status === 200 && hasSessionCookie);
-
-            console.log(`[API] Login check: status=${response.status}, isSuccess=${isSuccess}, hasSessionCookie=${hasSessionCookie}`);
-
-            // Extract session cookie from collected cookies during redirects
+            // Extract session cookie from response headers first
             let sessionCookie = null;
-            if (allCookies && allCookies.length > 0) {
-                sessionCookie = allCookies.join('; ');
-                console.log(`[API] Using collected cookies as session cookie: ${sessionCookie}`);
-            } else if (response.headers['set-cookie']) {
+            if (response.headers['set-cookie']) {
                 const cookies = response.headers['set-cookie'];
                 sessionCookie = cookies.join('; ');
-                console.log(`[API] Using final response cookies as session cookie: ${sessionCookie}`);
+                console.log(`[API] Session cookie extracted: ${sessionCookie}`);
             }
 
-            // Try to extract user information from session cookie, not from HTML response
-            // B-Client doesn't need to parse Flask session cookies
-            // User information will be obtained through NSN API queries
-            let userRole = null;
-            let userId = null;
+            // NSN login success is indicated by 302 redirect to dashboard or 200 with session cookie
+            const isSuccess = response.status === 302 || (response.status === 200 && sessionCookie);
 
-            return {
-                success: isSuccess,
-                status: response.status,
-                response: response.body,
-                sessionCookie: sessionCookie,
-                userRole: userRole,
-                userId: userId,
-                error: isSuccess ? null : 'Login failed on target website'
-            };
+            if (isSuccess) {
+                console.log(`[API] Login successful, processing session cookie...`);
+
+                // Parse Flask session cookie to extract user information
+                let userRole = null;
+                let userId = null;
+
+                if (sessionCookie) {
+                    try {
+                        console.log(`[API] Parsing Flask session cookie to extract user data...`);
+
+                        // Extract session value from cookie
+                        const sessionMatch = sessionCookie.match(/session=([^;]+)/);
+                        if (sessionMatch) {
+                            const sessionValue = sessionMatch[1];
+                            console.log(`[API] Session cookie value: ${sessionValue}`);
+
+                            // Flask session cookie format: .data.timestamp.signature
+                            const parts = sessionValue.split('.');
+                            console.log(`[API] Session parts: ${parts.length}`);
+
+                            if (parts.length >= 2) {
+                                // The data part is the second part (index 1)
+                                const dataPart = parts[1];
+                                console.log(`[API] Data part: ${dataPart}`);
+
+                                // For Flask compressed sessions, we need to use a different approach
+                                // Since we can't easily decompress Python pickle data in Node.js,
+                                // we'll call NSN's current-user API to get the user info
+                                console.log(`[API] Calling NSN current-user API to get user info...`);
+
+                                const currentUserUrl = `${websiteConfig.homeUrl}api/current-user`;
+                                const currentUserResponse = await this.makeHttpRequest(currentUserUrl, {
+                                    method: 'GET',
+                                    headers: {
+                                        'Cookie': sessionCookie,
+                                        'User-Agent': apiConfig.default.userAgent
+                                    }
+                                });
+
+                                if (currentUserResponse.status === 200) {
+                                    const userData = JSON.parse(currentUserResponse.body);
+                                    console.log(`[API] Current user response:`, userData);
+
+                                    if (userData.success) {
+                                        userId = userData.user_id;
+                                        userRole = userData.role;
+                                        console.log(`[API] Extracted from current-user API - user_id: ${userId}, role: ${userRole}`);
+                                    } else {
+                                        console.log(`[API] Current-user API failed: ${userData.error}`);
+                                    }
+                                } else {
+                                    console.log(`[API] Current-user API returned status: ${currentUserResponse.status}`);
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        console.log(`[API] Failed to parse Flask session cookie: ${error.message}`);
+                    }
+                }
+
+                return {
+                    success: true,
+                    status: response.status,
+                    response: response.body,
+                    sessionCookie: sessionCookie,
+                    userRole: userRole,
+                    userId: userId,
+                    error: null
+                };
+            } else {
+                console.log(`[API] Login failed with status: ${response.status}`);
+                return {
+                    success: false,
+                    status: response.status,
+                    response: response.body,
+                    error: 'Login failed on target website'
+                };
+            }
 
         } catch (error) {
             console.error(`[API] HTTP login request failed:`, error);
@@ -1511,43 +1465,18 @@ class ApiServer {
                 };
             }
 
-            // B-Client doesn't need to refresh cookies by accessing NSN pages
-            // Instead, just query NSN for updated session information
-            console.log(`[API] B-Client auto-refresh: Querying NSN for updated session info`);
+            // For auto-refresh, we don't need to query NSN since we already have the session data
+            // Just return the existing session data as it's still valid
+            console.log(`[API] B-Client auto-refresh: Using existing session data`);
 
-            // Query NSN to get updated session information
-            const nsnSessionInfo = await this.queryNSNSessionInfo(domain_id, sessionData.nsn_username);
-
-            if (nsnSessionInfo.session_data) {
-                // Create updated complete session data
-                const updatedSessionData = {
-                    nsn_session_data: nsnSessionInfo.session_data,
-                    nsn_user_id: nsnSessionInfo.user_id,
-                    nsn_username: nsnSessionInfo.username,
-                    nsn_role: nsnSessionInfo.role,
-                    timestamp: Date.now()
-                };
-
-                console.log(`[API] Successfully refreshed session data from NSN`);
-
-                return {
-                    success: true,
-                    method: 'nsn_query',
-                    status: 200,
-                    response: 'Session data refreshed from NSN',
-                    sessionCookie: JSON.stringify(updatedSessionData),
-                    error: null
-                };
-            } else {
-                console.log(`[API] Failed to get updated session info from NSN`);
-                return {
-                    success: false,
-                    method: 'nsn_query_failed',
-                    error: 'Failed to get updated session info from NSN',
-                    response: null,
-                    sessionCookie: sessionCookie
-                };
-            }
+            return {
+                success: true,
+                method: 'existing_session',
+                status: 200,
+                response: 'Using existing session data',
+                sessionCookie: cookie,
+                error: null
+            };
 
         } catch (error) {
             console.error(`[API] Cookie refresh process failed:`, error);
@@ -1624,21 +1553,22 @@ class ApiServer {
                     const refreshResult = await this.refreshCookieOnTargetWebsite(websiteDomain, cookieRecord.cookie);
 
                     if (refreshResult.success) {
-                        // Query NSN to get updated session information
-                        console.log(`[API] Querying NSN for updated session info: ${cookieRecord.username}`);
-                        const nsnSessionInfo = await this.queryNSNSessionInfo(websiteDomain, cookieRecord.username);
+                        // For auto-refresh, we don't need to query NSN since we already have the session data
+                        // Just use the existing session data
+                        console.log(`[API] Using existing session data for auto-refresh: ${cookieRecord.username}`);
 
-                        // Create updated complete session data
+                        // Parse existing session data
+                        let existingSessionData = null;
+                        try {
+                            existingSessionData = JSON.parse(cookieRecord.cookie);
+                        } catch (error) {
+                            console.log(`[API] Cookie is not JSON format, cannot refresh`);
+                            continue;
+                        }
+
+                        // Create updated complete session data with new timestamp
                         const completeSessionData = {
-                            nsn_session_data: nsnSessionInfo.session_data || {
-                                loggedin: true,
-                                user_id: nsnSessionInfo.user_id,
-                                username: cookieRecord.username,
-                                role: nsnSessionInfo.role || 'traveller'
-                            },
-                            nsn_user_id: nsnSessionInfo.user_id,
-                            nsn_username: nsnSessionInfo.username || cookieRecord.username,
-                            nsn_role: nsnSessionInfo.role || 'traveller',
+                            ...existingSessionData,
                             timestamp: Date.now()
                         };
 
@@ -1931,10 +1861,11 @@ class ApiServer {
                                 ...options,
                                 method: 'GET', // Always use GET for redirects
                                 body: null, // Remove body for GET requests
+                                collectedCookies: requestOptions.collectedCookies, // Pass accumulated cookies
                                 headers: {
                                     ...options.headers,
-                                    // Add cookies from the response to the next request
-                                    'Cookie': cookies.length > 0 ? cookies.join('; ') : (options.headers['Cookie'] || '')
+                                    // Add all accumulated cookies to the next request
+                                    'Cookie': requestOptions.collectedCookies.length > 0 ? requestOptions.collectedCookies.join('; ') : (options.headers['Cookie'] || '')
                                 }
                             };
 
