@@ -1347,6 +1347,34 @@ class ElectronApp {
         }
     }
 
+    async handleNavigateToNSN(navigationData) {
+        try {
+            console.log(`🧭 C-Client: ===== HANDLING NAVIGATE TO NSN =====`);
+            console.log(`🧭 C-Client: Navigation request for user: ${navigationData.username} (${navigationData.user_id})`);
+            console.log(`🧭 C-Client: URL: ${navigationData.url}`);
+
+            if (!navigationData.url) {
+                console.error(`❌ C-Client: No URL provided in navigation data`);
+                return false;
+            }
+
+            // Navigate to the NSN URL with NMP parameters
+            if (this.viewManager && this.viewManager.navigateTo) {
+                console.log(`🧭 C-Client: Navigating to NSN URL with NMP parameters`);
+                await this.viewManager.navigateTo(navigationData.url);
+                console.log(`✅ C-Client: Successfully navigated to NSN with NMP parameters`);
+                return true;
+            } else {
+                console.error(`❌ C-Client: ViewManager not available for navigation`);
+                return false;
+            }
+
+        } catch (error) {
+            console.error(`❌ C-Client: Error handling navigate to NSN:`, error);
+            return false;
+        }
+    }
+
     async handleUserLogout(logoutData) {
         try {
             console.log(`🔓 C-Client: Handling logout for user: ${logoutData.username}`);
@@ -1370,7 +1398,12 @@ class ElectronApp {
                         const currentUrl = view.webContents.getURL();
                         if (currentUrl && currentUrl.includes('localhost:5000')) {
                             console.log(`🔓 C-Client: Navigating to NSN homepage for view ${viewId}`);
-                            await view.webContents.loadURL('http://localhost:5000/');
+                            // Use navigation method to ensure URL parameter injection
+                            if (this.viewOperations) {
+                                await this.viewOperations.navigateTo('http://localhost:5000/');
+                            } else {
+                                await view.webContents.loadURL('http://localhost:5000/');
+                            }
                         }
 
                         console.log(`🔓 C-Client: Successfully cleared session for view ${viewId}`);

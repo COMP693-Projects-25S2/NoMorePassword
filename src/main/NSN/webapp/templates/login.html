@@ -161,8 +161,23 @@
                         })
                     });
 
-                    let result = await response.json();
-                    console.log('🔐 Rebind result:', result);
+                    console.log('🔐 Rebind response status:', response.status);
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const rebindResponseText = await response.text();
+                    console.log('🔐 Rebind raw response:', rebindResponseText);
+
+                    let result;
+                    try {
+                        result = JSON.parse(rebindResponseText);
+                        console.log('🔐 Rebind result:', result);
+                    } catch (parseError) {
+                        console.error('❌ Failed to parse rebind response as JSON:', parseError);
+                        throw new Error('Invalid response format from B-Client');
+                    }
 
                     // If rebind failed, try regular bind
                     if (!result.success) {
@@ -185,8 +200,23 @@
                                 password: password
                             })
                         });
-                        result = await response.json();
-                        console.log('🔐 Bind result:', result);
+
+                        console.log('🔐 B-Client API response status:', response.status);
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+
+                        const responseText = await response.text();
+                        console.log('🔐 B-Client raw response:', responseText);
+
+                        try {
+                            result = JSON.parse(responseText);
+                            console.log('🔐 Bind result:', result);
+                        } catch (parseError) {
+                            console.error('❌ Failed to parse B-Client response as JSON:', parseError);
+                            throw new Error('Invalid response format from B-Client');
+                        }
                     }
 
                     console.log('🔐 B-Client API response status:', response.status);
@@ -199,8 +229,8 @@
                         showSuccess(bindBtn, 'Bind Successful', 'btn btn-success btn-sm');
                         signupBtn.style.display = 'none';
 
-                        // B-Client has bound the user and logged them in
-                        // B-Client now sends complete session data to C-Client, C-Client will handle auto-login
+                        // B-Client has bound the user successfully
+                        // Check if B-Client also provided session data for auto-login
                         if (result.login_success && result.session_info && result.session_info.complete_session_data) {
                             console.log('🔐 B-Client binding and login successful, complete session data sent to C-Client...');
                             console.log('🔐 C-Client will handle auto-login to NSN');
@@ -218,14 +248,18 @@
                             // C-Client will handle the auto-login process
                             // No need for NSN to perform additional login steps
                         } else {
-                            console.log('❌ B-Client binding or login failed');
-                            console.log('❌ Login success:', result.login_success);
-                            console.log('❌ Session info exists:', !!result.session_info);
-                            console.log('❌ Complete session data exists:', !!(result.session_info && result.session_info.complete_session_data));
-                            statusDiv.innerHTML = '<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Binding failed. Please try again.</div>';
+                            // Binding was successful, but no auto-login session data provided
+                            console.log('✅ B-Client binding successful, but no auto-login session data provided');
+                            console.log('🔍 Login success:', result.login_success);
+                            console.log('🔍 Session info exists:', !!result.session_info);
+                            console.log('🔍 Complete session data exists:', !!(result.session_info && result.session_info.complete_session_data));
+                            console.log('ℹ️ This is normal - user will need to manually log in to NSN');
+
+                            // Show success message and let user manually navigate to login
+                            statusDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Successfully bound! You can now use No More Password features.</div>';
                         }
                     } else {
-                        throw new Error(responseData.error || 'Bind failed');
+                        throw new Error(result.error || 'Bind failed');
                     }
                 } catch (error) {
                     console.error('❌ NMP Bind Error:', error);
@@ -325,31 +359,32 @@
                         showSuccess(signupBtn, 'Signup Successful', 'btn btn-success btn-sm');
                         bindBtn.style.display = 'none';
 
-                        // B-Client has registered the user and logged them in
-                        // B-Client now sends complete session data to C-Client, C-Client will handle auto-login
-                        if (result.registration_success && result.login_success && result.session_info && result.session_info.complete_session_data) {
-                            console.log('🔐 B-Client registration and login successful, complete session data sent to C-Client...');
-                            console.log('🔐 C-Client will handle auto-login to NSN');
+                        // B-Client has registered the user successfully
+                        // C-Client will handle auto-login via URL injection
+                        if (result.registration_success) {
+                            console.log('🔐 B-Client registration successful, C-Client will handle auto-login via URL injection...');
+                            console.log('🔐 Registration success:', result.registration_success);
+                            console.log('🔐 Login success:', result.login_success);
+                            console.log('🔐 Session info:', result.session_info);
 
-                            // B-Client has sent complete session data to C-Client
-                            // C-Client will handle the auto-login, no need for NSN to do anything
+                            // B-Client has registered the user and sent registration info to C-Client
+                            // C-Client will handle the auto-login via URL injection, no need for NSN to do anything
                             statusDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Account created! C-Client will handle auto-login...</div>';
 
-                            // Wait a moment for C-Client to process the session data
+                            // Wait a moment for C-Client to process the registration info and navigate to NSN
                             setTimeout(() => {
-                                console.log('🔄 Waiting for C-Client to handle auto-login...');
-                                // C-Client will handle the auto-login process
-                                // No need for NSN to redirect - C-Client will navigate to NSN
+                                console.log('🔄 Waiting for C-Client to handle auto-login via URL injection...');
+                                // C-Client will handle the auto-login process via URL injection
+                                // No need for NSN to redirect - C-Client will navigate to NSN with NMP parameters
                             }, 2000);
 
-                            // C-Client will handle the auto-login process
+                            // C-Client will handle the auto-login process via URL injection
                             // No need for NSN to perform additional login steps
                         } else {
-                            console.log('❌ B-Client registration or login failed');
+                            console.log('❌ B-Client registration failed');
                             console.log('❌ Registration success:', result.registration_success);
                             console.log('❌ Login success:', result.login_success);
                             console.log('❌ Session info exists:', !!result.session_info);
-                            console.log('❌ Complete session data exists:', !!(result.session_info && result.session_info.complete_session_data));
                             statusDiv.innerHTML = '<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Registration failed. Please try again.</div>';
                         }
                     } else {

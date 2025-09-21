@@ -436,6 +436,42 @@ class IpcHandlers {
             }
         });
 
+        // Navigate to NSN with NMP parameters
+        this.safeRegisterHandler('navigate-to-nsn-request', async (_, navigationData) => {
+            try {
+                console.log(`\n🧭 C-Client IPC: Navigating to NSN with NMP parameters`);
+                console.log(`🧭 C-Client IPC: Navigation data:`, {
+                    user_id: navigationData.user_id,
+                    username: navigationData.username,
+                    url: navigationData.url
+                });
+
+                if (!navigationData.url) {
+                    console.error('❌ C-Client IPC: No URL provided in navigation data');
+                    return false;
+                }
+
+                // Navigate to the NSN URL with NMP parameters
+                await this.viewManager.navigateTo(navigationData.url);
+
+                // Record new visit
+                if (navigationData.url && this.historyManager) {
+                    const currentView = this.viewManager.getCurrentView();
+                    if (currentView) {
+                        const viewId = currentView.id || Date.now();
+                        const record = this.historyManager.recordVisit(navigationData.url, viewId);
+                        console.log(`📊 C-Client IPC: NSN navigation visit recorded for view ${viewId}`);
+                    }
+                }
+
+                console.log(`✅ C-Client IPC: NSN navigation completed successfully`);
+                return true;
+            } catch (error) {
+                console.error('❌ C-Client IPC: Failed to navigate to NSN:', error);
+                return false;
+            }
+        });
+
         // Go back
         this.safeRegisterHandler('go-back', () => {
             try {

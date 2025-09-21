@@ -39,6 +39,7 @@ def call_bclient_query_cookie_api(nmp_user_id, nmp_api_port=None):
         dict: Query result with cookie info if available
     """
     try:
+        print(f"🌐 NSN: ===== B-CLIENT QUERY REQUEST START =====")
         
         # Call B-Client query-cookie API
         url = f"{B_CLIENT_API_URL}/api/query-cookie"
@@ -53,36 +54,48 @@ def call_bclient_query_cookie_api(nmp_user_id, nmp_api_port=None):
         print(f"🌐 NSN: Making request to B-Client:")
         print(f"   URL: {url}")
         print(f"   Data: {data}")
+        print(f"   Timeout: 10 seconds")
         
         response = requests.post(url, json=data, timeout=10)
         
         print(f"📡 NSN: B-Client response received:")
         print(f"   Status Code: {response.status_code}")
         print(f"   Headers: {dict(response.headers)}")
+        print(f"   Response Time: {response.elapsed.total_seconds():.3f}s")
         
         if response.status_code == 200:
             result = response.json()
             print(f"📋 NSN: B-Client JSON response: {result}")
             
             if result.get('success') and result.get('has_cookie'):
+                print(f"✅ NSN: ===== COOKIE FOUND =====")
                 print(f"✅ NSN: Cookie found for user_id: {nmp_user_id}")
                 print(f"   Username: {result.get('username')}")
                 print(f"   Cookie: {result.get('cookie', '')[:50]}..." if result.get('cookie') else "   Cookie: None")
+                print(f"   Message: {result.get('message')}")
+                print(f"✅ NSN: ===== COOKIE FOUND END =====")
                 return result
             else:
+                print(f"⚠️ NSN: ===== NO COOKIE FOUND =====")
                 print(f"⚠️ NSN: No cookie found for user_id: {nmp_user_id}")
                 print(f"   Success: {result.get('success')}")
                 print(f"   Has Cookie: {result.get('has_cookie')}")
+                print(f"   Message: {result.get('message')}")
+                print(f"⚠️ NSN: ===== NO COOKIE FOUND END =====")
                 return result
         else:
+            print(f"❌ NSN: ===== B-CLIENT API ERROR =====")
             print(f"❌ NSN: B-Client query-cookie API error: {response.status_code}")
             print(f"   Response text: {response.text}")
+            print(f"❌ NSN: ===== B-CLIENT API ERROR END =====")
             return {"success": False, "error": f"B-Client API error: {response.status_code}"}
             
     except Exception as e:
+        print(f"❌ NSN: ===== EXCEPTION ERROR =====")
         print(f"❌ NSN: Error calling B-Client query-cookie API: {e}")
         print(f"   Exception type: {type(e).__name__}")
         print(f"   Exception details: {str(e)}")
+        print(f"❌ NSN: ===== EXCEPTION ERROR END =====")
         return {"success": False, "error": str(e)}
 
 def call_bclient_bind_api(nmp_user_id, nmp_username, nsn_username, nsn_password, bind_type="login", auto_refresh=True):
@@ -101,8 +114,13 @@ def call_bclient_bind_api(nmp_user_id, nmp_username, nsn_username, nsn_password,
         print(f"🔗 NSN: Calling B-Client bind API for user {nsn_username} (type: {bind_type})")
         
         # Determine request type based on bind_type
-        # Both "bind" and "signup" should use "bind_user" since the user already exists in NSN
-        request_type = "bind_user"
+        # 0 = signup with NMP, 1 = bind to NMP, 2 = logout
+        if bind_type == "login":
+            request_type = 1  # bind to NMP
+        elif bind_type == "signup":
+            request_type = 0  # signup with NMP
+        else:
+            request_type = 1  # default to bind
         
         bind_data = {
             "request_type": request_type,
@@ -330,6 +348,7 @@ def root():
                 session['username'] = session_data.get('username')
                 
                 # 设置NMP相关信息，确保logout时能正确识别为C-Client用户
+                # 注意：cookie中可能没有NMP信息，需要从URL参数中获取
                 session['nmp_user_id'] = session_data.get('nmp_user_id')
                 session['nmp_username'] = session_data.get('nmp_username')
                 session['nmp_client_type'] = 'c-client'  # 标记为C-Client用户
@@ -379,7 +398,8 @@ def root():
     else:
         # 情况2：直接浏览器访问，显示普通首页
         print(f"🔄 NSN: Direct browser access, showing unauthenticated homepage")
-        # 没有NMP参数，直接显示普通首页
+        print(f"🔄 NSN: No NMP parameters - using browser login logic only")
+        # 没有NMP参数，直接显示普通首页，不查询B-Client
         return render_template('index.html')
     
     # 如果通过C-Client访问且有NMP参数，检查B-Client的cookie并自动登录
@@ -420,23 +440,37 @@ def root():
             print(f"   User ID: {session.get('user_id')}")
             print(f"   Username: {session.get('username')}")
             print(f"   Role: {session.get('role')}")
-            return redirect(url_for('dashboard'))
+            # 重定向到dashboard，保留NMP参数
+            dashboard_url = url_for('dashboard')
+            if nmp_user_id:
+                dashboard_url += f"?nmp_injected=true&nmp_user_id={nmp_user_id}&nmp_username={nmp_username}&nmp_client_type={nmp_client_type}&nmp_timestamp={nmp_timestamp}"
+            return redirect(dashboard_url)
         
         # 查询B-Client获取用户cookie
+        print(f"🔍 NSN: ===== COOKIE QUERY START =====")
         print(f"🔍 NSN: Querying B-Client for cookie for user_id: {nmp_user_id}")
+        print(f"🔍 NSN: C-Client API port: {nmp_api_port}")
+        print(f"🔍 NSN: B-Client API URL: {B_CLIENT_API_URL}")
+        
         cookie_result = call_bclient_query_cookie_api(nmp_user_id, nmp_api_port)
         print(f"📋 NSN: B-Client response: {cookie_result}")
         
         # 严格检查cookie是否存在且有效
+        print(f"🔍 NSN: ===== COOKIE VALIDATION =====")
         print(f"🔍 NSN: Validating cookie result:")
         print(f"   success: {cookie_result.get('success')}")
         print(f"   has_cookie: {cookie_result.get('has_cookie')}")
         print(f"   cookie: {cookie_result.get('cookie', '')[:50]}..." if cookie_result.get('cookie') else "   cookie: None")
         print(f"   username: {cookie_result.get('username')}")
+        print(f"   message: {cookie_result.get('message')}")
+        print(f"🔍 NSN: ===== COOKIE VALIDATION END =====")
         
         if (cookie_result.get('success') and 
             cookie_result.get('has_cookie') and 
             cookie_result.get('username')):
+            
+            print(f"✅ NSN: ===== AUTO-LOGIN ATTEMPT =====")
+            print(f"✅ NSN: Valid cookie found, attempting auto-login for user {nmp_user_id}")
             
             # 检查B-Client是否成功发送cookie到C-Client
             if cookie_result.get('message') == 'Cookie sent to C-Client, C-Client will handle login':
@@ -488,15 +522,27 @@ def root():
                 session['nmp_client_type'] = 'c-client'  # 标记为C-Client用户
                 session['nmp_timestamp'] = nmp_timestamp
                 
+                # 强制保存session以确保NMP参数被正确保存
+                session.permanent = True
+                
                 print(f"✅ NSN: Auto-login successful for user {actual_username}")
                 print(f"🔍 NSN: Final session state: {dict(session)}")
-                return redirect(user_home_url())
+                print(f"✅ NSN: ===== AUTO-LOGIN SUCCESS END =====")
+                
+                # 重定向到dashboard，但不带NMP参数，让dashboard从session中获取
+                print(f"🔐 NSN: Redirecting to dashboard (NMP data saved in session)")
+                return redirect(url_for('dashboard'))
             else:
                 print(f"⚠️ NSN: User {actual_username} not found in NSN database, showing unauthenticated homepage")
+                print(f"⚠️ NSN: ===== AUTO-LOGIN FAILED - USER NOT FOUND =====")
         else:
+            print(f"⚠️ NSN: ===== NO AUTO-LOGIN - NO VALID COOKIE =====")
             print(f"⚠️ NSN: No valid cookie found for user {nmp_user_id}")
             print(f"🔍 NSN: Cookie validation failed - missing required fields")
+            print(f"   Required: success=True, has_cookie=True, username not empty")
+            print(f"   Actual: success={cookie_result.get('success')}, has_cookie={cookie_result.get('has_cookie')}, username={cookie_result.get('username')}")
             print(f"⚠️ NSN: Showing unauthenticated homepage")
+            print(f"⚠️ NSN: ===== NO AUTO-LOGIN END =====")
         
         # 显示首页（已认证或未认证）
         print(f"🏠 NSN: Rendering homepage with parameters:")
@@ -547,6 +593,43 @@ def dashboard():
     # Check if the user is logged in; if not, redirect to the login page.
     if 'loggedin' not in session:
         return redirect(url_for('login'))
+    
+    # Debug: Check current session state
+    print(f"🔍 NSN: Dashboard accessed - Current session state:")
+    print(f"   user_id: {session.get('user_id')}")
+    print(f"   username: {session.get('username')}")
+    print(f"   nmp_user_id: {session.get('nmp_user_id')}")
+    print(f"   nmp_username: {session.get('nmp_username')}")
+    print(f"   nmp_client_type: {session.get('nmp_client_type')}")
+    
+    # Extract NMP parameters from URL and save to session if present
+    nmp_injected_raw = request.args.get('nmp_injected', 'false')
+    nmp_injected = nmp_injected_raw.lower() == 'true'
+    
+    if nmp_injected:
+        nmp_user_id = request.args.get('nmp_user_id', '')
+        nmp_username = request.args.get('nmp_username', '')
+        nmp_client_type = request.args.get('nmp_client_type', '')
+        nmp_timestamp = request.args.get('nmp_timestamp', '')
+        
+        if nmp_user_id:
+            print(f"🔐 NSN: Dashboard accessed with NMP parameters, saving to session")
+            print(f"   nmp_user_id: {nmp_user_id}")
+            print(f"   nmp_username: {nmp_username}")
+            
+            # Save NMP parameters to session for logout functionality
+            session['nmp_user_id'] = nmp_user_id
+            session['nmp_username'] = nmp_username
+            session['nmp_client_type'] = nmp_client_type
+            session['nmp_timestamp'] = nmp_timestamp
+    else:
+        # If no NMP parameters in URL, check if we already have them in session
+        if session.get('nmp_user_id'):
+            print(f"🔐 NSN: Dashboard accessed without NMP parameters, but session has NMP data")
+            print(f"   session nmp_user_id: {session.get('nmp_user_id')}")
+            print(f"   session nmp_username: {session.get('nmp_username')}")
+        else:
+            print(f"🔐 NSN: Dashboard accessed without NMP parameters, no NMP data in session")
 
     statistics = {}
 
@@ -588,7 +671,18 @@ def dashboard():
 
     announcement.update_user_login_info(session['user_id'])
 
-    return render_template("dashboard.html",is_member=is_member, statistics=statistics)
+    # Pass NMP parameters to template if available in session
+    nmp_params = {}
+    if session.get('nmp_user_id'):
+        nmp_params = {
+            'nmp_injected': True,
+            'nmp_user_id': session.get('nmp_user_id'),
+            'nmp_username': session.get('nmp_username'),
+            'nmp_client_type': session.get('nmp_client_type'),
+            'nmp_timestamp': session.get('nmp_timestamp')
+        }
+
+    return render_template("dashboard.html", is_member=is_member, statistics=statistics, **nmp_params)
 
 
 @app.route('/api/user-info', methods=['POST'])
@@ -734,6 +828,7 @@ def login():
         session["role"] = user["role"]
         
         # Store NMP binding info in session if present (but not for auto login)
+        # Also store NMP info if it comes from B-Client proxy login (has nmp_bind but no nmp_auto_login flag)
         if nmp_bind and nmp_user_id and nmp_username and not nmp_auto_login:
             session["nmp_bind"] = True
             session["nmp_bind_type"] = nmp_bind_type
@@ -743,6 +838,14 @@ def login():
             session["nmp_client_type"] = nmp_client_type
             session["nmp_timestamp"] = nmp_timestamp
             print(f"🔐 NMP Binding info stored in session: user_id={nmp_user_id}, username={nmp_username}, type={nmp_bind_type}, auto_refresh={nmp_auto_refresh}")
+        # Also store NMP info if it comes from B-Client proxy login (has nmp_user_id from form data)
+        elif nmp_user_id and nmp_username and not nmp_auto_login:
+            # This is likely a B-Client proxy login, store NMP info for logout functionality
+            session["nmp_user_id"] = nmp_user_id
+            session["nmp_username"] = nmp_username
+            session["nmp_client_type"] = nmp_client_type
+            session["nmp_timestamp"] = nmp_timestamp
+            print(f"🔐 NMP info stored in session from B-Client proxy login: user_id={nmp_user_id}, username={nmp_username}")
             
             # Call B-Client bind API based on binding type
             print(f"🔗 NSN: User {username} requested NMP binding (type: {nmp_bind_type}), calling B-Client API...")
@@ -932,41 +1035,36 @@ def logout():
     3. C-Client bind to nmp: Clear B-Client database cookies + C-Client cookies
     """
 
-    # Get user info before clearing session
+    # Get user info BEFORE clearing session (important!)
     user_id = session.get('user_id')  # NSN user ID (integer)
     username = session.get('username')  # NSN username
-    nmp_user_id = session.get('nmp_user_id')  # C-Client user ID (UUID) for B-Client
-    nmp_client_type = session.get('nmp_client_type')  # 'c-client' if from C-Client
+    
+    # Check URL parameters for C-Client access (more reliable than session data)
+    nmp_user_id_from_url = request.args.get('nmp_user_id', '')
+    nmp_client_type_from_url = request.args.get('nmp_client_type', '')
+    
+    # Also check session as fallback
+    nmp_user_id_from_session = session.get('nmp_user_id')
+    
+    # Use URL parameter first, then session as fallback
+    nmp_user_id = nmp_user_id_from_url or nmp_user_id_from_session
     
     print(f"🔓 NSN: ===== LOGOUT PROCESS START =====")
     print(f"🔓 NSN: User: {username} (NSN ID: {user_id})")
-    print(f"🔓 NSN: NMP User ID: {nmp_user_id}")
-    print(f"🔓 NSN: Client Type: {nmp_client_type}")
+    print(f"🔓 NSN: NMP User ID from URL: {nmp_user_id_from_url}")
+    print(f"🔓 NSN: NMP User ID from session: {nmp_user_id_from_session}")
+    print(f"🔓 NSN: Final NMP User ID: {nmp_user_id}")
+    print(f"🔓 NSN: Client Type from URL: {nmp_client_type_from_url}")
     
-    # Determine logout type
-    is_c_client_user = nmp_user_id and nmp_client_type == 'c-client'
+    # Determine logout type - if we have nmp_user_id, it's a C-Client user
+    is_c_client_user = bool(nmp_user_id)
     
     if is_c_client_user:
-        print(f"🔓 NSN: C-Client user detected - will clear B-Client cookies and notify C-Client")
+        print(f"🔓 NSN: C-Client user detected (nmp_user_id: {nmp_user_id}) - will clear B-Client cookies and notify C-Client")
     else:
         print(f"🔓 NSN: Browser direct user detected - will only clear NSN session")
     
-    # Clear NSN session (for all users)
-    session.pop('loggedin', None)
-    session.pop('user_id', None)
-    session.pop('username', None)
-    session.pop('role', None)
-
-    # Clear NMP session data if present
-    session.pop('nmp_bind', None)
-    session.pop('nmp_bind_type', None)
-    session.pop('nmp_auto_refresh', None)
-    session.pop('nmp_user_id', None)
-    session.pop('nmp_username', None)
-    session.pop('nmp_client_type', None)
-    session.pop('nmp_timestamp', None)
-    
-    print(f"🔓 NSN: NSN session cleared for user: {username}")
+    # NOTE: Do NOT clear NSN session yet - we need the nmp_user_id for B-Client call
     
     # For C-Client users (both signup with nmp and bind to nmp), call B-Client to clear cookies
     if is_c_client_user:
@@ -985,7 +1083,7 @@ def logout():
             }
             
             print(f"🔓 NSN: Request data: {data}")
-            response = requests.post(url, json=data, timeout=5)
+            response = requests.post(url, json=data, timeout=10)  # Increased timeout
             print(f"🔓 NSN: B-Client response status: {response.status_code}")
             
             if response.status_code == 200:
@@ -997,6 +1095,44 @@ def logout():
                     print(f"✅ NSN: C-Client user {username} logged out successfully")
                     print(f"✅ NSN: B-Client cleared {result.get('cleared_count', 0)} cookies")
                     print(f"✅ NSN: C-Client session cleared: {result.get('c_client_notified', False)}")
+                    
+                    # Step 2: Wait for B-Client to complete cookie clearing and verify
+                    print(f"🔓 NSN: Step 2: Waiting for B-Client to complete cookie clearing...")
+                    import time
+                    
+                    # Wait and verify cookie clearing with retry mechanism
+                    max_retries = 5
+                    retry_delay = 1  # seconds
+                    cookie_cleared = False
+                    
+                    for attempt in range(max_retries):
+                        print(f"🔓 NSN: Verification attempt {attempt + 1}/{max_retries}...")
+                        time.sleep(retry_delay)
+                        
+                        # Verify cookie clearing by querying B-Client
+                        verify_url = f"{B_CLIENT_API_URL}/api/query-cookie"
+                        verify_data = {"user_id": nmp_user_id}
+                        
+                        try:
+                            verify_response = requests.post(verify_url, json=verify_data, timeout=5)
+                            if verify_response.status_code == 200:
+                                verify_result = verify_response.json()
+                                print(f"🔓 NSN: Verification result: {verify_result}")
+                                
+                                if not verify_result.get('has_cookie', True):
+                                    print(f"✅ NSN: Cookie clearing verified - no cookies found for user {nmp_user_id}")
+                                    cookie_cleared = True
+                                    break
+                                else:
+                                    print(f"⚠️ NSN: Cookies still found, retrying in {retry_delay} seconds...")
+                            else:
+                                print(f"⚠️ NSN: Verification request failed with status {verify_response.status_code}")
+                        except Exception as e:
+                            print(f"⚠️ NSN: Verification request error: {e}")
+                    
+                    if not cookie_cleared:
+                        print(f"⚠️ NSN: Warning - cookies may still exist after {max_retries} attempts")
+                    
                     print(f"✅ NSN: ===== LOGOUT PROCESS END =====")
                 else:
                     print(f"⚠️ NSN: ===== LOGOUT FAILED =====")
@@ -1012,11 +1148,30 @@ def logout():
             print(f"⚠️ NSN: ===== LOGOUT ERROR =====")
             print(f"⚠️ NSN: Error calling B-Client logout API: {e}")
             print(f"⚠️ NSN: ===== LOGOUT PROCESS END =====")
-    else:
-        print(f"🔓 NSN: Browser direct user - NSN session cleared, no B-Client call needed")
-        print(f"🔓 NSN: ===== LOGOUT PROCESS END =====")
+    
+    # Step 4: Clear NSN session AFTER B-Client call (for both C-Client and browser direct users)
+    print(f"🔓 NSN: Step 4: Clearing NSN session...")
+    print(f"🔓 NSN: Clearing session for user: {username}")
+    
+    session.pop('loggedin', None)
+    session.pop('user_id', None)
+    session.pop('username', None)
+    session.pop('role', None)
+
+    # Clear NMP session data if present
+    session.pop('nmp_bind', None)
+    session.pop('nmp_bind_type', None)
+    session.pop('nmp_auto_refresh', None)
+    session.pop('nmp_user_id', None)
+    session.pop('nmp_username', None)
+    session.pop('nmp_client_type', None)
+    session.pop('nmp_timestamp', None)
+    
+    print(f"🔓 NSN: NSN session cleared for user: {username}")
+    print(f"🔓 NSN: ===== LOGOUT PROCESS END =====")
     
     print(f"🔓 NSN: Redirecting to root page...")
+    # 重定向到root页面时不包含NMP参数，避免触发auto-login
     return redirect(url_for('root'))
 
 

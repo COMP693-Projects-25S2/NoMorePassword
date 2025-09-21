@@ -249,6 +249,10 @@ def start_conversation_with_user(recipient_user_id):
 
 @message_bp.route('/message/unread_count')
 def unread_count():
+    # Check if user is logged in
+    if 'user_id' not in session:
+        return jsonify({'count': 0})
+    
     user_id = session['user_id']
     with db.get_cursor() as cursor:
         cursor.execute('SELECT COUNT(*) as cnt FROM private_messages WHERE recipient_id=%s AND is_read=0', (user_id,))

@@ -20,27 +20,33 @@
 
         /* Optimize navigation spacing for better fit */
         .navbar-nav .nav-item {
-            margin: 0 2px; /* Reduced from 20px to 2px */
+            margin: 0 2px;
+            /* Reduced from 20px to 2px */
         }
 
         /* Responsive spacing adjustments */
         @media (min-width: 1200px) {
             .navbar-nav .nav-item {
-                margin: 0 4px; /* Slightly more space on larger screens */
+                margin: 0 4px;
+                /* Slightly more space on larger screens */
             }
         }
 
         @media (min-width: 1400px) {
             .navbar-nav .nav-item {
-                margin: 0 8px; /* More space on extra large screens */
+                margin: 0 8px;
+                /* More space on extra large screens */
             }
         }
 
         /* Optimize navigation link styling */
         .navbar-nav .nav-link {
-            font-size: 13px; /* Reduced from 14px */
-            padding: 0.5rem 0.4rem; /* Reduced horizontal padding */
-            white-space: nowrap; /* Prevent text wrapping */
+            font-size: 13px;
+            /* Reduced from 14px */
+            padding: 0.5rem 0.4rem;
+            /* Reduced horizontal padding */
+            white-space: nowrap;
+            /* Prevent text wrapping */
         }
 
         /* Hide less important items on medium screens */
@@ -58,7 +64,8 @@
         }
 
         .more-dropdown {
-            display: none; /* Hidden by default, shown on smaller screens */
+            display: none;
+            /* Hidden by default, shown on smaller screens */
         }
 
         /* Optimize user dropdown */
@@ -122,13 +129,13 @@
             <div class="collapse navbar-collapse" id="navbarNavDropdown">
                 <ul class="navbar-nav mx-auto align-items-center">
                     {% if 'loggedin' in session %}
-                    
+
                     <!-- Primary navigation items - always visible -->
                     <li class="nav-item">
                         <a class="nav-link fw-medium {% if active_page == 'dashboard' %}text-dark fw-bold{% endif %}"
                             href="{{ url_for('dashboard') }}">Dashboard</a>
                     </li>
-                    
+
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle fw-medium {% if active_page in ['private_journey', 'public_journey'] %}text-dark fw-bold{% endif %}"
                             href="#" id="journeysDropdown" role="button" data-bs-toggle="dropdown"
@@ -144,7 +151,8 @@
                     </li>
 
                     <!-- Conditional departure board for premium users -->
-                    {% if 'loggedin' in session and (session.role == 'admin' or session.role == 'editor' or session.premium == 1) %}
+                    {% if 'loggedin' in session and (session.role == 'admin' or session.role == 'editor' or
+                    session.premium == 1) %}
                     <li class="nav-item hide-on-medium">
                         <a class="nav-link fw-medium {% if active_page == 'departure_board' %}text-dark fw-bold{% endif %}"
                             href="{{ url_for('departure_board') }}">Departure</a>
@@ -168,15 +176,15 @@
                             Moderation
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="moderationDropdown">
-                    <li class="nav-item hide-on-medium">
-                        <a class="nav-link fw-medium {% if active_page == 'content_moderation' %}text-dark fw-bold{% endif %}"
-                            href="{{ url_for('moderation_content_dashboard') }}">Content Moderation</a>
-                    </li>
-                    <li class="nav-item hide-on-medium">
-                        <a class="nav-link fw-medium {% if active_page == 'comment_moderation' %}text-dark fw-bold{% endif %}"
-                            href="{{ url_for('moderation_comment_dashboard') }}">Comment Moderation</a>
-                    </li>
-                    </ul>
+                            <li class="nav-item hide-on-medium">
+                                <a class="nav-link fw-medium {% if active_page == 'content_moderation' %}text-dark fw-bold{% endif %}"
+                                    href="{{ url_for('moderation_content_dashboard') }}">Content Moderation</a>
+                            </li>
+                            <li class="nav-item hide-on-medium">
+                                <a class="nav-link fw-medium {% if active_page == 'comment_moderation' %}text-dark fw-bold{% endif %}"
+                                    href="{{ url_for('moderation_comment_dashboard') }}">Comment Moderation</a>
+                            </li>
+                        </ul>
                     </li>
                     {% endif %}
 
@@ -213,8 +221,7 @@
                     <!-- Help & Support dropdown - always visible -->
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle fw-medium {% if active_page in ['help', 'help_manage'] %}text-dark fw-bold{% endif %}"
-                            href="#" id="helpDropdown" role="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
+                            href="#" id="helpDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fas fa-question-circle me-1"></i>
                             <span class="d-none d-lg-inline">Help</span>
                         </a>
@@ -226,7 +233,9 @@
                                     href="{{ url_for('my_requests') }}">
                                     <i class="fas fa-list me-2"></i>My Requests</a></li>
                             {% if session.role in ['admin', 'editor', 'support_tech'] %}
-                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
                             <li><a class="dropdown-item {% if active_page == 'help_manage' %}fw-bold{% endif %}"
                                     href="{{ url_for('manage_requests') }}">
                                     <i class="fas fa-cogs me-2"></i>Manage Tickets</a></li>
@@ -236,19 +245,20 @@
 
                     <!-- More dropdown for hidden items on smaller screens -->
                     <li class="nav-item dropdown more-dropdown">
-                        <a class="nav-link dropdown-toggle fw-medium" href="#" id="moreDropdown" role="button" 
-                           data-bs-toggle="dropdown" aria-expanded="false">
+                        <a class="nav-link dropdown-toggle fw-medium" href="#" id="moreDropdown" role="button"
+                            data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fas fa-ellipsis-h"></i>
                             <span class="d-none d-lg-inline">More</span>
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="moreDropdown">
                             <!-- Items moved here on smaller screens -->
-                            {% if 'loggedin' in session and (session.role == 'admin' or session.role == 'editor' or session.premium == 1) %}
+                            {% if 'loggedin' in session and (session.role == 'admin' or session.role == 'editor' or
+                            session.premium == 1) %}
                             <li><a class="dropdown-item {% if active_page == 'departure_board' %}fw-bold{% endif %}"
                                     href="{{ url_for('departure_board') }}">
                                     <i class="fas fa-plane-departure me-2"></i>Departure Board</a></li>
                             {% endif %}
-                            
+
                             {% if session.role in ['admin', 'editor', 'moderator'] %}
                             <li><a class="dropdown-item {% if active_page == 'content_moderation' %}fw-bold{% endif %}"
                                     href="{{ url_for('moderation_content_dashboard') }}">
@@ -258,11 +268,11 @@
                                     href="{{ url_for('moderation_comment_dashboard') }}">
                                     <i class="fas fa-shield-alt me-2"></i>Comment Moderation</a></li>
                             {% endif %}
-                            
+
                             <li><a class="dropdown-item {% if active_page == 'announcement' %}fw-bold{% endif %}"
                                     href="{{ url_for('view_announcement') }}">
                                     <i class="fas fa-bullhorn me-2"></i>Announcements</a></li>
-                            
+
                             <li><a class="dropdown-item {% if active_page == 'premium' %}fw-bold{% endif %}"
                                     href="{{ url_for('list_premium') }}">
                                     <i class="fas fa-crown me-2"></i>Premium</a></li>
@@ -285,8 +295,11 @@
                             <li><a class="dropdown-item {% if active_page == 'profile' %}fw-bold{% endif %}"
                                     href="{{ url_for('view_profile') }}">
                                     <i class="fas fa-user me-2"></i>My Profile</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('logout') }}">
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item"
+                                    href="{{ url_for('logout') }}{% if nmp_injected %}?nmp_injected=true&nmp_user_id={{ nmp_user_id }}&nmp_username={{ nmp_username }}&nmp_client_type={{ nmp_client_type }}&nmp_timestamp={{ nmp_timestamp }}{% endif %}">
                                     <i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
                         </ul>
                     </li>
@@ -364,7 +377,7 @@
 
         // Get help desk notifications
         function updateHelpNotifications() {
-            {% if session.role in ['admin', 'editor','support_tech'] %}
+            {% if session.role in ['admin', 'editor', 'support_tech'] %}
             console.log('Checking for help desk notifications...');
             fetch('/api/help/notifications')
                 .then(response => {
@@ -423,61 +436,61 @@
                     </div>
                 </div>
             `;
-            
+
             toastContainer.insertAdjacentHTML('beforeend', toastHtml);
             const toastElement = toastContainer.lastElementChild;
             const toast = new bootstrap.Toast(toastElement);
-            
+
             // Click toast to navigate to related request and mark as read
-            toastElement.addEventListener('click', function(e) {
+            toastElement.addEventListener('click', function (e) {
                 // Don't navigate if close button was clicked
                 if (e.target.classList.contains('btn-close')) {
                     return;
                 }
-                
+
                 // Mark notification as read
                 markNotificationRead(notification.id);
-                
+
                 // Navigate to related request
                 window.location.href = `/help/manage/${notification.request_id}`;
             });
-            
+
             // Mark as read when close button is clicked
             const closeButton = toastElement.querySelector('.btn-close');
             if (closeButton) {
-                closeButton.addEventListener('click', function() {
+                closeButton.addEventListener('click', function () {
                     markNotificationRead(notification.id);
                 });
             }
-            
+
             toast.show();
-            
+
             // Record the shown notification ID
             localStorage.setItem('lastShownNotificationId', notification.id.toString());
-            
+
             // Remove element after toast is hidden
-            toastElement.addEventListener('hidden.bs.toast', function() {
+            toastElement.addEventListener('hidden.bs.toast', function () {
                 toastElement.remove();
             });
         }
 
         // Mark notification as read
         function markNotificationRead(notificationId) {
-            {% if session.role in ['admin','editor', 'support_tech'] %}
+            {% if session.role in ['admin', 'editor', 'support_tech'] %}
             fetch(`/api/help/notifications/${notificationId}/mark-read`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 }
             })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Notification marked as read successfully
-                    console.log('Notification marked as read');
-                }
-            })
-            .catch(error => console.error('Error marking notification as read:', error));
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Notification marked as read successfully
+                        console.log('Notification marked as read');
+                    }
+                })
+                .catch(error => console.error('Error marking notification as read:', error));
             {% endif %}
         }
 
@@ -489,7 +502,7 @@
                 // Update every 5 seconds
                 setInterval(updateUnreadCount, 5000);
             }
-            
+
             // Initialize help desk notifications for staff
             {% if session.role in ['admin', 'editor', 'support_tech'] %}
             updateHelpNotifications();

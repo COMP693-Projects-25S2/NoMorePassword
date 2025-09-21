@@ -118,50 +118,100 @@ class CClientApiServer {
             }
         });
 
-        // Receive cookie from B-Client after successful registration
-        this.app.post('/api/register', (req, res) => {
-            const { user_id, username, session_cookie, complete_session_data, registration_success, login_success } = req.body;
+        // Receive registration result from B-Client and handle auto-login
+        this.app.post('/api/register', async (req, res) => {
+            const { user_id, username, session_cookie, complete_session_data, registration_session_data, registration_info, registration_success, login_success, account } = req.body;
             console.log(`[C-Client API] Receiving registration data from B-Client for user: ${username} (${user_id})`);
+            console.log(`[C-Client API] Registration success: ${registration_success}, Login success: ${login_success}`);
 
             try {
-                if (registration_success && (session_cookie || complete_session_data)) {
-                    console.log(`[C-Client API] Successfully received registration data from B-Client for user ${username}`);
+                if (registration_success) {
+                    if (login_success && (session_cookie || complete_session_data)) {
+                        // Old flow: B-Client handled both registration and login
+                        console.log(`[C-Client API] Successfully received registration and login data from B-Client for user ${username}`);
 
-                    if (session_cookie) {
-                        console.log(`[C-Client API] ===== ORIGINAL SESSION COOKIE RECEIVED =====`);
-                        console.log(`[C-Client API] Session cookie: ${session_cookie.substring(0, 50)}...`);
-                        console.log(`[C-Client API] Full session cookie: ${session_cookie}`);
-                    }
+                        if (session_cookie) {
+                            console.log(`[C-Client API] ===== ORIGINAL SESSION COOKIE RECEIVED =====`);
+                            console.log(`[C-Client API] Session cookie: ${session_cookie.substring(0, 50)}...`);
+                            console.log(`[C-Client API] Full session cookie: ${session_cookie}`);
+                        }
 
-                    if (complete_session_data) {
-                        console.log(`[C-Client API] Complete session data received:`, {
-                            has_nsn_data: !!complete_session_data.nsn_session_data,
-                            nsn_user_id: complete_session_data.nsn_user_id,
-                            nsn_username: complete_session_data.nsn_username,
-                            nsn_role: complete_session_data.nsn_role
+                        if (complete_session_data) {
+                            console.log(`[C-Client API] Complete session data received:`, {
+                                has_nsn_data: !!complete_session_data.nsn_session_data,
+                                nsn_user_id: complete_session_data.nsn_user_id,
+                                nsn_username: complete_session_data.nsn_username,
+                                nsn_role: complete_session_data.nsn_role
+                            });
+                        }
+
+                        // Trigger C-Client to reload with the cookie and complete session data
+                        this.triggerCClientReloadWithCookie(user_id, username, session_cookie, complete_session_data);
+
+                        res.json({
+                            success: true,
+                            message: 'Cookie received successfully from B-Client',
+                            user_id: user_id,
+                            username: username,
+                            cookie_received: true
+                        });
+                    } else if (registration_info && account) {
+                        // New flow: B-Client only registered, C-Client will handle auto-login via URL injection
+                        console.log(`[C-Client API] ===== NEW FLOW: REGISTRATION ONLY =====`);
+                        console.log(`[C-Client API] Received registration info from B-Client for user ${username}`);
+                        console.log(`[C-Client API] Registration info:`, {
+                            nsn_username: registration_info.nsn_username,
+                            nsn_email: registration_info.nsn_email
+                        });
+                        console.log(`[C-Client API] Account data:`, {
+                            username: account.username,
+                            email: account.email
+                        });
+
+                        // Navigate to NSN with NMP parameters for auto-login
+                        console.log(`[C-Client API] ===== NAVIGATING TO NSN WITH NMP PARAMETERS =====`);
+                        console.log(`[C-Client API] Registration successful, navigating to NSN for auto-login`);
+
+                        // Create NMP parameters for navigation
+                        const nmpParams = {
+                            nmp_user_id: user_id,
+                            nmp_username: username,
+                            nmp_client_type: 'c-client',
+                            nmp_timestamp: Date.now().toString(),
+                            nmp_bind: 'true',
+                            nmp_bind_type: 'signup',
+                            nmp_auto_refresh: 'true',
+                            nmp_injected: 'true'
+                        };
+
+                        // Trigger C-Client to navigate to NSN with NMP parameters
+                        this.triggerCClientNavigateToNSN(user_id, username, nmpParams);
+
+                        res.json({
+                            success: true,
+                            message: 'Registration successful, navigating to NSN for auto-login',
+                            user_id: user_id,
+                            username: username,
+                            auto_login_success: true,
+                            nmp_params: nmpParams
+                        });
+                    } else {
+                        console.log(`[C-Client API] Invalid registration data from B-Client for user ${username}`);
+                        console.log(`[C-Client API] Expected either login_success=true with session data OR registration_session_data with account`);
+                        res.status(400).json({
+                            success: false,
+                            error: 'Invalid registration data format'
                         });
                     }
-
-                    // Trigger C-Client to reload with the cookie and complete session data
-                    this.triggerCClientReloadWithCookie(user_id, username, session_cookie, complete_session_data);
-
-                    res.json({
-                        success: true,
-                        message: 'Cookie received successfully from B-Client',
-                        user_id: user_id,
-                        username: username,
-                        cookie_received: true
-                    });
                 } else {
-                    console.log(`[C-Client API] Invalid registration data from B-Client for user ${username}`);
-                    console.log(`[C-Client API] Expected registration_success=true and either session_cookie or complete_session_data`);
+                    console.log(`[C-Client API] Registration failed for user ${username}`);
                     res.status(400).json({
                         success: false,
-                        error: 'Invalid registration data - need registration_success=true and either session_cookie or complete_session_data'
+                        error: 'Registration failed'
                     });
                 }
             } catch (error) {
-                console.error(`[C-Client API] Error processing cookie from B-Client:`, error);
+                console.error(`[C-Client API] Error processing registration data from B-Client:`, error);
                 res.status(500).json({
                     success: false,
                     error: error.message
@@ -180,7 +230,7 @@ class CClientApiServer {
                 const bClientUrl = 'http://localhost:3000';
 
                 const bindData = {
-                    request_type: 'bind_existing_user',
+                    request_type: 1, // bind to NMP
                     user_id: user_id,
                     user_name: username,
                     domain_id: 'localhost:5000',
@@ -374,6 +424,64 @@ class CClientApiServer {
         }
     }
 
+    triggerCClientNavigateToNSN(user_id, username, nmpParams) {
+        console.log(`[C-Client API] ===== TRIGGERING C-CLIENT NAVIGATION TO NSN =====`);
+        console.log(`[C-Client API] Navigation request for user: ${username} (${user_id})`);
+        console.log(`[C-Client API] NMP parameters:`, nmpParams);
+
+        try {
+            // Build NSN URL with NMP parameters
+            const nsnUrl = 'http://localhost:5000/';
+            const queryParams = new URLSearchParams(nmpParams).toString();
+            const fullUrl = `${nsnUrl}?${queryParams}`;
+
+            console.log(`[C-Client API] Full NSN URL with NMP parameters: ${fullUrl}`);
+
+            // Use IPC to communicate with main process
+            if (this.mainWindow && this.mainWindow.webContents) {
+                const navigationData = {
+                    user_id: user_id,
+                    username: username,
+                    url: fullUrl,
+                    nmp_params: nmpParams,
+                    action: 'navigate_to_nsn_with_nmp',
+                    timestamp: Date.now()
+                };
+
+                console.log(`[C-Client API] Sending navigation request to main process:`, {
+                    user_id: navigationData.user_id,
+                    username: navigationData.username,
+                    url: navigationData.url
+                });
+
+                // Use IPC to communicate with main process
+                this.mainWindow.webContents.send('navigate-to-nsn-request', navigationData);
+
+                console.log(`[C-Client API] Navigation request sent to main process for user: ${username}`);
+            } else {
+                console.error(`[C-Client API] Main window not available for navigation`);
+            }
+
+            // Also try direct call to main process method as backup
+            try {
+                if (global.cClientMainProcess && typeof global.cClientMainProcess.handleNavigateToNSN === 'function') {
+                    console.log(`[C-Client API] Also calling main process handleNavigateToNSN directly for user: ${username}`);
+                    global.cClientMainProcess.handleNavigateToNSN({
+                        user_id: user_id,
+                        username: username,
+                        url: fullUrl,
+                        nmp_params: nmpParams
+                    });
+                }
+            } catch (error) {
+                console.log(`[C-Client API] Direct method not available: ${error.message}`);
+            }
+
+        } catch (error) {
+            console.error(`[C-Client API] Error triggering navigation to NSN:`, error);
+        }
+    }
+
     start() {
         this.server = this.app.listen(this.port, () => {
             console.log(`[C-Client API] Server started on port ${this.port}`);
@@ -392,6 +500,7 @@ class CClientApiServer {
             }
         });
     }
+
 
     stop() {
         if (this.server) {

@@ -910,7 +910,7 @@ class ApiServer {
                 console.log(`[API] C-Client user ${user_name} already has an account for domain ${domain_id}, attempting login...`);
 
                 // Try to login with existing credentials to get fresh cookie
-                const loginResult = await this.loginToTargetWebsite(domain_id, existingAccount.username, existingAccount.password);
+                const loginResult = await this.loginToTargetWebsite(domain_id, existingAccount.username, existingAccount.password, user_id, user_name);
 
                 // Query NSN to get complete session information
                 console.log(`[API] Querying NSN for session info: ${existingAccount.username}`);
@@ -1000,101 +1000,92 @@ class ApiServer {
                 console.log(`[API] Waiting 5 seconds for database transaction to commit...`);
                 await new Promise(resolve => setTimeout(resolve, 5000));
 
-                // After successful registration, store cookie and send registration info to C-Client for auto-login
-                console.log(`[API] Registration successful, storing cookie and sending registration info to C-Client for auto-login`);
-
-                // Store cookie for auto-login
-                // Store with C-Client UUID as user_id for querying (avoiding NSN int user_id)
-                const cookieResult = nodeManager.addUserCookieWithTargetUsername(
-                    user_id,           // C-Client UUID (use this for querying, not NSN int user_id)
-                    user_name,         // C-Client username
-                    registrationData.username,  // NSN username (target username)
-                    node_id,           // node ID
-                    registrationData.password,  // NSN password as cookie data
-                    true,              // auto_refresh
-                    new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // refresh time (24 hours)
-                );
-                console.log(`[API] Cookie storage result:`, {
-                    success: cookieResult !== null,
-                    cookie_id: cookieResult ? cookieResult.id : null
-                });
-
-                // Create registration info for C-Client
-                const registrationInfo = {
+                // Registration successful, return registration info to C-Client for auto-login
+                console.log(`[API] Registration successful, returning registration info to C-Client for auto-login`);
+                
+                return {
                     registration_success: true,
-                    nsn_username: registrationData.username,
-                    nsn_password: registrationData.password,
-                    nsn_email: registrationData.email,
-                    nsn_first_name: registrationData.first_name,
-                    nsn_last_name: registrationData.last_name,
-                    nsn_location: registrationData.location,
-                    timestamp: Date.now()
+                    login_success: false, // Will be handled by C-Client
+                    session_info: null, // Will be created by C-Client after auto-login
+                    account: {
+                        username: registrationData.username,
+                        password: registrationData.password,
+                        email: registrationData.email,
+                        first_name: registrationData.first_name,
+                        last_name: registrationData.last_name,
+                        location: registrationData.location
+                    },
+                    message: 'Registration successful, C-Client will handle auto-login',
+                    action: 'auto_register',
+                    user_id: user_id,
+                    user_name: user_name,
+                    domain_id: domain_id,
+                    success: true,
+                    account_stored: true,
+                    cookie_stored: false, // No cookie stored yet, will be created after C-Client auto-login
+                    target_website_response: 'Registration successful'
                 };
+                    try {
+                        console.log(`[API] Sending session data to C-Client API for user: ${user_name}`);
+                        const axios = require('axios');
 
-                // Send registration info to C-Client API
-                try {
-                    console.log(`[API] Sending registration info to C-Client API for user: ${user_name}`);
-                    const axios = require('axios');
+                        console.log(`[API] ===== B-CLIENT SENDING SESSION DATA =====`);
+                        console.log(`[API] Created complete session data for C-Client:`, {
+                            has_nsn_data: !!completeSessionData.nsn_session_data,
+                            nsn_user_id: completeSessionData.nsn_user_id,
+                            nsn_username: completeSessionData.nsn_username,
+                            nsn_role: completeSessionData.nsn_role
+                        });
+                        console.log(`[API] Full complete session data:`, completeSessionData);
+                        console.log(`[API] NSN Session Data details:`, completeSessionData.nsn_session_data);
 
-                    console.log(`[API] ===== B-CLIENT SENDING REGISTRATION INFO =====`);
-                    console.log(`[API] Created registration info for C-Client:`, {
-                        registration_success: registrationInfo.registration_success,
-                        nsn_username: registrationInfo.nsn_username,
-                        nsn_email: registrationInfo.nsn_email
-                    });
+                        // Try to find C-Client API port (assuming it's clientPort + 1000)
+                        // We'll try common ports or get it from the request
+                        const cClientApiPorts = [4001, 4002, 5001, 6001, 7001]; // Common C-Client API ports
+                        let cClientApiResponse = null;
 
-                    // Try to find C-Client API port
-                    const cClientApiPorts = [4001, 4002, 5001, 6001, 7001]; // Common C-Client API ports
-                    let cClientApiResponse = null;
+                        for (const port of cClientApiPorts) {
+                            try {
+                                const cClientApiUrl = `http://localhost:${port}`;
+                                console.log(`[API] Trying C-Client API at ${cClientApiUrl}`);
 
-                    for (const port of cClientApiPorts) {
-                        try {
-                            const cClientApiUrl = `http://localhost:${port}`;
-                            console.log(`[API] Trying C-Client API at ${cClientApiUrl}`);
+                                const response = await axios.post(`${cClientApiUrl}/api/register`, {
+                                    user_id: user_id,
+                                    username: user_name,
+                                    complete_session_data: completeSessionData,
+                                    session_cookie: loginResult.sessionCookie, // Send original session cookie
+                                    registration_success: true,
+                                    login_success: true
+                                }, {
+                                    headers: { 'Content-Type': 'application/json' },
+                                    timeout: 5000
+                                });
 
-                            const response = await axios.post(`${cClientApiUrl}/api/register`, {
-                                user_id: user_id,
-                                username: user_name,
-                                registration_info: registrationInfo,
-                                registration_success: true,
-                                login_success: false, // C-Client will handle login via URL injection
-                                account: {
-                                    username: registrationData.username,
-                                    password: registrationData.password,
-                                    email: registrationData.email,
-                                    first_name: registrationData.first_name,
-                                    last_name: registrationData.last_name,
-                                    location: registrationData.location
+                                if (response.data.success) {
+                                    console.log(`[API] Successfully sent cookie to C-Client API at port ${port}`);
+                                    cClientApiResponse = response.data;
+                                    break;
                                 }
-                            }, {
-                                headers: { 'Content-Type': 'application/json' },
-                                timeout: 5000
-                            });
-
-                            if (response.data.success) {
-                                console.log(`[API] Successfully sent registration info to C-Client API at port ${port}`);
-                                cClientApiResponse = response.data;
-                                break;
+                            } catch (error) {
+                                console.log(`[API] C-Client API at port ${port} not available: ${error.message}`);
+                                continue;
                             }
-                        } catch (error) {
-                            console.log(`[API] C-Client API at port ${port} not available: ${error.message}`);
-                            continue;
                         }
-                    }
 
-                    if (!cClientApiResponse) {
-                        console.log(`[API] Warning: Could not reach C-Client API to send registration info`);
+                        if (!cClientApiResponse) {
+                            console.log(`[API] Warning: Could not reach C-Client API to send cookie`);
+                        }
+                    } catch (error) {
+                        console.error(`[API] Error sending cookie to C-Client API:`, error.message);
+                        // Don't fail the registration if C-Client API is not available
                     }
-                } catch (error) {
-                    console.error(`[API] Error sending registration info to C-Client API:`, error.message);
-                    // Don't fail the registration if C-Client API is not available
                 }
 
                 return {
                     registration_success: true,
-                    login_success: false, // C-Client will handle login via URL injection
+                    login_success: loginResult.success,
                     session_info: {
-                        registration_info: registrationInfo
+                        complete_session_data: completeSessionData
                     },
                     account: {
                         username: registrationData.username,
@@ -1104,7 +1095,7 @@ class ApiServer {
                         last_name: registrationData.last_name,
                         location: registrationData.location
                     },
-                    message: 'Registration successful, C-Client will handle auto-login via URL injection',
+                    message: loginResult.success ? 'Registration and login successful' : 'Registration successful but login failed',
                     // Keep original fields for debugging
                     action: 'auto_register',
                     user_id,
@@ -1112,12 +1103,15 @@ class ApiServer {
                     domain_id,
                     success: true,
                     account_stored: accountResult !== null,
-                    cookie_stored: cookieResult !== null, // Cookie stored for auto-login
+                    cookie_stored: cookieResult !== null,
                     target_website_response: registrationResult.response ?
                         (registrationResult.response.length > 50 ?
                             registrationResult.response.substring(0, 50) + '...' :
                             registrationResult.response) : 'No response',
-                    login_response: 'C-Client will handle login via URL injection'
+                    login_response: loginResult.response ?
+                        (loginResult.response.length > 50 ?
+                            loginResult.response.substring(0, 50) + '...' :
+                            loginResult.response) : 'No response'
                 };
             } else {
                 console.log(`[API] Registration failed for C-Client user: ${user_name}`);
