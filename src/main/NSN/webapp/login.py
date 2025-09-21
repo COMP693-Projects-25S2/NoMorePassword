@@ -411,6 +411,10 @@ def root():
         print(f"   nmp_client_type: {nmp_client_type}")
         print(f"   nmp_timestamp: {nmp_timestamp}")
         
+        # 检查是否是cookie重新加载请求（防止无限循环）
+        nmp_cookie_reload = request.args.get('nmp_cookie_reload')
+        print(f"   nmp_cookie_reload: {nmp_cookie_reload}")
+        
         # 检查是否是不同的用户
         current_session_user_id = session.get('nmp_user_id')
         current_loggedin = session.get('loggedin', False)
@@ -446,103 +450,109 @@ def root():
                 dashboard_url += f"?nmp_injected=true&nmp_user_id={nmp_user_id}&nmp_username={nmp_username}&nmp_client_type={nmp_client_type}&nmp_timestamp={nmp_timestamp}"
             return redirect(dashboard_url)
         
-        # 查询B-Client获取用户cookie
-        print(f"🔍 NSN: ===== COOKIE QUERY START =====")
-        print(f"🔍 NSN: Querying B-Client for cookie for user_id: {nmp_user_id}")
-        print(f"🔍 NSN: C-Client API port: {nmp_api_port}")
-        print(f"🔍 NSN: B-Client API URL: {B_CLIENT_API_URL}")
+        # 只有在不是cookie重新加载请求时才查询B-Client（防止无限循环）
+        if not nmp_cookie_reload:
+            # 查询B-Client获取用户cookie
+            print(f"🔍 NSN: ===== COOKIE QUERY START =====")
+            print(f"🔍 NSN: Querying B-Client for cookie for user_id: {nmp_user_id}")
+            print(f"🔍 NSN: C-Client API port: {nmp_api_port}")
+            print(f"🔍 NSN: B-Client API URL: {B_CLIENT_API_URL}")
+            
+            cookie_result = call_bclient_query_cookie_api(nmp_user_id, nmp_api_port)
+            print(f"📋 NSN: B-Client response: {cookie_result}")
+            
+            # 严格检查cookie是否存在且有效
+            print(f"🔍 NSN: ===== COOKIE VALIDATION =====")
+            print(f"🔍 NSN: Validating cookie result:")
+            print(f"   success: {cookie_result.get('success')}")
+            print(f"   has_cookie: {cookie_result.get('has_cookie')}")
+            print(f"   cookie: {cookie_result.get('cookie', '')[:50]}..." if cookie_result.get('cookie') else "   cookie: None")
+            print(f"   username: {cookie_result.get('username')}")
+            print(f"   message: {cookie_result.get('message')}")
+            print(f"🔍 NSN: ===== COOKIE VALIDATION END =====")
         
-        cookie_result = call_bclient_query_cookie_api(nmp_user_id, nmp_api_port)
-        print(f"📋 NSN: B-Client response: {cookie_result}")
-        
-        # 严格检查cookie是否存在且有效
-        print(f"🔍 NSN: ===== COOKIE VALIDATION =====")
-        print(f"🔍 NSN: Validating cookie result:")
-        print(f"   success: {cookie_result.get('success')}")
-        print(f"   has_cookie: {cookie_result.get('has_cookie')}")
-        print(f"   cookie: {cookie_result.get('cookie', '')[:50]}..." if cookie_result.get('cookie') else "   cookie: None")
-        print(f"   username: {cookie_result.get('username')}")
-        print(f"   message: {cookie_result.get('message')}")
-        print(f"🔍 NSN: ===== COOKIE VALIDATION END =====")
-        
-        if (cookie_result.get('success') and 
-            cookie_result.get('has_cookie') and 
-            cookie_result.get('username')):
+            if (cookie_result.get('success') and 
+                cookie_result.get('has_cookie') and 
+                cookie_result.get('username')):
+                
+                print(f"✅ NSN: ===== AUTO-LOGIN ATTEMPT =====")
+                print(f"✅ NSN: Valid cookie found, attempting auto-login for user {nmp_user_id}")
             
-            print(f"✅ NSN: ===== AUTO-LOGIN ATTEMPT =====")
-            print(f"✅ NSN: Valid cookie found, attempting auto-login for user {nmp_user_id}")
-            
-            # 检查B-Client是否成功发送cookie到C-Client
-            if cookie_result.get('message') == 'Cookie sent to C-Client, C-Client will handle login':
-                print(f"✅ NSN: B-Client successfully sent cookie to C-Client for user {nmp_user_id}")
-                actual_username = cookie_result.get('username')
+                # 检查B-Client是否成功发送cookie到C-Client
+                if cookie_result.get('message') == 'Cookie sent to C-Client, C-Client will handle login':
+                    print(f"✅ NSN: B-Client successfully sent cookie to C-Client for user {nmp_user_id}")
+                    actual_username = cookie_result.get('username')
+                    
+                    # B-Client已发送cookie到C-Client，C-Client将处理登录
+                    # C-Client将导航回NSN根路径触发自动登录
+                    print(f"ℹ️ NSN: C-Client will navigate back to NSN to trigger auto-login")
+                    # 继续正常流程 - 显示未认证首页
+                    # C-Client将重新加载此页面并设置cookie
                 
-                # B-Client已发送cookie到C-Client，C-Client将处理登录
-                # C-Client将导航回NSN根路径触发自动登录
-                print(f"ℹ️ NSN: C-Client will navigate back to NSN to trigger auto-login")
-                # 继续正常流程 - 显示未认证首页
-                # C-Client将重新加载此页面并设置cookie
-            
-            # 回退：B-Client返回cookie到NSN（旧行为）
-            elif cookie_result.get('cookie'):
-                print(f"✅ NSN: B-Client returned cookie to NSN for user {nmp_user_id} (fallback)")
-                actual_username = cookie_result.get('username')
-                cookie_data = cookie_result.get('cookie')
+                # 回退：B-Client返回cookie到NSN（旧行为）
+                elif cookie_result.get('cookie'):
+                    print(f"✅ NSN: B-Client returned cookie to NSN for user {nmp_user_id} (fallback)")
+                    actual_username = cookie_result.get('username')
+                    cookie_data = cookie_result.get('cookie')
+                    
+                    # B-Client返回cookie到NSN（回退行为）
+                    # 这是旧行为，C-Client应该直接处理登录
+                    print(f"ℹ️ NSN: B-Client returned cookie to NSN (fallback behavior)")
+                    # 继续正常登录流程
                 
-                # B-Client返回cookie到NSN（回退行为）
-                # 这是旧行为，C-Client应该直接处理登录
-                print(f"ℹ️ NSN: B-Client returned cookie to NSN (fallback behavior)")
-                # 继续正常登录流程
-            
-            # 回退：使用实际用户名查询NSN数据库中的现有用户
-            cursor = db.get_cursor()
-            cursor.execute("SELECT user_id, role FROM users WHERE username = %s", (actual_username,))
-            user_data = cursor.fetchone()
-            cursor.close()
-            
-            print(f"🔍 NSN: Database query result: {user_data}")
-            
-            if user_data:
-                print(f"✅ NSN: Found user in database: {actual_username}, user_id: {user_data['user_id']}, role: {user_data['role']}")
+                # 回退：使用实际用户名查询NSN数据库中的现有用户
+                cursor = db.get_cursor()
+                cursor.execute("SELECT user_id, role FROM users WHERE username = %s", (actual_username,))
+                user_data = cursor.fetchone()
+                cursor.close()
                 
-                # 使用NSN数据库中的真实用户数据执行自动登录
-                print(f"🔐 NSN: Setting session data:")
-                print(f"   user_id: {user_data['user_id']}")
-                print(f"   username: {actual_username}")
-                print(f"   role: {user_data['role']}")
+                print(f"🔍 NSN: Database query result: {user_data}")
                 
-                session['user_id'] = int(user_data['user_id'])  # 确保user_id是整数
-                session['loggedin'] = True
-                session['username'] = actual_username  # 使用实际注册用户名
-                session['role'] = user_data['role']  # 使用数据库中的真实角色
-                
-                # 设置NMP相关信息，确保logout时能正确识别为C-Client用户
-                session['nmp_user_id'] = nmp_user_id
-                session['nmp_username'] = nmp_username
-                session['nmp_client_type'] = 'c-client'  # 标记为C-Client用户
-                session['nmp_timestamp'] = nmp_timestamp
-                
-                # 强制保存session以确保NMP参数被正确保存
-                session.permanent = True
-                
-                print(f"✅ NSN: Auto-login successful for user {actual_username}")
-                print(f"🔍 NSN: Final session state: {dict(session)}")
-                print(f"✅ NSN: ===== AUTO-LOGIN SUCCESS END =====")
-                
-                # 重定向到dashboard，但不带NMP参数，让dashboard从session中获取
-                print(f"🔐 NSN: Redirecting to dashboard (NMP data saved in session)")
-                return redirect(url_for('dashboard'))
+                if user_data:
+                    print(f"✅ NSN: Found user in database: {actual_username}, user_id: {user_data['user_id']}, role: {user_data['role']}")
+                    
+                    # 使用NSN数据库中的真实用户数据执行自动登录
+                    print(f"🔐 NSN: Setting session data:")
+                    print(f"   user_id: {user_data['user_id']}")
+                    print(f"   username: {actual_username}")
+                    print(f"   role: {user_data['role']}")
+                    
+                    session['user_id'] = int(user_data['user_id'])  # 确保user_id是整数
+                    session['loggedin'] = True
+                    session['username'] = actual_username  # 使用实际注册用户名
+                    session['role'] = user_data['role']  # 使用数据库中的真实角色
+                    
+                    # 设置NMP相关信息，确保logout时能正确识别为C-Client用户
+                    session['nmp_user_id'] = nmp_user_id
+                    session['nmp_username'] = nmp_username
+                    session['nmp_client_type'] = 'c-client'  # 标记为C-Client用户
+                    session['nmp_timestamp'] = nmp_timestamp
+                    
+                    # 强制保存session以确保NMP参数被正确保存
+                    session.permanent = True
+                    
+                    print(f"✅ NSN: Auto-login successful for user {actual_username}")
+                    print(f"🔍 NSN: Final session state: {dict(session)}")
+                    print(f"✅ NSN: ===== AUTO-LOGIN SUCCESS END =====")
+                    
+                    # 重定向到dashboard，但不带NMP参数，让dashboard从session中获取
+                    print(f"🔐 NSN: Redirecting to dashboard (NMP data saved in session)")
+                    return redirect(url_for('dashboard'))
+                else:
+                    print(f"⚠️ NSN: User {actual_username} not found in NSN database, showing unauthenticated homepage")
+                    print(f"⚠️ NSN: ===== AUTO-LOGIN FAILED - USER NOT FOUND =====")
             else:
-                print(f"⚠️ NSN: User {actual_username} not found in NSN database, showing unauthenticated homepage")
-                print(f"⚠️ NSN: ===== AUTO-LOGIN FAILED - USER NOT FOUND =====")
+                print(f"⚠️ NSN: ===== NO AUTO-LOGIN - NO VALID COOKIE =====")
+                print(f"⚠️ NSN: No valid cookie found for user {nmp_user_id}")
+                print(f"🔍 NSN: Cookie validation failed - missing required fields")
+                print(f"   Required: success=True, has_cookie=True, username not empty")
+                print(f"   Actual: success={cookie_result.get('success')}, has_cookie={cookie_result.get('has_cookie')}, username={cookie_result.get('username')}")
+                print(f"⚠️ NSN: Showing unauthenticated homepage")
+                print(f"⚠️ NSN: ===== NO AUTO-LOGIN END =====")
+            
+            print(f"🔍 NSN: ===== COOKIE QUERY END =====")
         else:
-            print(f"⚠️ NSN: ===== NO AUTO-LOGIN - NO VALID COOKIE =====")
-            print(f"⚠️ NSN: No valid cookie found for user {nmp_user_id}")
-            print(f"🔍 NSN: Cookie validation failed - missing required fields")
-            print(f"   Required: success=True, has_cookie=True, username not empty")
-            print(f"   Actual: success={cookie_result.get('success')}, has_cookie={cookie_result.get('has_cookie')}, username={cookie_result.get('username')}")
-            print(f"⚠️ NSN: Showing unauthenticated homepage")
-            print(f"⚠️ NSN: ===== NO AUTO-LOGIN END =====")
+            print(f"🔄 NSN: Cookie reload request detected, skipping B-Client query to prevent loop")
         
         # 显示首页（已认证或未认证）
         print(f"🏠 NSN: Rendering homepage with parameters:")

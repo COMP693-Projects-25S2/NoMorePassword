@@ -81,11 +81,22 @@ class BClientNodeManager {
     // B-Client specific methods for user_cookies and user_accounts
     addUserCookie(userId, username, nodeId = null, cookie, autoRefresh = false, refreshTime = null) {
         try {
+            // Delete all existing cookies for this user_id before inserting new one
+            console.log(`[NodeManager] Deleting existing cookies for user_id: ${userId}`);
+            const deleteStmt = this.db.prepare(`
+                DELETE FROM user_cookies WHERE user_id = ?
+            `);
+            const deleteResult = deleteStmt.run(userId);
+            console.log(`[NodeManager] Deleted ${deleteResult.changes} existing cookie records for user_id: ${userId}`);
+
+            // Insert new cookie record
             const stmt = this.db.prepare(`
-                INSERT OR REPLACE INTO user_cookies (user_id, username, node_id, cookie, auto_refresh, refresh_time)
+                INSERT INTO user_cookies (user_id, username, node_id, cookie, auto_refresh, refresh_time)
                 VALUES (?, ?, ?, ?, ?, ?)
             `);
-            return stmt.run(userId, username, nodeId, cookie, autoRefresh ? 1 : 0, refreshTime);
+            const result = stmt.run(userId, username, nodeId, cookie, autoRefresh ? 1 : 0, refreshTime);
+            console.log(`[NodeManager] Inserted new cookie record for user_id: ${userId}, username: ${username}`);
+            return result;
         } catch (error) {
             console.error('Error adding user cookie:', error);
             return null;
@@ -101,11 +112,22 @@ class BClientNodeManager {
                 console.warn(`Target username ${targetUsername} not found in user_accounts for user ${userId}`);
             }
 
+            // Delete all existing cookies for this user_id before inserting new one
+            console.log(`[NodeManager] Deleting existing cookies for user_id: ${userId}`);
+            const deleteStmt = this.db.prepare(`
+                DELETE FROM user_cookies WHERE user_id = ?
+            `);
+            const deleteResult = deleteStmt.run(userId);
+            console.log(`[NodeManager] Deleted ${deleteResult.changes} existing cookie records for user_id: ${userId}`);
+
+            // Insert new cookie record
             const stmt = this.db.prepare(`
-                INSERT OR REPLACE INTO user_cookies (user_id, username, node_id, cookie, auto_refresh, refresh_time)
+                INSERT INTO user_cookies (user_id, username, node_id, cookie, auto_refresh, refresh_time)
                 VALUES (?, ?, ?, ?, ?, ?)
             `);
-            return stmt.run(userId, targetUsername, nodeId, cookie, autoRefresh ? 1 : 0, refreshTime);
+            const result = stmt.run(userId, targetUsername, nodeId, cookie, autoRefresh ? 1 : 0, refreshTime);
+            console.log(`[NodeManager] Inserted new cookie record for user_id: ${userId}, targetUsername: ${targetUsername}`);
+            return result;
         } catch (error) {
             console.error('Error adding user cookie with target username:', error);
             return null;

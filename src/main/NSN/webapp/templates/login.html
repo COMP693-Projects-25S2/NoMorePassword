@@ -60,8 +60,7 @@
                     <div id="nmp-binding-section" class="mt-4">
                         <hr>
                         <div class="text-center">
-                            <h5 class="text-primary">🔐 No More Password Integration</h5>
-                            <p class="text-muted small">Choose how to bind your account to No More Password</p>
+                            <h5 class="text-primary">🔐 No More Password</h5>
 
                             <!-- Auto Refresh Option -->
                             <div class="form-check mb-3">
@@ -74,8 +73,11 @@
                             <!-- Two NMP options -->
                             <div class="d-grid gap-2">
                                 <!-- For re-binding previously registered users -->
-                                <button id="nmp-bind-btn" class="btn btn-outline-info btn-sm">
-                                    <i class="fas fa-link"></i> Bind to No More Password
+                                <button id="nmp-bind-btn" class="btn btn-outline-dark btn-sm"
+                                    style="border-color: #000000; color: #000000; transition: all 0.3s ease;"
+                                    onmouseover="this.style.backgroundColor='#000000'; this.style.color='#ffffff';"
+                                    onmouseout="this.style.backgroundColor='transparent'; this.style.color='#000000';">
+                                    <i class="fas fa-key"></i> Login with No More Password
                                 </button>
 
                                 <!-- For new users -->
@@ -136,14 +138,12 @@
                 const password = document.getElementById('password').value;
                 const autoRefresh = autoRefreshCheckbox.checked;
 
-                if (!username || !password) {
-                    statusDiv.innerHTML = '<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> Please enter username and password first</div>';
-                    return;
-                }
+                // Allow binding even with empty credentials - B-Client will check user_accounts
+                console.log(`🔐 Binding attempt - Username: ${username ? 'provided' : 'empty'}, Password: ${password ? 'provided' : 'empty'}`);
 
                 try {
-                    showLoading(bindBtn, 'Binding');
-                    statusDiv.innerHTML = '<div class="alert alert-info">Binding to No More Password...</div>';
+                    showLoading(bindBtn, 'Logging in');
+                    statusDiv.innerHTML = '<div class="alert alert-info">Logging in with No More Password...</div>';
 
                     // First try rebind (for users who were previously registered)
                     console.log('🔐 Trying rebind first for previously registered user');
@@ -157,7 +157,10 @@
                             user_id: '{{ nmp_user_id }}',
                             user_name: '{{ nmp_username }}',
                             domain_id: 'localhost:5000',
-                            node_id: 'nsn-node-001'
+                            node_id: 'nsn-node-001',
+                            auto_refresh: autoRefresh,
+                            account: username || '', // Pass username even if empty
+                            password: password || '' // Pass password even if empty
                         })
                     });
 
@@ -182,7 +185,7 @@
                     // If rebind failed, try regular bind
                     if (!result.success) {
                         console.log('🔐 Rebind failed, trying regular bind');
-                        statusDiv.innerHTML = '<div class="alert alert-info">Rebind failed, trying regular binding...</div>';
+                        statusDiv.innerHTML = '<div class="alert alert-info">Rebind failed, trying regular login...</div>';
 
                         response = await fetch('http://localhost:3000/bind', {
                             method: 'POST',
@@ -259,12 +262,32 @@
                             statusDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Successfully bound! You can now use No More Password features.</div>';
                         }
                     } else {
-                        throw new Error(result.error || 'Bind failed');
+                        // Handle different error types from B-Client
+                        const errorData = result.data || result;
+                        const errorType = errorData.error_type;
+                        const errorMessage = errorData.message || errorData.error || 'Bind failed';
+
+                        // Reset button state for all error cases
+                        resetButton(bindBtn, '<i class="fas fa-key"></i> Login with No More Password', 'btn btn-outline-dark btn-sm');
+
+                        if (errorType === 'no_account_data') {
+                            statusDiv.innerHTML = `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ${errorMessage}</div>`;
+                        } else if (errorType === 'invalid_stored_credentials') {
+                            statusDiv.innerHTML = `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ${errorMessage}</div>`;
+                        } else if (errorType === 'missing_credentials') {
+                            statusDiv.innerHTML = `<div class="alert alert-info"><i class="fas fa-info-circle"></i> ${errorMessage}</div>`;
+                        } else if (errorType === 'system_error') {
+                            statusDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> ${errorMessage}</div>`;
+                        } else if (errorType === 'invalid_credentials') {
+                            statusDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> ${errorMessage}</div>`;
+                        } else {
+                            statusDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> ${errorMessage}</div>`;
+                        }
                     }
                 } catch (error) {
                     console.error('❌ NMP Bind Error:', error);
                     statusDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Bind failed: ${error.message}</div>`;
-                    resetButton(bindBtn, '<i class="fas fa-link"></i> Bind to No More Password', 'btn btn-outline-primary btn-sm');
+                    resetButton(bindBtn, '<i class="fas fa-key"></i> Login with No More Password', 'btn btn-outline-dark btn-sm');
                 }
             });
         }
@@ -299,7 +322,7 @@
 
                     // If user already has an account, show message and hide signup button
                     if (checkResponse.ok && checkResult.success) {
-                        statusDiv.innerHTML = '<div class="alert alert-warning"><i class="fas fa-info-circle"></i> Account already exists! Please use "Bind to No More Password" instead.</div>';
+                        statusDiv.innerHTML = '<div class="alert alert-warning"><i class="fas fa-info-circle"></i> Account already exists! Please use "Login with No More Password" instead.</div>';
                         showSuccess(signupBtn, 'Account Exists', 'btn btn-warning btn-sm');
                         bindBtn.style.display = 'block';
                         return;

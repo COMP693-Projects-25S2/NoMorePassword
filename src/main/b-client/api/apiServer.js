@@ -449,7 +449,70 @@ class ApiServer {
                     }
                 }
 
-                console.log(`[API] No cookie found for user ${user_id}`);
+                console.log(`[API] No cookie found for user ${user_id}, checking user_accounts for login credentials...`);
+
+                // Try to get account credentials from user_accounts table
+                const userAccounts = nodeManager.getAllUserAccounts(user_id);
+                console.log(`[API] Found ${userAccounts.length} user accounts for user ${user_id}`);
+
+                if (userAccounts.length > 0) {
+                    // Use the most recent account for login
+                    const latestAccount = userAccounts.sort((a, b) =>
+                        new Date(b.create_time) - new Date(a.create_time)
+                    )[0];
+
+                    console.log(`[API] Attempting login with account: ${latestAccount.username} on domain: ${latestAccount.website}`);
+
+                    try {
+                        // Attempt to login with the account credentials
+                        const loginResult = await this.performNSNLogin(
+                            latestAccount.username,
+                            latestAccount.password,
+                            latestAccount.website,
+                            user_id,
+                            c_client_api_port
+                        );
+
+                        if (loginResult.success) {
+                            console.log(`[API] Successfully logged in and obtained new session for user: ${latestAccount.username}`);
+
+                            // Send the new session to C-Client
+                            const sendResult = await this.sendCookieToCClient(
+                                user_id,
+                                latestAccount.username,
+                                loginResult.cookie,
+                                c_client_api_port,
+                                loginResult.sessionData
+                            );
+
+                            if (sendResult) {
+                                console.log(`[API] Successfully sent new session to C-Client`);
+                                return res.json({
+                                    success: true,
+                                    has_cookie: true,
+                                    message: 'Cookie sent to C-Client, C-Client will handle login',
+                                    username: latestAccount.username
+                                });
+                            } else {
+                                console.log(`[API] Failed to send new session to C-Client, returning session data to NSN as fallback`);
+                                return res.json({
+                                    success: true,
+                                    has_cookie: true,
+                                    cookie: loginResult.cookie,
+                                    domain_id: latestAccount.website,
+                                    username: latestAccount.username,
+                                    auto_refresh: true
+                                });
+                            }
+                        } else {
+                            console.log(`[API] Login failed for account: ${latestAccount.username}, error: ${loginResult.error}`);
+                        }
+                    } catch (error) {
+                        console.error(`[API] Error during login attempt:`, error);
+                    }
+                }
+
+                console.log(`[API] No valid account credentials found for user ${user_id}`);
                 return res.json({
                     success: true,
                     has_cookie: false,
@@ -682,20 +745,160 @@ class ApiServer {
             const { account, password, auto_refresh } = params;
             console.log(`[API] Handling bind request for existing user: ${user_name} on domain: ${domain_id}, auto_refresh: ${auto_refresh}`);
 
-            // Validate required parameters
-            if (!account || !password) {
-                return {
-                    action: 'bind_existing_user',
-                    user_id,
-                    user_name,
-                    domain_id,
-                    success: false,
-                    error: 'Missing login credentials',
-                    message: 'Please enter your NSN username and password to bind with No More Password',
-                    suggestion: 'Enter your NSN account credentials in the login form and try again',
-                    error_type: 'missing_credentials',
-                    user_friendly: true
-                };
+            // Check if login credentials are provided (empty string or null/undefined)
+            if (!account || !password || account.trim() === '' || password.trim() === '') {
+                console.log(`[API] No login credentials provided, checking user_accounts for existing data...`);
+
+                // Query user_accounts table for existing account data
+                const existingAccounts = nodeManager.getUserAccountsByWebsite(user_id, user_name, domain_id);
+                console.log(`[API] Found ${existingAccounts.length} existing accounts for user ${user_id} on domain ${domain_id}`);
+
+                if (existingAccounts.length > 0) {
+                    // Use the most recent account data
+                    const latestAccount = existingAccounts[0];
+                    console.log(`[API] Using existing account data: ${latestAccount.account} for user ${user_name}`);
+
+                    // Use existing credentials to login
+                    const loginResult = await this.loginToTargetWebsite(domain_id, latestAccount.account, latestAccount.password, user_id, user_name, 'bind');
+
+                    if (loginResult.success) {
+                        // Use login result data directly
+                        const sessionData = {
+                            loggedin: true,
+                            user_id: loginResult.userId,
+                            username: latestAccount.account,
+                            role: loginResult.userRole || 'traveller'
+                        };
+
+                        // Store the session data
+                        let finalCookie = loginResult.sessionCookie || `existing_user_${user_name}_${Date.now()}`;
+                        let refreshResult = null;
+
+                        // If auto_refresh is enabled, try to refresh the newly obtained cookie
+                        if (auto_refresh) {
+                            console.log(`[API] Auto-refresh enabled, attempting to refresh newly obtained cookie for user: ${user_name}`);
+                            refreshResult = await this.refreshCookieOnTargetWebsite(domain_id, finalCookie);
+
+                            if (refreshResult.success) {
+                                finalCookie = refreshResult.sessionCookie;
+                                console.log(`[API] Newly obtained cookie refreshed successfully for user: ${user_name}`);
+                            } else {
+                                console.log(`[API] Newly obtained cookie refresh failed for user: ${user_name}, using original cookie`);
+                            }
+                        }
+
+                        // Create session data object for storage
+                        const completeSessionData = {
+                            nsn_session_data: sessionData,
+                            nsn_user_id: loginResult.userId,
+                            nsn_username: latestAccount.account,
+                            nsn_role: loginResult.userRole || 'traveller',
+                            timestamp: Date.now()
+                        };
+
+                        console.log(`[API] Created session data for storage using existing account:`, {
+                            has_nsn_data: !!completeSessionData.nsn_session_data,
+                            nsn_user_id: completeSessionData.nsn_user_id,
+                            nsn_username: completeSessionData.nsn_username,
+                            nsn_role: completeSessionData.nsn_role,
+                            timestamp: completeSessionData.timestamp
+                        });
+
+                        const refreshTime = new Date(Date.now() + apiConfig.default.cookieExpiryHours * 60 * 60 * 1000);
+                        const jsonCookieData = JSON.stringify(completeSessionData);
+                        console.log(`[API] Storing JSON cookie data (first 100 chars): ${jsonCookieData.substring(0, 100)}...`);
+
+                        const cookieResult = nodeManager.addUserCookieWithTargetUsername(
+                            user_id,
+                            user_name,
+                            latestAccount.account,
+                            node_id,
+                            jsonCookieData,
+                            auto_refresh || false,
+                            refreshTime.toISOString()
+                        );
+
+                        console.log(`[API] Cookie storage result:`, cookieResult ? 'success' : 'failed');
+
+                        // Send complete session data to C-Client
+                        console.log(`[API] Sending complete session data to C-Client for user: ${user_name}`);
+                        const sendResult = await this.sendCookieToCClient(user_id, user_name, JSON.stringify(completeSessionData), null, completeSessionData);
+
+                        if (sendResult) {
+                            console.log(`[API] Successfully sent complete session data to C-Client for user: ${user_name}`);
+                            return {
+                                action: 'bind_existing_user',
+                                user_id,
+                                user_name,
+                                domain_id,
+                                success: true,
+                                method: 'login_with_existing_credentials',
+                                login_success: true,
+                                auto_refresh_enabled: auto_refresh || false,
+                                refresh_attempted: auto_refresh || false,
+                                refresh_success: refreshResult ? refreshResult.success : null,
+                                refresh_error: refreshResult && !refreshResult.success ? refreshResult.error : null,
+                                session_info: {
+                                    complete_session_data: completeSessionData
+                                },
+                                stored_cookie: cookieResult ? 'success' : 'failed',
+                                message: 'Successfully logged in using existing account data and sent complete session data to C-Client',
+                                c_client_notified: true
+                            };
+                        } else {
+                            console.log(`[API] Failed to send complete session data to C-Client for user: ${user_name}, returning session data to NSN as fallback`);
+                            return {
+                                action: 'bind_existing_user',
+                                user_id,
+                                user_name,
+                                domain_id,
+                                success: true,
+                                method: 'login_with_existing_credentials',
+                                login_success: true,
+                                auto_refresh_enabled: auto_refresh || false,
+                                refresh_attempted: auto_refresh || false,
+                                refresh_success: refreshResult ? refreshResult.success : null,
+                                refresh_error: refreshResult && !refreshResult.success ? refreshResult.error : null,
+                                session_info: {
+                                    complete_session_data: completeSessionData
+                                },
+                                stored_cookie: cookieResult ? 'success' : 'failed',
+                                message: 'Successfully logged in using existing account data and stored session data (C-Client notification failed)',
+                                c_client_notified: false
+                            };
+                        }
+                    } else {
+                        return {
+                            action: 'bind_existing_user',
+                            user_id,
+                            user_name,
+                            domain_id,
+                            success: false,
+                            method: 'login_with_existing_credentials',
+                            login_success: false,
+                            error: 'Invalid existing credentials',
+                            message: 'The stored account credentials are no longer valid. Please enter your current NSN username and password.',
+                            suggestion: 'Enter your current NSN account credentials in the login form and try again',
+                            error_type: 'invalid_stored_credentials',
+                            user_friendly: true,
+                            details: loginResult.error
+                        };
+                    }
+                } else {
+                    // No existing account data found
+                    return {
+                        action: 'bind_existing_user',
+                        user_id,
+                        user_name,
+                        domain_id,
+                        success: false,
+                        error: 'No account data found',
+                        message: 'Please input your account or sign up with No More Password',
+                        suggestion: 'Enter your NSN account credentials in the login form, or use the signup option to create a new account',
+                        error_type: 'no_account_data',
+                        user_friendly: true
+                    };
+                }
             }
 
             console.log(`[API] Attempting to login with provided credentials for user: ${user_name}`);
@@ -2052,6 +2255,77 @@ class ApiServer {
                 'GET /accounts/:user_id'
             ]
         };
+    }
+
+    /**
+     * Perform NSN login using account credentials from user_accounts table
+     */
+    async performNSNLogin(username, password, website, user_id, c_client_api_port) {
+        try {
+            console.log(`[API] Performing NSN login for user: ${username} on website: ${website}`);
+
+            // Use the existing loginToTargetWebsite method
+            const loginResult = await this.loginToTargetWebsite(website, username, password, user_id, username, 'bind');
+
+            if (loginResult.success) {
+                console.log(`[API] NSN login successful for user: ${username}`);
+
+                // Create session data object
+                const sessionData = {
+                    loggedin: true,
+                    user_id: loginResult.userId,
+                    username: username,
+                    role: loginResult.userRole || 'traveller'
+                };
+
+                // Create complete session data for storage
+                const completeSessionData = {
+                    nsn_session_data: sessionData,
+                    nsn_user_id: loginResult.userId,
+                    nsn_username: username,
+                    nsn_role: loginResult.userRole || 'traveller',
+                    timestamp: Date.now()
+                };
+
+                // Store the session in user_cookies table
+                const BClientNodeManager = require('../nodeManager/bClientNodeManager');
+                const nodeManager = new BClientNodeManager();
+
+                const cookieResult = await nodeManager.addUserCookieWithTargetUsername(
+                    user_id,
+                    username,
+                    JSON.stringify(completeSessionData),
+                    website,
+                    true // auto_refresh
+                );
+
+                if (cookieResult) {
+                    console.log(`[API] Successfully stored new session in user_cookies for user: ${username}`);
+                } else {
+                    console.log(`[API] Failed to store session in user_cookies for user: ${username}`);
+                }
+
+                return {
+                    success: true,
+                    cookie: JSON.stringify(completeSessionData),
+                    sessionData: completeSessionData,
+                    userId: loginResult.userId,
+                    userRole: loginResult.userRole || 'traveller'
+                };
+            } else {
+                console.log(`[API] NSN login failed for user: ${username}, error: ${loginResult.error}`);
+                return {
+                    success: false,
+                    error: loginResult.error || 'Login failed'
+                };
+            }
+        } catch (error) {
+            console.error(`[API] Error during NSN login for user ${username}:`, error);
+            return {
+                success: false,
+                error: error.message || 'Login error'
+            };
+        }
     }
 
 }

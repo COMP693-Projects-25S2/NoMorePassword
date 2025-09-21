@@ -134,11 +134,22 @@ class UserDatabase {
     // B-Client specific methods for user_cookies and user_accounts
     addUserCookie(userId, username, cookie, autoRefresh = false, refreshTime = null) {
         try {
+            // Delete all existing cookies for this user_id before inserting new one
+            console.log(`[UserDatabase] Deleting existing cookies for user_id: ${userId}`);
+            const deleteStmt = db.prepare(`
+                DELETE FROM user_cookies WHERE user_id = ?
+            `);
+            const deleteResult = deleteStmt.run(userId);
+            console.log(`[UserDatabase] Deleted ${deleteResult.changes} existing cookie records for user_id: ${userId}`);
+
+            // Insert new cookie record
             const stmt = db.prepare(`
-                INSERT OR REPLACE INTO user_cookies (user_id, username, cookie, auto_refresh, refresh_time)
+                INSERT INTO user_cookies (user_id, username, cookie, auto_refresh, refresh_time)
                 VALUES (?, ?, ?, ?, ?)
             `);
-            return stmt.run(userId, username, cookie, autoRefresh ? 1 : 0, refreshTime);
+            const result = stmt.run(userId, username, cookie, autoRefresh ? 1 : 0, refreshTime);
+            console.log(`[UserDatabase] Inserted new cookie record for user_id: ${userId}, username: ${username}`);
+            return result;
         } catch (error) {
             console.error('Error adding user cookie:', error);
             return null;

@@ -1360,7 +1360,8 @@ class ElectronApp {
                                         nmp_bind: 'true',
                                         nmp_bind_type: 'bind',
                                         nmp_auto_refresh: 'true',
-                                        nmp_injected: 'true'
+                                        nmp_injected: 'true',
+                                        nmp_cookie_reload: 'true'  // Add flag to prevent infinite loop
                                     });
                                     const nsnUrl = `http://localhost:5000/?${nmpParams.toString()}`;
                                     console.log(`🔄 C-Client: Loading NSN URL with local NMP parameters: ${nsnUrl}`);
