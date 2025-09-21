@@ -780,6 +780,22 @@ def login():
         nmp_bind_type = request.form.get("nmp_bind_type", "bind")  # "bind" or "signup"
         nmp_auto_refresh = request.form.get("nmp_auto_refresh", "false").lower() == "true"
         nmp_auto_login = request.form.get("nmp_auto_login", "false").lower() == "true"  # For B-Client auto login
+        
+        # Get NMP parameters from form data (for B-Client proxy login)
+        nmp_user_id_form = request.form.get("nmp_user_id", "")
+        nmp_username_form = request.form.get("nmp_username", "")
+        nmp_client_type_form = request.form.get("nmp_client_type", "")
+        nmp_timestamp_form = request.form.get("nmp_timestamp", "")
+        
+        # Use form data NMP parameters if available (from B-Client), otherwise use URL parameters
+        if nmp_user_id_form and nmp_username_form:
+            nmp_user_id = nmp_user_id_form
+            nmp_username = nmp_username_form
+            nmp_client_type = nmp_client_type_form
+            nmp_timestamp = nmp_timestamp_form
+            print(f"🔐 NSN: Using NMP parameters from form data (B-Client proxy): user_id={nmp_user_id}, username={nmp_username}")
+        else:
+            print(f"🔐 NSN: Using NMP parameters from URL: user_id={nmp_user_id}, username={nmp_username}")
 
         # Ensure username and password are provided
         if not username or not password:

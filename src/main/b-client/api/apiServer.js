@@ -596,17 +596,19 @@ class ApiServer {
                     has_nsn_data: !!parsedSessionData.nsn_session_data,
                     nsn_user_id: parsedSessionData.nsn_user_id,
                     nsn_username: parsedSessionData.nsn_username,
-                    nsn_role: parsedSessionData.nsn_role
+                    nsn_role: parsedSessionData.nsn_role,
+                    timestamp: parsedSessionData.timestamp
                 });
             }
 
             // Use the complete session data for C-Client
             const sessionDataToSend = parsedSessionData;
-            console.log(`[API] Using complete session data for C-Client:`, {
+            console.log(`[API] Using session data for C-Client (includes NSN user info for session):`, {
                 has_nsn_data: !!sessionDataToSend.nsn_session_data,
                 nsn_user_id: sessionDataToSend.nsn_user_id,
                 nsn_username: sessionDataToSend.nsn_username,
-                nsn_role: sessionDataToSend.nsn_role
+                nsn_role: sessionDataToSend.nsn_role,
+                timestamp: sessionDataToSend.timestamp
             });
 
             // Try to find C-Client API port
@@ -699,7 +701,8 @@ class ApiServer {
             console.log(`[API] Attempting to login with provided credentials for user: ${user_name}`);
 
             // Use provided credentials to login and get fresh session cookie
-            const loginResult = await this.loginToTargetWebsite(domain_id, account, password);
+            // Pass C-Client NMP parameters to ensure NSN session stores them correctly
+            const loginResult = await this.loginToTargetWebsite(domain_id, account, password, user_id, user_name, 'bind');
 
             if (loginResult.success) {
                 // Use login result data directly
@@ -727,20 +730,21 @@ class ApiServer {
                     }
                 }
 
-                // Create complete session data object for storage
+                // Create session data object for storage (include NSN user info needed for session)
                 const completeSessionData = {
-                    nsn_session_data: sessionData,
-                    nsn_user_id: loginResult.userId,
-                    nsn_username: account,
-                    nsn_role: loginResult.userRole || 'traveller',
+                    nsn_session_data: sessionData,  // Session data
+                    nsn_user_id: loginResult.userId,      // NSN user ID (needed for session)
+                    nsn_username: account,                // NSN username (needed for session)
+                    nsn_role: loginResult.userRole || 'traveller',  // NSN role (needed for session)
                     timestamp: Date.now()
                 };
 
-                console.log(`[API] Created complete session data for storage:`, {
+                console.log(`[API] Created session data for storage (includes NSN user info for session):`, {
                     has_nsn_data: !!completeSessionData.nsn_session_data,
                     nsn_user_id: completeSessionData.nsn_user_id,
                     nsn_username: completeSessionData.nsn_username,
-                    nsn_role: completeSessionData.nsn_role
+                    nsn_role: completeSessionData.nsn_role,
+                    timestamp: completeSessionData.timestamp
                 });
 
                 const refreshTime = new Date(Date.now() + apiConfig.default.cookieExpiryHours * 60 * 60 * 1000);
@@ -761,7 +765,7 @@ class ApiServer {
 
                 // Send complete session data to C-Client (same as auto-register flow)
                 console.log(`[API] Sending complete session data to C-Client for user: ${user_name}`);
-                const sendResult = await this.sendCookieToCClient(user_id, account, JSON.stringify(completeSessionData), null, completeSessionData);
+                const sendResult = await this.sendCookieToCClient(user_id, user_name, JSON.stringify(completeSessionData), null, completeSessionData);
 
                 if (sendResult) {
                     console.log(`[API] Successfully sent complete session data to C-Client for user: ${user_name}`);
@@ -910,7 +914,8 @@ class ApiServer {
                 console.log(`[API] C-Client user ${user_name} already has an account for domain ${domain_id}, attempting login...`);
 
                 // Try to login with existing credentials to get fresh cookie
-                const loginResult = await this.loginToTargetWebsite(domain_id, existingAccount.username, existingAccount.password);
+                // Pass C-Client NMP parameters to ensure NSN session stores them correctly
+                const loginResult = await this.loginToTargetWebsite(domain_id, existingAccount.username, existingAccount.password, user_id, user_name, 'signup');
 
                 // Query NSN to get complete session information
                 console.log(`[API] Querying NSN for session info: ${existingAccount.username}`);
@@ -1322,7 +1327,7 @@ class ApiServer {
         }
     }
 
-    async loginToTargetWebsite(domain_id, username, password, c_client_user_id = null, c_client_username = null) {
+    async loginToTargetWebsite(domain_id, username, password, c_client_user_id = null, c_client_username = null, bind_type = 'signup') {
         try {
             // Get target website configuration
             const websiteConfig = this.getWebsiteConfig(domain_id);
@@ -1347,13 +1352,13 @@ class ApiServer {
             // Add C-Client parameters if available
             if (c_client_user_id && c_client_username) {
                 loginData.nmp_bind = 'true';
-                loginData.nmp_bind_type = 'signup';
+                loginData.nmp_bind_type = bind_type; // Use provided bind_type (signup or bind)
                 loginData.nmp_auto_refresh = 'true';
                 loginData.nmp_user_id = c_client_user_id;
                 loginData.nmp_username = c_client_username;
                 loginData.nmp_client_type = 'c-client';
                 loginData.nmp_timestamp = Date.now().toString();
-                console.log(`[API] Adding C-Client parameters to login request`);
+                console.log(`[API] Adding C-Client parameters to login request with bind_type: ${bind_type}`);
             }
 
             const response = await this.makeHttpRequest(loginUrl, {

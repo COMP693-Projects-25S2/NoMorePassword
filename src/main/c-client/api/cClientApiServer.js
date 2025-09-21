@@ -18,6 +18,20 @@ class CClientApiServer {
         this.app.use(express.urlencoded({ extended: true }));
     }
 
+    /**
+     * Get current local user information
+     */
+    async getCurrentLocalUserInfo() {
+        try {
+            const DatabaseManager = require('../sqlite/databaseManager');
+            const localUser = DatabaseManager.getCurrentLocalUser();
+            return localUser;
+        } catch (error) {
+            console.error(`[C-Client API] Error getting current local user info:`, error);
+            return null;
+        }
+    }
+
     setupRoutes() {
         // Health check endpoint
         this.app.get('/health', (req, res) => {
@@ -68,12 +82,13 @@ class CClientApiServer {
                     }
 
                     if (complete_session_data) {
-                        console.log(`[C-Client API] ===== COMPLETE SESSION DATA RECEIVED =====`);
-                        console.log(`[C-Client API] Complete session data received:`, {
+                        console.log(`[C-Client API] ===== SESSION DATA RECEIVED =====`);
+                        console.log(`[C-Client API] Session data received:`, {
                             has_nsn_data: !!complete_session_data.nsn_session_data,
                             nsn_user_id: complete_session_data.nsn_user_id,
                             nsn_username: complete_session_data.nsn_username,
-                            nsn_role: complete_session_data.nsn_role
+                            nsn_role: complete_session_data.nsn_role,
+                            timestamp: complete_session_data.timestamp
                         });
                         console.log(`[C-Client API] Full complete session data:`, complete_session_data);
                         console.log(`[C-Client API] NSN Session Data details:`, complete_session_data.nsn_session_data);
@@ -137,11 +152,12 @@ class CClientApiServer {
                         }
 
                         if (complete_session_data) {
-                            console.log(`[C-Client API] Complete session data received:`, {
+                            console.log(`[C-Client API] Session data received:`, {
                                 has_nsn_data: !!complete_session_data.nsn_session_data,
                                 nsn_user_id: complete_session_data.nsn_user_id,
                                 nsn_username: complete_session_data.nsn_username,
-                                nsn_role: complete_session_data.nsn_role
+                                nsn_role: complete_session_data.nsn_role,
+                                timestamp: complete_session_data.timestamp
                             });
                         }
 
@@ -172,10 +188,26 @@ class CClientApiServer {
                         console.log(`[C-Client API] ===== NAVIGATING TO NSN WITH NMP PARAMETERS =====`);
                         console.log(`[C-Client API] Registration successful, navigating to NSN for auto-login`);
 
-                        // Create NMP parameters for navigation
+                        // Get current local user info for NMP parameters (security: use local user info, not B-Client data)
+                        const localUserInfo = await this.getCurrentLocalUserInfo();
+                        if (!localUserInfo) {
+                            console.error(`[C-Client API] Cannot get current local user info for NMP parameters`);
+                            res.status(500).json({
+                                success: false,
+                                error: 'Cannot get local user information'
+                            });
+                            return;
+                        }
+
+                        console.log(`[C-Client API] Using local user info for NMP parameters:`, {
+                            local_user_id: localUserInfo.user_id,
+                            local_username: localUserInfo.username
+                        });
+
+                        // Create NMP parameters for navigation using local user info
                         const nmpParams = {
-                            nmp_user_id: user_id,
-                            nmp_username: username,
+                            nmp_user_id: localUserInfo.user_id,  // Use local user ID
+                            nmp_username: localUserInfo.username,  // Use local username
                             nmp_client_type: 'c-client',
                             nmp_timestamp: Date.now().toString(),
                             nmp_bind: 'true',
@@ -185,7 +217,7 @@ class CClientApiServer {
                         };
 
                         // Trigger C-Client to navigate to NSN with NMP parameters
-                        this.triggerCClientNavigateToNSN(user_id, username, nmpParams);
+                        this.triggerCClientNavigateToNSN(localUserInfo.user_id, localUserInfo.username, nmpParams);
 
                         res.json({
                             success: true,

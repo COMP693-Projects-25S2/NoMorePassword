@@ -1089,11 +1089,12 @@ class ElectronApp {
             console.log(`🔄 C-Client: Handling cookie reload for user: ${username}`);
 
             if (complete_session_data) {
-                console.log(`🔄 C-Client: Using complete session data for login:`, {
+                console.log(`🔄 C-Client: Using session data for login:`, {
                     nsn_user_id: complete_session_data.nsn_user_id,
                     nsn_username: complete_session_data.nsn_username,
                     nsn_role: complete_session_data.nsn_role,
-                    has_nsn_session: !!complete_session_data.nsn_session_data
+                    has_nsn_session: !!complete_session_data.nsn_session_data,
+                    timestamp: complete_session_data.timestamp
                 });
 
                 // Use complete session data to set up login state
@@ -1130,7 +1131,7 @@ class ElectronApp {
 
                             const cookieUrl = 'http://localhost:5000'; // NSN URL
 
-                            // Get user info from complete_session_data (used for both cookie creation and additional cookies)
+                            // Get NSN user info from session data (needed for session cookie)
                             const nsnUserId = complete_session_data.nsn_user_id;
                             const nsnUsername = complete_session_data.nsn_username;
                             const nsnRole = complete_session_data.nsn_role;
@@ -1144,28 +1145,70 @@ class ElectronApp {
                                 // Extract the session cookie value from the cookie string
                                 const sessionMatch = cookie.match(/session=([^;]+)/);
                                 if (sessionMatch) {
-                                    sessionCookieToUse = sessionMatch[1];
-                                    console.log(`🔄 C-Client: Using original B-Client session cookie: ${sessionCookieToUse.substring(0, 50)}...`);
+                                    const originalCookie = sessionMatch[1];
+                                    console.log(`🔄 C-Client: Found original B-Client session cookie: ${originalCookie.substring(0, 50)}...`);
+
+                                    // Parse the original cookie to add NMP parameters
+                                    try {
+                                        const cookieParts = originalCookie.split('.');
+                                        if (cookieParts.length >= 1) {
+                                            const decodedData = Buffer.from(cookieParts[0], 'base64').toString('utf-8');
+                                            const sessionData = JSON.parse(decodedData);
+
+                                            // Add NMP parameters to the original session data
+                                            const updatedSessionData = {
+                                                ...sessionData,
+                                                nmp_user_id: user_id,      // C-Client user ID
+                                                nmp_username: username,    // C-Client username
+                                                nmp_client_type: 'c-client',
+                                                nmp_timestamp: Date.now().toString()
+                                            };
+
+                                            // Recreate the cookie with NMP parameters
+                                            const updatedSessionJson = JSON.stringify(updatedSessionData);
+                                            const updatedSessionBase64 = Buffer.from(updatedSessionJson).toString('base64');
+                                            sessionCookieToUse = `${updatedSessionBase64}.${Date.now()}.${Math.random().toString(36).substring(2)}`;
+
+                                            console.log(`🔄 C-Client: Updated original cookie with NMP parameters`);
+                                        } else {
+                                            // Fallback to original cookie if parsing fails
+                                            sessionCookieToUse = originalCookie;
+                                            console.log(`🔄 C-Client: Using original cookie as fallback`);
+                                        }
+                                    } catch (error) {
+                                        // Fallback to original cookie if parsing fails
+                                        sessionCookieToUse = originalCookie;
+                                        console.log(`🔄 C-Client: Error parsing original cookie, using as-is: ${error.message}`);
+                                    }
                                 }
                             }
 
-                            // If no original cookie, create one with correct NSN user_id
+                            // If no original cookie, create one with NSN session data
                             if (!sessionCookieToUse) {
-                                console.log(`🔄 C-Client: No original cookie, creating new one with NSN data`);
-                                console.log(`🔄 C-Client: NSN User ID (int): ${nsnUserId}`);
-                                console.log(`🔄 C-Client: NSN Username: ${nsnUsername}`);
-                                console.log(`🔄 C-Client: NSN Role: ${nsnRole}`);
+                                console.log(`🔄 C-Client: No original cookie, creating new one with NSN session data`);
+                                console.log(`🔄 C-Client: Using session data from B-Client:`, {
+                                    loggedin: nsnSessionData.loggedin,
+                                    user_id: nsnSessionData.user_id,
+                                    username: nsnSessionData.username,
+                                    role: nsnSessionData.role
+                                });
 
-                                // Create session data with correct NSN user_id
-                                const correctedSessionData = {
+                                // Create session data with correct NSN user_id from complete_session_data
+                                // Also include NMP parameters for logout functionality
+                                const sessionDataToUse = {
                                     ...nsnSessionData,
-                                    user_id: nsnUserId,
-                                    username: nsnUsername,
-                                    role: nsnRole
+                                    user_id: nsnUserId,    // Use NSN user_id from complete_session_data
+                                    username: nsnUsername, // Use NSN username from complete_session_data
+                                    role: nsnRole,         // Use NSN role from complete_session_data
+                                    // Include NMP parameters for logout functionality
+                                    nmp_user_id: user_id,      // C-Client user ID
+                                    nmp_username: username,    // C-Client username
+                                    nmp_client_type: 'c-client',
+                                    nmp_timestamp: Date.now().toString()
                                 };
 
                                 // Create Flask session cookie format (base64 encoded JSON)
-                                const sessionJson = JSON.stringify(correctedSessionData);
+                                const sessionJson = JSON.stringify(sessionDataToUse);
                                 const sessionBase64 = Buffer.from(sessionJson).toString('base64');
                                 sessionCookieToUse = `${sessionBase64}.${Date.now()}.${Math.random().toString(36).substring(2)}`;
 
@@ -1191,9 +1234,8 @@ class ElectronApp {
 
                             console.log(`🔄 C-Client: Flask session cookie set successfully`);
 
-                            // Also set additional cookies that NSN might need
-                            // Get user info from complete_session_data (already defined above)
-
+                            // Also set additional cookies that NSN might need for session
+                            // These cookies are from NSN's own session data, not exposed sensitive info
                             if (nsnUserId) {
                                 console.log(`🔄 C-Client: Setting user_id cookie: ${nsnUserId}`);
                                 await targetSession.cookies.set({
@@ -1239,7 +1281,7 @@ class ElectronApp {
                                 console.log(`🔄 C-Client: role cookie set successfully`);
                             }
 
-                            console.log(`🔄 C-Client: Flask session cookies set successfully for user ${nsnUsername}`);
+                            console.log(`🔄 C-Client: All cookies set successfully for NSN session`);
 
                             // Close any open registration dialog
                             console.log(`🔄 C-Client: Closing user registration dialog after successful registration`);
@@ -1297,9 +1339,31 @@ class ElectronApp {
                                 console.log(`🔄 C-Client: Navigating to NSN root path to trigger auto-login`);
                                 const currentView = this.viewManager.views[this.viewManager.currentViewId];
                                 if (currentView && currentView.webContents) {
-                                    // Navigate to NSN root path to trigger auto-login
-                                    const nsnUrl = 'http://localhost:5000/';
-                                    console.log(`🔄 C-Client: Loading NSN URL: ${nsnUrl}`);
+                                    // Get current local user info for NMP parameters (security: use local user info, not B-Client data)
+                                    const localUserInfo = await this.viewManager.getCurrentUserInfo();
+                                    if (!localUserInfo) {
+                                        console.error(`❌ C-Client: Cannot get current local user info for NMP parameters`);
+                                        return false;
+                                    }
+
+                                    console.log(`🔄 C-Client: Using local user info for NMP parameters:`, {
+                                        local_user_id: localUserInfo.user_id,
+                                        local_username: localUserInfo.username
+                                    });
+
+                                    // Navigate to NSN root path to trigger auto-login with NMP parameters
+                                    const nmpParams = new URLSearchParams({
+                                        nmp_user_id: localUserInfo.user_id,  // Use local user ID
+                                        nmp_username: localUserInfo.username,  // Use local username
+                                        nmp_client_type: 'c-client',
+                                        nmp_timestamp: Date.now().toString(),
+                                        nmp_bind: 'true',
+                                        nmp_bind_type: 'bind',
+                                        nmp_auto_refresh: 'true',
+                                        nmp_injected: 'true'
+                                    });
+                                    const nsnUrl = `http://localhost:5000/?${nmpParams.toString()}`;
+                                    console.log(`🔄 C-Client: Loading NSN URL with local NMP parameters: ${nsnUrl}`);
 
                                     // Add page load event listener to check cookies after page loads
                                     const checkCookiesAfterLoad = async () => {
