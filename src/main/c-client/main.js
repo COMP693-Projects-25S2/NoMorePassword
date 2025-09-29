@@ -3,14 +3,13 @@ const WindowManager = require('./window/windowManager');
 const ViewManager = require('./window/viewManager');
 const HistoryManager = require('./history/historyManager');
 const IpcHandlers = require('./ipc/ipcHandlers');
-const { StartupValidator } = require('./nodeManager');
+const { StartupValidator } = require('./userManager');
 const ClientManager = require('./clientManager');
 const ClientSwitchManager = require('../shared/clientSwitchManager');
-const DistributedNodeManager = require('./nodeManager/distributedNodeManager');
-const DistributedApiClient = require('./api/distributedApiClient');
-const DatabaseManager = require('./sqlite/databaseManager');
 const PortManager = require('../utils/portManager');
 const CClientApiServer = require('./api/cClientApiServer');
+const CClientWebSocketClient = require('./websocket/cClientWebSocketClient');
+const BClientConfigModal = require('./config/bClientConfigModal');
 
 class ElectronApp {
     constructor() {
@@ -18,6 +17,7 @@ class ElectronApp {
         this.clientId = process.env.C_CLIENT_ID || `c-client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         this.portManager = new PortManager();
         this.clientPort = null; // Will be set during initialization
+        this.config = this.loadConfig(); // Load network configuration
 
         this.clientManager = new ClientManager();
         this.historyManager = new HistoryManager();
@@ -30,16 +30,62 @@ class ElectronApp {
         this.pendingTitleUpdates = new Map();
         this.clientSwitchManager = new ClientSwitchManager(); // Unified client switch manager
 
-        // Distributed node management
-        this.distributedNodeManager = null;
-        this.distributedApiClient = null;
-        this.databaseManager = DatabaseManager;
-
         // C-Client API server
         this.apiServer = null;
         this.reloadCheckInterval = null;
 
+
+        // C-Client WebSocket client (to connect to B-Client)
+        this.webSocketClient = null;
+        this.currentWebSocketUrl = null; // Track current WebSocket URL for connection sharing
+        this.websiteWebSocketConnections = new Map(); // Track WebSocket connections per website domain
+
+        // B-Client configuration modal
+        this.bClientConfigModal = null;
+
+        // NSN response handler
+        this.nsnResponseHandler = null;
+
         console.log(`🚀 Starting C-Client: ${this.clientId} (port will be assigned during initialization)`);
+    }
+
+    // Load network configuration
+    loadConfig() {
+        try {
+            const fs = require('fs');
+            const path = require('path');
+            const configPath = path.join(__dirname, 'config.json');
+            const configData = fs.readFileSync(configPath, 'utf8');
+            const config = JSON.parse(configData);
+            console.log('🔧 C-Client: Loaded network configuration');
+            return config;
+        } catch (error) {
+            console.log('🔧 C-Client: Using default network configuration (config.json not found)');
+            return {
+                network: {
+                    use_public_ip: false,
+                    public_ip: '121.74.37.6',
+                    local_ip: '127.0.0.1'
+                }
+            };
+        }
+    }
+
+    // Get the appropriate IP address based on configuration
+    getConfiguredIpAddress() {
+        // Add safety check for config
+        if (!this.config || !this.config.network) {
+            console.log('⚠️ C-Client: Config not loaded, using default local IP');
+            return '127.0.0.1';
+        }
+
+        if (this.config.network.use_public_ip) {
+            console.log('🌐 C-Client: Using public IP mode');
+            return this.config.network.public_ip;
+        } else {
+            console.log('🏠 C-Client: Using local IP mode');
+            return this.config.network.local_ip;
+        }
     }
 
     /**
@@ -59,19 +105,102 @@ class ElectronApp {
     /**
      * Start C-Client API server
      */
-    startApiServer() {
+    async startApiServer() {
         try {
-            // Use a different port for API server (clientPort + 1000)
-            const apiPort = this.clientPort + 1000;
-            this.apiServer = new CClientApiServer(apiPort, this.mainWindow);
-            this.apiServer.start();
-            console.log(`🌐 C-Client: API server started on port ${apiPort}`);
+            // Start merged C-Client API server with dynamic port
+            this.apiServer = new CClientApiServer(null, this.mainWindow);
+            const apiPort = await this.apiServer.start();
+            console.log(`🌐 C-Client: Merged API server started on port ${apiPort}`);
+
+            // Initialize WebSocket client (but don't connect automatically)
+            this.webSocketClient = new CClientWebSocketClient();
+            this.webSocketClient.setClientId(this.clientId); // Set client ID
+            this.webSocketClient.setMainWindow(this); // Set main window reference for page refresh
+            this.webSocketClient.setElectronApp(this); // Set ElectronApp reference for connection sharing
+            console.log(`🔌 C-Client: WebSocket client initialized (not connected) with client ID: ${this.clientId}`);
+
+            // Update URL injector with the correct API port
+            try {
+                const { updateGlobalApiPort } = require('./utils/urlParameterInjector');
+                updateGlobalApiPort(apiPort);
+                console.log(`🌐 C-Client: Updated URL injector with API port: ${apiPort}`);
+            } catch (error) {
+                console.error(`🌐 C-Client: Error updating URL injector port:`, error);
+            }
+
+            // Create view manager with API port
+            console.log(`🌐 C-Client: Creating ViewManager with windowManager: ${!!this.windowManager}, historyManager: ${!!this.historyManager}, apiPort: ${apiPort}`);
+            this.viewManager = new ViewManager(this, this.historyManager, apiPort);
+            console.log(`🌐 C-Client: Created ViewManager with API port: ${apiPort}`);
+
+            // Verify ViewManager creation
+            if (!this.viewManager) {
+                console.error(`❌ C-Client: Failed to create ViewManager`);
+                throw new Error('ViewManager creation failed');
+            }
+
+            console.log(`🌐 C-Client: ViewManager created successfully: ${!!this.viewManager}`);
+
+            // Create IPC handlers with WebSocket client reference (after ViewManager is created)
+            this.ipcHandlers = new IpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager, null, this.startupValidator, apiPort, this.webSocketClient);
+            console.log(`🌐 C-Client: Created IpcHandlers with WebSocket client reference`);
+
+            // Initialize B-Client configuration modal
+            this.bClientConfigModal = new BClientConfigModal(this.mainWindow);
+
+            // Add B-Client configuration IPC handler
+            const { ipcMain } = require('electron');
+            ipcMain.handle('show-b-client-config', () => {
+                this.showBClientConfig();
+            });
+
+            // Set current user for NodeManager (if available) and update port in database
+            try {
+                const db = require('./sqlite/database');
+                const currentUser = db.prepare('SELECT * FROM local_users WHERE is_current = 1').get();
+                if (currentUser) {
+                    // Update the port and IP address in database based on configuration
+                    const DatabaseManager = require('./sqlite/databaseManager');
+                    const NetworkConfigManager = require('./config/networkConfigManager');
+                    const configuredIp = this.getConfiguredIpAddress();
+
+                    // Note: IP and port tracking has been removed from local_users table
+                    console.log(`🌐 C-Client: Using IP and port for user ${currentUser.username}: ${configuredIp}:${apiPort} (${this.config && this.config.network && this.config.network.use_public_ip ? 'public' : 'local'} mode)`);
+
+                    // Also update all node tables with the configured IP address
+                    try {
+                        const networkManager = new NetworkConfigManager();
+                        await networkManager.updateDatabaseIpAddresses();
+                        console.log(`🌐 C-Client: Updated all node tables with IP address: ${configuredIp}`);
+                    } catch (networkError) {
+                        console.error(`🌐 C-Client: Error updating node tables IP address:`, networkError);
+                    }
+
+                    this.apiServer.setCurrentUser(currentUser);
+                    console.log(`🌐 C-Client: Set current user for NodeManager: ${currentUser.username}`);
+                } else {
+                    console.log(`🌐 C-Client: No current user found in database`);
+                }
+            } catch (error) {
+                console.error(`🌐 C-Client: Error setting current user for NodeManager:`, error);
+            }
 
             // Start checking for reload requests
             this.startReloadChecker();
         } catch (error) {
             console.error('❌ C-Client: Failed to start API server:', error);
             // Don't fail initialization if API server fails to start
+        }
+    }
+
+
+
+    /**
+     * Show B-Client configuration modal
+     */
+    showBClientConfig() {
+        if (this.bClientConfigModal) {
+            this.bClientConfigModal.showConfigModal();
         }
     }
 
@@ -126,192 +255,14 @@ class ElectronApp {
             const bClientConfig = apiConfig.getCurrentBClientApi();
             console.log(`C-Client: Using B-Client API: ${bClientConfig.name} (${bClientConfig.url})`);
 
-            // Initialize distributed node manager
-            this.distributedNodeManager = new DistributedNodeManager(this.databaseManager, {
-                heartbeatInterval: 30000,
-                electionTimeout: 10000
-            });
-
-            // Initialize API client for B-Client communication
-            this.distributedApiClient = new DistributedApiClient({
-                bClientApiUrl: bClientConfig.url,
-                timeout: 10000
-            });
-
-            // Register current c-client as a channel node
-            const nodeInfo = {
-                nodeType: 'channel',
-                domainId: 'default-domain',
-                clusterId: 'default-cluster',
-                channelId: 'default-channel',
-                username: this.clientId,
-                ipAddress: '127.0.0.1',
-                port: this.clientPort,
-                capabilities: {
-                    browser: true,
-                    oauth: true,
-                    history: true,
-                    localUsers: true
-                },
-                metadata: {
-                    version: '1.0.0',
-                    platform: process.platform,
-                    arch: process.arch,
-                    type: 'c-client',
-                    clientId: this.clientId,
-                    port: this.clientPort
-                }
-            };
-
-            // Register node locally
-            const localResult = await this.distributedNodeManager.registerNode(nodeInfo);
-            if (localResult.success) {
-                console.log('✅ C-Client node registered locally:', localResult.nodeId);
-            }
-
-            // Check if there are existing domain nodes through B-Client
-            console.log('🔍 Checking for existing domain nodes through B-Client...');
-            const domainNodesResult = await this.distributedApiClient.getDomainNodes();
-
-            if (domainNodesResult.success && domainNodesResult.data && domainNodesResult.data.length > 0) {
-                console.log('🌐 Found existing domain nodes, connecting to domain system...');
-                // There are existing domain nodes, connect to them
-                // TODO: Implement connection to existing domain nodes
-                console.log('📡 Domain nodes found:', domainNodesResult.data);
-            } else {
-                console.log('🏆 No existing domain nodes found, becoming main node for all levels...');
-
-                // No existing domain nodes, become main node for all levels
-                await this.distributedNodeManager.setMainNode('domain', localResult.nodeId);
-                console.log('👑 Set as Domain Main Node');
-
-                await this.distributedNodeManager.setMainNode('cluster', localResult.nodeId);
-                console.log('👑 Set as Cluster Main Node');
-
-                await this.distributedNodeManager.setMainNode('channel', localResult.nodeId);
-                console.log('👑 Set as Channel Main Node');
-            }
-
-            // Note: Local user registration is handled by user registration dialog
-            // No automatic user creation - users must register manually
-
             // C-Client communicates with B-Client through NSN, not directly
             // No direct registration with B-Client needed
             console.log('✅ C-Client ready for communication through NSN');
-
-            // Setup event handlers
-            this.setupDistributedNodeEventHandlers();
-
-            console.log('✅ Distributed node management initialized');
         } catch (error) {
             console.error('❌ Error initializing distributed node management:', error);
         }
     }
 
-    /**
-     * Setup distributed node event handlers
-     */
-    setupDistributedNodeEventHandlers() {
-        if (this.distributedNodeManager) {
-            this.distributedNodeManager.on('mainNodeElected', (electionInfo) => {
-                console.log('👑 Main node elected:', electionInfo);
-                // Handle main node election
-                this.handleMainNodeElection(electionInfo);
-            });
-
-            this.distributedNodeManager.on('mainNodeChanged', (messageData) => {
-                console.log('📢 Main node changed notification received:', messageData);
-                // Handle main node change notification
-                this.handleMainNodeChanged(messageData);
-            });
-
-            this.distributedNodeManager.on('nodeOffline', (nodeId) => {
-                console.log('⚠️ Node went offline:', nodeId);
-                // Handle node going offline
-                this.handleNodeOffline(nodeId);
-            });
-
-            this.distributedNodeManager.on('nodeOfflineNotification', (messageData) => {
-                console.log('📢 Node offline notification received:', messageData);
-                // Handle node offline notification
-                this.handleNodeOfflineNotification(messageData);
-            });
-
-            this.distributedNodeManager.on('localUserRegistered', (userInfo) => {
-                console.log('👤 Local user registered:', userInfo);
-                // Handle local user registration
-                this.handleLocalUserRegistered(userInfo);
-            });
-        }
-
-        if (this.distributedApiClient) {
-            this.distributedApiClient.on('channelRegistered', (registrationInfo) => {
-                console.log('✅ Channel registration completed:', registrationInfo);
-                // Handle channel registration completion
-                this.handleChannelRegistration(registrationInfo);
-            });
-        }
-    }
-
-    /**
-     * Handle main node election
-     */
-    handleMainNodeElection(electionInfo) {
-        // Notify UI about main node election
-        if (this.mainWindow && this.mainWindow.webContents) {
-            this.mainWindow.webContents.send('main-node-elected', electionInfo);
-        }
-    }
-
-    /**
-     * Handle main node changed notification
-     */
-    handleMainNodeChanged(messageData) {
-        // Notify UI about main node change
-        if (this.mainWindow && this.mainWindow.webContents) {
-            this.mainWindow.webContents.send('main-node-changed', messageData);
-        }
-    }
-
-    /**
-     * Handle node going offline
-     */
-    handleNodeOffline(nodeId) {
-        // Notify UI about node going offline
-        if (this.mainWindow && this.mainWindow.webContents) {
-            this.mainWindow.webContents.send('node-offline', { nodeId });
-        }
-    }
-
-    /**
-     * Handle node offline notification
-     */
-    handleNodeOfflineNotification(messageData) {
-        // Notify UI about node offline notification
-        if (this.mainWindow && this.mainWindow.webContents) {
-            this.mainWindow.webContents.send('node-offline-notification', messageData);
-        }
-    }
-
-    /**
-     * Handle local user registered
-     */
-    handleLocalUserRegistered(userInfo) {
-        // Notify UI about local user registration
-        if (this.mainWindow && this.mainWindow.webContents) {
-            this.mainWindow.webContents.send('local-user-registered', userInfo);
-        }
-    }
-
-    /**
-     * Handle channel registration completion
-     */
-    handleChannelRegistration(registrationInfo) {
-        // Notify UI about channel registration
-        if (this.mainWindow && this.mainWindow.webContents) {
-            this.mainWindow.webContents.send('channel-registered', registrationInfo);
-        }
-    }
 
     async initialize() {
         if (this.isInitialized) {
@@ -346,19 +297,13 @@ class ElectronApp {
             await this.waitForWindowReady(mainWindow);
 
             // Start C-Client API server (after main window is ready)
-            this.startApiServer();
+            await this.startApiServer();
 
             // Show the window
             mainWindow.show();
 
-            // Calculate API port
-            const apiPort = this.clientPort + 1000; // API port is clientPort + 1000
-
-            // Create view manager
-            this.viewManager = new ViewManager(this.windowManager, this.historyManager, apiPort);
-
-            // Register IPC handlers
-            this.ipcHandlers = new IpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager, this.distributedNodeManager, this.startupValidator, apiPort);
+            // Note: ViewManager and IpcHandlers will be created after API server starts
+            // to ensure they use the correct dynamic port
 
             // Set up IPC listeners for cookie reload requests
             console.log(`🔄 C-Client: About to set up cookie reload listener...`);
@@ -395,23 +340,23 @@ class ElectronApp {
             this.setupClientSwitchListener();
 
             // After IPC handlers are registered and listeners are set up, send init-tab event
-            // Add a longer delay to ensure everything is ready
+            // Reduced delay for faster startup
             setTimeout(() => {
                 if (this.mainWindow && !this.mainWindow.isDestroyed()) {
                     this.mainWindow.webContents.send('init-tab');
                 }
-            }, 500); // Increased delay to ensure IPC handlers are fully registered
+            }, 50); // Further reduced delay for faster startup
 
             // Check if user registration is needed after main window is ready
             setTimeout(async () => {
                 try {
-                    const registrationResult = await this.startupValidator.nodeManager.registerNewUserIfNeeded(this.mainWindow);
+                    const registrationResult = await this.startupValidator.userManager.registerNewUserIfNeeded(this.mainWindow);
                     if (registrationResult) {
                         // New user registration dialog was shown
                     } else {
                         // For existing users, show greeting dialog
                         try {
-                            const UserRegistrationDialog = require('./nodeManager/userRegistrationDialog');
+                            const UserRegistrationDialog = require('./userManager/userRegistrationDialog');
                             const userRegistrationDialog = new UserRegistrationDialog();
 
                             if (this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -424,7 +369,7 @@ class ElectronApp {
                 } catch (error) {
                     console.error('Error checking user registration after main window loaded:', error);
                 }
-            }, 1500); // Wait 1.5 seconds after main window is ready to ensure everything is loaded
+            }, 100); // Further reduced delay for faster startup
 
         } catch (error) {
             console.error('Failed to initialize application:', error);
@@ -473,10 +418,10 @@ class ElectronApp {
         return new Promise((resolve) => {
             if (window.webContents.isLoading()) {
                 window.webContents.once('did-finish-load', () => {
-                    setTimeout(resolve, 500);
+                    setTimeout(resolve, 50); // Further reduced from 100ms to 50ms
                 });
             } else {
-                setTimeout(resolve, 100);
+                setTimeout(resolve, 25); // Further reduced from 50ms to 25ms
             }
         });
     }
@@ -492,7 +437,7 @@ class ElectronApp {
 
                     const viewId = this.getViewIdFromWebContents(contents);
                     if (viewId && this.historyManager) {
-                        setTimeout(() => {
+                        setTimeout(async () => {
                             try {
                                 if (contents.isDestroyed()) return;
 
@@ -502,7 +447,7 @@ class ElectronApp {
                                     initialTitle = currentTitle;
                                 }
 
-                                const record = this.historyManager.recordVisit(url, viewId);
+                                const record = await this.historyManager.recordVisit(url, viewId);
                                 if (record) {
                                     if (initialTitle !== 'Loading...') {
                                         this.historyManager.updateRecordTitle(record, initialTitle);
@@ -658,25 +603,35 @@ class ElectronApp {
         return null;
     }
 
+    /**
+     * Send message to main window
+     * @param {string} channel Channel name
+     * @param {any} data Data
+     */
+    sendToWindow(channel, data) {
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send(channel, data);
+        }
+    }
+
     setupPeriodicCleanup() {
+        // Auto-fetch titles every 2 minutes for recent loading records
+        setInterval(async () => {
+            await this.cleanupLoadingRecords();
+        }, 2 * 60 * 1000);
+
+        // Cleanup pending updates every 5 minutes
         setInterval(() => {
-            this.cleanupLoadingRecords();
             this.cleanupPendingUpdates();
         }, 5 * 60 * 1000);
     }
 
-    cleanupLoadingRecords() {
+    async cleanupLoadingRecords() {
         try {
             if (this.historyManager) {
-                const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
-                const db = require('./sqlite/database');
-                const result = db.prepare(`
-                    UPDATE visit_history 
-                    SET title = 'Failed to load' 
-                    WHERE title = 'Loading...' AND enter_time < ?
-                `).run(fiveMinutesAgo);
-
-                // Cleaned up loading records
+                console.log('[Main] Starting auto-fetch for loading records...');
+                const result = await this.historyManager.autoFetchTitleForLoadingRecords();
+                console.log(`[Main] Auto-fetch completed: ${result.updated}/${result.total} records updated`);
             }
         } catch (error) {
             console.error('Failed to cleanup loading records:', error);
@@ -757,6 +712,13 @@ class ElectronApp {
                 label: 'File',
                 submenu: [
                     {
+                        label: 'Network Configuration...',
+                        accelerator: 'CmdOrCtrl+Shift+N',
+                        click: () => {
+                            this.showNetworkConfig();
+                        }
+                    },
+                    {
                         label: 'Clear Local Users',
                         accelerator: 'CmdOrCtrl+Shift+L',
                         click: () => {
@@ -828,6 +790,16 @@ class ElectronApp {
         Menu.setApplicationMenu(menu);
     }
 
+    async showNetworkConfig() {
+        try {
+            const NetworkConfigDialog = require('./ui/networkConfigDialog');
+            const dialog = new NetworkConfigDialog();
+            await dialog.show();
+        } catch (error) {
+            console.error('Error showing network config dialog:', error);
+        }
+    }
+
     clearLocalUsers() {
         try {
             const db = require('./sqlite/database');
@@ -855,17 +827,47 @@ class ElectronApp {
 
     setupAppEvents() {
         app.on('window-all-closed', async () => {
-            // Clear all sessions and login states
-            if (this.windowManager && this.windowManager.viewManager) {
+            console.log('🚪 C-Client: All windows closed, starting cleanup...');
+
+            // Clear all sessions and login states (same as user switch)
+            if (this.viewManager) {
                 try {
-                    await this.windowManager.viewManager.clearAllSessions();
+                    console.log('🧹 C-Client: Clearing all sessions including persistent partitions...');
+                    await this.viewManager.clearAllSessions();
+                    console.log('✅ C-Client: All sessions cleared successfully');
                 } catch (error) {
-                    console.error('❌ Error clearing sessions:', error);
+                    console.error('❌ C-Client: Error clearing sessions:', error);
+                    console.error('❌ C-Client: Error details:', {
+                        message: error.message,
+                        stack: error.stack
+                    });
+
+                    // Fallback: try to clear persistent partitions directly
+                    await this.emergencyClearPersistentPartitions();
+                }
+            } else {
+                console.error('❌ C-Client: ViewManager not available for session cleanup');
+                // Fallback: try to clear persistent partitions directly
+                await this.emergencyClearPersistentPartitions();
+            }
+
+            // Disconnect WebSocket if connected
+            if (this.webSocketClient && this.webSocketClient.isConnected) {
+                try {
+                    console.log('🔌 C-Client: Disconnecting WebSocket on window close...');
+                    this.webSocketClient.disconnect();
+                    console.log('✅ C-Client: WebSocket disconnected successfully');
+                } catch (error) {
+                    console.error('❌ C-Client: Error disconnecting WebSocket:', error);
                 }
             }
 
             if (this.historyManager) {
-                this.historyManager.logShutdown('window-all-closed');
+                try {
+                    this.historyManager.logShutdown('window-all-closed');
+                } catch (error) {
+                    console.error('❌ C-Client: Error logging shutdown:', error);
+                }
             }
 
             if (process.platform !== 'darwin') {
@@ -874,17 +876,42 @@ class ElectronApp {
         });
 
         app.on('before-quit', async (event) => {
-            // Clear all sessions and login states
-            if (this.windowManager && this.windowManager.viewManager) {
+            console.log('🚪 C-Client: Application quitting, starting cleanup...');
+
+            // Clear all sessions and login states (same as user switch)
+            if (this.viewManager) {
                 try {
-                    await this.windowManager.viewManager.clearAllSessions();
+                    console.log('🧹 C-Client: Clearing all sessions including persistent partitions...');
+                    await this.viewManager.clearAllSessions();
+                    console.log('✅ C-Client: All sessions cleared successfully');
                 } catch (error) {
-                    console.error('❌ Error clearing sessions:', error);
+                    console.error('❌ C-Client: Error clearing sessions:', error);
+                    console.error('❌ C-Client: Error details:', {
+                        message: error.message,
+                        stack: error.stack
+                    });
+                }
+            } else {
+                console.error('❌ C-Client: ViewManager not available for session cleanup');
+            }
+
+            // Disconnect WebSocket if connected
+            if (this.webSocketClient && this.webSocketClient.isConnected) {
+                try {
+                    console.log('🔌 C-Client: Disconnecting WebSocket on app quit...');
+                    this.webSocketClient.disconnect();
+                    console.log('✅ C-Client: WebSocket disconnected successfully');
+                } catch (error) {
+                    console.error('❌ C-Client: Error disconnecting WebSocket:', error);
                 }
             }
 
             if (this.historyManager) {
-                this.historyManager.logShutdown('before-quit');
+                try {
+                    this.historyManager.logShutdown('before-quit');
+                } catch (error) {
+                    console.error('❌ C-Client: Error logging shutdown:', error);
+                }
             }
             await this.cleanup();
         });
@@ -902,8 +929,38 @@ class ElectronApp {
             }
         });
 
-        app.on('will-quit', (event) => {
+        app.on('will-quit', async (event) => {
+            console.log('🚪 C-Client: Application will quit, performing final cleanup...');
+
             try {
+                // Clear all sessions as final cleanup (same as user switch)
+                if (this.viewManager) {
+                    try {
+                        console.log('🧹 C-Client: Final session cleanup including persistent partitions...');
+                        await this.viewManager.clearAllSessions();
+                        console.log('✅ C-Client: Final session cleanup completed');
+                    } catch (error) {
+                        console.error('❌ C-Client: Error in final session cleanup:', error);
+                        console.error('❌ C-Client: Error details:', {
+                            message: error.message,
+                            stack: error.stack
+                        });
+                    }
+                } else {
+                    console.error('❌ C-Client: ViewManager not available for final session cleanup');
+                }
+
+                // Disconnect WebSocket as final cleanup
+                if (this.webSocketClient && this.webSocketClient.isConnected) {
+                    try {
+                        console.log('🔌 C-Client: Final WebSocket disconnect on will-quit...');
+                        this.webSocketClient.disconnect();
+                        console.log('✅ C-Client: Final WebSocket disconnect completed');
+                    } catch (error) {
+                        console.error('❌ C-Client: Error in final WebSocket disconnect:', error);
+                    }
+                }
+
                 globalShortcut.unregisterAll();
                 if (this.historyManager) {
                     this.historyManager.forceWrite();
@@ -916,6 +973,31 @@ class ElectronApp {
         app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
             event.preventDefault();
             callback(true);
+        });
+
+        // Handle process signals for unexpected termination
+        process.on('SIGINT', async () => {
+            console.log('🚪 C-Client: Received SIGINT, performing emergency cleanup...');
+            await this.emergencyCleanup();
+            process.exit(0);
+        });
+
+        process.on('SIGTERM', async () => {
+            console.log('🚪 C-Client: Received SIGTERM, performing emergency cleanup...');
+            await this.emergencyCleanup();
+            process.exit(0);
+        });
+
+        process.on('uncaughtException', async (error) => {
+            console.error('🚨 C-Client: Uncaught exception:', error);
+            await this.emergencyCleanup();
+            process.exit(1);
+        });
+
+        process.on('unhandledRejection', async (reason, promise) => {
+            console.error('🚨 C-Client: Unhandled rejection at:', promise, 'reason:', reason);
+            await this.emergencyCleanup();
+            process.exit(1);
         });
 
         app.on('render-process-gone', (event, webContents, details) => {
@@ -931,7 +1013,16 @@ class ElectronApp {
         // Cleaning up application resources
 
         try {
+            // Clear all sessions BEFORE destroying ViewManager
             if (this.viewManager) {
+                try {
+                    console.log('🧹 C-Client: Clearing all sessions before cleanup...');
+                    await this.viewManager.clearAllSessions();
+                    console.log('✅ C-Client: All sessions cleared before cleanup');
+                } catch (error) {
+                    console.error('❌ C-Client: Error clearing sessions during cleanup:', error);
+                }
+
                 this.viewManager.cleanup();
                 this.viewManager = null;
             }
@@ -950,29 +1041,12 @@ class ElectronApp {
                 this.windowManager = null;
             }
 
-            // Cleanup distributed node manager
-            if (this.distributedNodeManager) {
-                try {
-                    console.log('🧹 Cleaning up distributed node manager...');
-                    await this.distributedNodeManager.shutdown();
-                    this.distributedNodeManager = null;
-                    console.log('✅ Distributed node manager cleaned up');
-                } catch (error) {
-                    console.error('❌ Error cleaning up distributed node manager:', error);
-                }
+            // Stop API servers
+            if (this.apiServer) {
+                this.apiServer.stop();
+                this.apiServer = null;
             }
 
-            // Cleanup distributed API client
-            if (this.distributedApiClient) {
-                try {
-                    console.log('🧹 Cleaning up distributed API client...');
-                    await this.distributedApiClient.shutdown();
-                    this.distributedApiClient = null;
-                    console.log('✅ Distributed API client cleaned up');
-                } catch (error) {
-                    console.error('❌ Error cleaning up distributed API client:', error);
-                }
-            }
 
             // Cleanup unified client switch manager
             if (this.clientSwitchManager) {
@@ -996,6 +1070,94 @@ class ElectronApp {
     }
 
     /**
+     * Emergency cleanup for unexpected termination
+     */
+    async emergencyCleanup() {
+        console.log('🚨 C-Client: Starting emergency cleanup...');
+
+        try {
+            // Clear all sessions immediately (same as user switch)
+            if (this.viewManager) {
+                try {
+                    console.log('🧹 C-Client: Emergency session cleanup including persistent partitions...');
+                    await this.viewManager.clearAllSessions();
+                    console.log('✅ C-Client: Emergency session cleanup completed');
+                } catch (error) {
+                    console.error('❌ C-Client: Error in emergency session cleanup:', error);
+                    console.error('❌ C-Client: Error details:', {
+                        message: error.message,
+                        stack: error.stack
+                    });
+
+                    // Fallback: try to clear persistent partitions directly
+                    await this.emergencyClearPersistentPartitions();
+                }
+            } else {
+                console.error('❌ C-Client: ViewManager not available for emergency session cleanup');
+                // Fallback: try to clear persistent partitions directly
+                await this.emergencyClearPersistentPartitions();
+            }
+
+            // Disconnect WebSocket immediately
+            if (this.webSocketClient && this.webSocketClient.isConnected) {
+                try {
+                    console.log('🔌 C-Client: Emergency WebSocket disconnect...');
+                    this.webSocketClient.disconnect();
+                    console.log('✅ C-Client: Emergency WebSocket disconnect completed');
+                } catch (error) {
+                    console.error('❌ C-Client: Error in emergency WebSocket disconnect:', error);
+                }
+            }
+
+            // Force write history
+            if (this.historyManager) {
+                try {
+                    this.historyManager.forceWrite();
+                    console.log('✅ C-Client: Emergency history write completed');
+                } catch (error) {
+                    console.error('❌ C-Client: Error in emergency history write:', error);
+                }
+            }
+
+            console.log('✅ C-Client: Emergency cleanup completed');
+        } catch (error) {
+            console.error('❌ C-Client: Error during emergency cleanup:', error);
+        }
+    }
+
+    /**
+     * Emergency fallback method to clear persistent partitions directly
+     */
+    async emergencyClearPersistentPartitions() {
+        try {
+            console.log('🚨 C-Client: Emergency fallback - clearing persistent partitions directly...');
+
+            const { session } = require('electron');
+            const partitionsToClear = ['persist:main', 'persist:nsn'];
+
+            for (const partitionName of partitionsToClear) {
+                try {
+                    console.log(`🧹 Emergency clearing session partition: ${partitionName}`);
+                    const partitionSession = session.fromPartition(partitionName);
+
+                    await partitionSession.clearStorageData({
+                        storages: ['cookies', 'localStorage', 'sessionStorage', 'indexeddb', 'websql', 'cache', 'serviceworkers']
+                    });
+
+                    await partitionSession.clearCache();
+                    console.log(`✅ Emergency session partition cleared: ${partitionName}`);
+                } catch (partitionError) {
+                    console.error(`❌ Error in emergency clearing session partition ${partitionName}:`, partitionError);
+                }
+            }
+
+            console.log('✅ C-Client: Emergency persistent partitions cleanup completed');
+        } catch (error) {
+            console.error('❌ C-Client: Error in emergency persistent partitions cleanup:', error);
+        }
+    }
+
+    /**
      * Setup IPC listener for cookie reload requests
      */
     setupCookieReloadListener() {
@@ -1004,7 +1166,13 @@ class ElectronApp {
             const { ipcMain } = require('electron');
 
             ipcMain.on('cookie-reload-request', (event, reloadData) => {
+                console.log(`🔄 C-Client: ===== IPC COOKIE RELOAD REQUEST RECEIVED =====`);
                 console.log(`🔄 C-Client: Received cookie reload request for user: ${reloadData.username}`);
+                console.log(`🔄 C-Client: Full IPC reloadData received:`, JSON.stringify(reloadData, null, 2));
+                console.log(`🔄 C-Client: NSN URL in IPC data: ${reloadData.nsn_url} (type: ${typeof reloadData.nsn_url})`);
+                console.log(`🔄 C-Client: NSN Port in IPC data: ${reloadData.nsn_port} (type: ${typeof reloadData.nsn_port})`);
+                console.log(`🔄 C-Client: NSN Domain in IPC data: ${reloadData.nsn_domain} (type: ${typeof reloadData.nsn_domain})`);
+                console.log(`🔄 C-Client: ===== END IPC COOKIE RELOAD REQUEST =====`);
                 this.handleCookieReload(reloadData);
             });
 
@@ -1081,12 +1249,288 @@ class ElectronApp {
     }
 
     /**
+     * Get the current WebSocket URL for connection sharing
+     * @returns {string|null} - Current WebSocket URL or null if not connected
+     */
+    getCurrentWebSocketUrl() {
+        return this.currentWebSocketUrl;
+    }
+
+    /**
+     * Extract website domain from WebSocket URL for connection sharing
+     * @param {string} websocketUrl - WebSocket URL
+     * @returns {string} - Website domain
+     */
+    extractWebsiteDomainFromWebSocketUrl(websocketUrl) {
+        try {
+            const url = new URL(websocketUrl);
+            // Extract domain from WebSocket URL (e.g., ws://localhost:8766 -> localhost)
+            // For production, this would be the B-Client server domain
+            return url.hostname;
+        } catch (error) {
+            console.error('❌ C-Client: Error extracting website domain from WebSocket URL:', error);
+            return 'unknown';
+        }
+    }
+
+    /**
+     * Handle NSN response and process WebSocket connection requests
+     * @param {Object} response - Response from NSN
+     */
+    async handleNSNResponse(response) {
+        try {
+            console.log('🔍 C-Client: ===== PROCESSING NSN RESPONSE =====');
+            console.log('🔍 C-Client: Processing NSN response:', response);
+            console.log('🔍 C-Client: Response type:', typeof response);
+            console.log('🔍 C-Client: Response keys:', Object.keys(response || {}));
+            console.log('🔍 C-Client: Response action:', response.action);
+            console.log('🔍 C-Client: Response user_id:', response.user_id);
+            console.log('🔍 C-Client: Response username:', response.username);
+            console.log('🔍 C-Client: Response websocket_url:', response.websocket_url);
+            console.log('🔍 C-Client: Response b_client_url:', response.b_client_url);
+            console.log('🔍 C-Client: Response needs_registration:', response.needs_registration);
+            console.log('🔍 C-Client: Response has_cookie:', response.has_cookie);
+            console.log('🔍 C-Client: Response has_node:', response.has_node);
+
+            // Check if WebSocket connection is needed and available
+            if (response.websocket_url && this.webSocketClient) {
+                console.log('🔍 C-Client: ===== CHECKING WEBSOCKET CONNECTION STATUS =====');
+                console.log('🔍 C-Client: WebSocket client exists:', !!this.webSocketClient);
+                console.log('🔍 C-Client: WebSocket client connected:', this.webSocketClient.isConnected);
+                console.log('🔍 C-Client: WebSocket URL provided:', response.websocket_url);
+
+                // Extract website domain from WebSocket URL for connection sharing
+                const websiteDomain = this.extractWebsiteDomainFromWebSocketUrl(response.websocket_url);
+                const currentWebSocketUrl = this.getCurrentWebSocketUrl();
+                const isSameConnection = currentWebSocketUrl === response.websocket_url;
+                const hasConnectionForWebsite = this.websiteWebSocketConnections.has(websiteDomain);
+
+                // Check if WebSocket connection is truly available and valid
+                const isWebSocketTrulyConnected = this.webSocketClient.isConnected &&
+                    this.webSocketClient.websocket !== null &&
+                    this.webSocketClient.websocket.readyState === WebSocket.OPEN;
+
+                // Additional check: if connection was reset due to logout, it's not valid
+                const isConnectionReset = !this.webSocketClient.isConnected &&
+                    this.webSocketClient.websocket === null;
+
+                // Check if current WebSocket server connection is marked as unavailable
+                const isWebSocketServerUnavailable = this.currentWebSocketUrl === null;
+
+                // Check if website connection is marked as unavailable
+                const websiteConnectionInfo = this.websiteWebSocketConnections.get(websiteDomain);
+                const isWebsiteConnectionUnavailable = websiteConnectionInfo &&
+                    websiteConnectionInfo.available === false;
+
+                console.log('🔍 C-Client: Website domain:', websiteDomain);
+                console.log('🔍 C-Client: Current WebSocket URL:', currentWebSocketUrl);
+                console.log('🔍 C-Client: Requested WebSocket URL:', response.websocket_url);
+                console.log('🔍 C-Client: Is same connection:', isSameConnection);
+                console.log('🔍 C-Client: Has connection for website:', hasConnectionForWebsite);
+                console.log('🔍 C-Client: WebSocket truly connected:', isWebSocketTrulyConnected);
+                console.log('🔍 C-Client: Connection was reset:', isConnectionReset);
+                console.log('🔍 C-Client: WebSocket server unavailable:', isWebSocketServerUnavailable);
+                console.log('🔍 C-Client: Website connection unavailable:', isWebsiteConnectionUnavailable);
+                console.log('🔍 C-Client: WebSocket readyState:', this.webSocketClient.websocket ? this.webSocketClient.websocket.readyState : 'null');
+
+                // Check if this is a response from auto-login (avoid reconnecting after successful login)
+                const isAutoLoginResponse = response.action === 'auto_login' ||
+                    (response.has_cookie === true && response.needs_registration === false);
+
+                if (isAutoLoginResponse) {
+                    console.log('🔐 C-Client: ===== AUTO-LOGIN RESPONSE DETECTED =====');
+                    console.log('🔐 C-Client: This appears to be an auto-login response, skipping WebSocket reconnection');
+                    console.log('🔐 C-Client: WebSocket should already be connected from the login process');
+                    console.log('🔐 C-Client: Avoiding unnecessary reconnection that could disrupt the session');
+                } else if (hasConnectionForWebsite && isWebSocketTrulyConnected && !isConnectionReset &&
+                    !isWebSocketServerUnavailable && !isWebsiteConnectionUnavailable) {
+                    console.log('✅ C-Client: ===== SHARING EXISTING WEBSOCKET CONNECTION FOR WEBSITE =====');
+                    console.log(`✅ C-Client: Already connected to WebSocket server for website: ${websiteDomain}`);
+                    console.log('✅ C-Client: Reusing existing connection for this tab');
+                    console.log('✅ C-Client: No need to establish a new connection');
+                } else if (!isWebSocketTrulyConnected || !hasConnectionForWebsite || isConnectionReset ||
+                    isWebSocketServerUnavailable || isWebsiteConnectionUnavailable) {
+                    console.log('🔌 C-Client: ===== WEBSOCKET NOT CONNECTED OR DIFFERENT URL, ATTEMPTING CONNECTION =====');
+                    console.log('🔌 C-Client: WebSocket connection needed, attempting to connect...');
+
+                    // Clean up invalid connection records if they exist
+                    if (hasConnectionForWebsite && (!isWebSocketTrulyConnected || isConnectionReset ||
+                        isWebSocketServerUnavailable || isWebsiteConnectionUnavailable)) {
+                        console.log('🧹 C-Client: Cleaning up invalid connection record for website:', websiteDomain);
+                        console.log('🧹 C-Client: Reason: WebSocket not connected, connection was reset, server unavailable, or website connection unavailable');
+                        this.websiteWebSocketConnections.delete(websiteDomain);
+                        this.currentWebSocketUrl = null;
+                    }
+
+                    try {
+                        const connectSuccess = await this.webSocketClient.connectToNSNProvidedWebSocket(response.websocket_url);
+                        if (connectSuccess) {
+                            console.log('✅ C-Client: WebSocket connection successful');
+                            // Store the current WebSocket URL for future reference
+                            this.currentWebSocketUrl = response.websocket_url;
+                            // Record connection for this website domain
+                            this.websiteWebSocketConnections.set(websiteDomain, {
+                                websocketUrl: response.websocket_url,
+                                connectedAt: Date.now(),
+                                websiteDomain: websiteDomain
+                            });
+                            console.log(`✅ C-Client: Recorded WebSocket connection for website: ${websiteDomain}`);
+                        } else {
+                            console.log('⚠️ C-Client: WebSocket connection failed, but continuing with response processing');
+                        }
+                    } catch (error) {
+                        console.error('❌ C-Client: WebSocket connection error:', error);
+                        console.log('⚠️ C-Client: Continuing with response processing despite connection failure');
+                    }
+                } else {
+                    console.log('✅ C-Client: WebSocket connection is already active');
+                }
+            }
+
+            if (response.action === 'connect_websocket') {
+                console.log('🔌 C-Client: ===== WEBSOCKET CONNECTION REQUEST =====');
+                console.log('🔌 C-Client: Received WebSocket connection request from NSN');
+                console.log(`🔌 C-Client: WebSocket URL: ${response.websocket_url}`);
+                console.log(`🔌 C-Client: B-Client URL: ${response.b_client_url}`);
+                console.log(`🔌 C-Client: User ID: ${response.user_id}`);
+                console.log(`🔌 C-Client: Username: ${response.username}`);
+                console.log(`🔌 C-Client: Message: ${response.message}`);
+                console.log(`🔌 C-Client: Needs Registration: ${response.needs_registration}`);
+                console.log(`🔌 C-Client: Has Cookie: ${response.has_cookie}`);
+                console.log(`🔌 C-Client: Has Node: ${response.has_node}`);
+
+                if (this.webSocketClient && response.websocket_url) {
+                    console.log('🔌 C-Client: ===== WEBSOCKET CLIENT AVAILABLE =====');
+                    console.log('🔌 C-Client: WebSocket client available, attempting connection...');
+                    console.log('🔌 C-Client: WebSocket client status:', {
+                        exists: !!this.webSocketClient,
+                        hasMethod: typeof this.webSocketClient.connectToNSNProvidedWebSocket === 'function',
+                        isConnected: this.webSocketClient ? this.webSocketClient.isConnected : 'N/A'
+                    });
+
+                    // Connect to NSN-provided WebSocket server
+                    console.log('🔌 C-Client: ===== INITIATING WEBSOCKET CONNECTION =====');
+                    console.log('🔌 C-Client: Calling connectToNSNProvidedWebSocket...');
+                    console.log('🔌 C-Client: Target WebSocket URL:', response.websocket_url);
+
+                    const startTime = Date.now();
+                    const success = await this.webSocketClient.connectToNSNProvidedWebSocket(response.websocket_url);
+                    const endTime = Date.now();
+                    const duration = endTime - startTime;
+
+                    console.log('🔌 C-Client: ===== WEBSOCKET CONNECTION RESULT =====');
+                    console.log('🔌 C-Client: Connection duration:', duration + 'ms');
+                    console.log('🔌 C-Client: Connection success:', success);
+
+                    if (success) {
+                        console.log('✅ C-Client: ===== WEBSOCKET CONNECTION SUCCESS =====');
+                        console.log('✅ C-Client: Successfully connected to NSN-provided WebSocket');
+                        console.log('✅ C-Client: WebSocket URL:', response.websocket_url);
+                        console.log('✅ C-Client: Ready to receive messages from B-Client');
+                        console.log('✅ C-Client: Auto-registration process can now proceed');
+
+                        // Log WebSocket client status after connection
+                        if (this.webSocketClient) {
+                            console.log('✅ C-Client: WebSocket client status after connection:', {
+                                isConnected: this.webSocketClient.isConnected,
+                                readyState: this.webSocketClient.websocket ? this.webSocketClient.websocket.readyState : 'N/A'
+                            });
+                        }
+                    } else {
+                        console.error('❌ C-Client: ===== WEBSOCKET CONNECTION FAILED =====');
+                        console.error('❌ C-Client: Failed to connect to NSN-provided WebSocket');
+                        console.error('❌ C-Client: WebSocket URL:', response.websocket_url);
+                        console.error('❌ C-Client: Connection duration:', duration + 'ms');
+                        console.error('❌ C-Client: Auto-registration cannot proceed without WebSocket connection');
+                    }
+                } else {
+                    console.error('❌ C-Client: ===== WEBSOCKET CLIENT MISSING =====');
+                    console.error('❌ C-Client: Missing WebSocket client or URL');
+                    console.error('❌ C-Client: WebSocket client exists:', !!this.webSocketClient);
+                    console.error('❌ C-Client: WebSocket URL provided:', !!response.websocket_url);
+                    console.error('❌ C-Client: WebSocket URL value:', response.websocket_url);
+                    console.error('❌ C-Client: Auto-registration cannot proceed');
+                }
+            } else if (response.action === 'auto_login') {
+                console.log('🔐 C-Client: ===== AUTO-LOGIN REQUEST =====');
+                console.log('🔐 C-Client: Received auto-login request from NSN');
+                console.log(`🔐 C-Client: User ID: ${response.user_id}`);
+                console.log(`🔐 C-Client: Session Data: ${JSON.stringify(response.session_data)}`);
+
+                // Handle auto-login with session data
+                console.log('🔐 C-Client: Calling handleAutoLogin...');
+                await this.handleAutoLogin(response);
+                console.log('✅ C-Client: Auto-login processing completed');
+            } else {
+                console.log('ℹ️ C-Client: ===== UNKNOWN NSN RESPONSE ACTION =====');
+                console.log('ℹ️ C-Client: Unknown NSN response action:', response.action);
+                console.log('ℹ️ C-Client: Full response:', response);
+                console.log('ℹ️ C-Client: Available actions: connect_websocket, auto_login');
+            }
+
+            console.log('✅ C-Client: ===== NSN RESPONSE PROCESSING COMPLETED =====');
+        } catch (error) {
+            console.error('❌ C-Client: ===== ERROR PROCESSING NSN RESPONSE =====');
+            console.error('❌ C-Client: Error processing NSN response:', error);
+            console.error('❌ C-Client: Error stack:', error.stack);
+            console.error('❌ C-Client: Response that caused error:', response);
+        }
+    }
+
+    /**
+     * Handle auto-login with session data from NSN
+     * @param {Object} response - Auto-login response from NSN
+     */
+    async handleAutoLogin(response) {
+        try {
+            console.log('🔐 C-Client: Handling auto-login with session data');
+
+            // Extract session data
+            const sessionData = response.session_data || {};
+            const userId = response.user_id;
+
+            console.log(`🔐 C-Client: Auto-login for user: ${userId}`);
+            console.log(`🔐 C-Client: Session data:`, sessionData);
+
+            // TODO: Implement auto-login logic here
+            // This would typically involve:
+            // 1. Setting up the session in the browser
+            // 2. Navigating to the appropriate page
+            // 3. Setting cookies or other authentication data
+
+            console.log('✅ C-Client: Auto-login handled successfully');
+        } catch (error) {
+            console.error('❌ C-Client: Error handling auto-login:', error);
+        }
+    }
+
+    /**
      * Handle cookie reload with complete session data
      */
     async handleCookieReload(reloadData) {
         try {
-            const { user_id, username, cookie, complete_session_data } = reloadData;
+            const { user_id, username, cookie, complete_session_data, nsn_url, nsn_port, nsn_domain } = reloadData;
             console.log(`🔄 C-Client: Handling cookie reload for user: ${username}`);
+
+            // Debug: Log all reloadData parameters
+            console.log(`🔄 C-Client: ===== RELOAD DATA DEBUG =====`);
+            console.log(`🔄 C-Client: Full reloadData received:`, JSON.stringify(reloadData, null, 2));
+            console.log(`🔄 C-Client: Extracted parameters:`);
+            console.log(`🔄 C-Client:   user_id: ${user_id}`);
+            console.log(`🔄 C-Client:   username: ${username}`);
+            console.log(`🔄 C-Client:   nsn_url: ${nsn_url} (type: ${typeof nsn_url})`);
+            console.log(`🔄 C-Client:   nsn_port: ${nsn_port} (type: ${typeof nsn_port})`);
+            console.log(`🔄 C-Client:   nsn_domain: ${nsn_domain} (type: ${typeof nsn_domain})`);
+            console.log(`🔄 C-Client: ===== END RELOAD DATA DEBUG =====`);
+
+            // Log NSN information received from B-Client
+            if (nsn_url || nsn_port || nsn_domain) {
+                console.log(`🔄 C-Client: NSN information from B-Client:`, {
+                    nsn_url: nsn_url,
+                    nsn_port: nsn_port,
+                    nsn_domain: nsn_domain
+                });
+            }
 
             if (complete_session_data) {
                 console.log(`🔄 C-Client: Using session data for login:`, {
@@ -1103,6 +1547,18 @@ class ElectronApp {
 
                     // Use complete session data to set up login state
                     const nsnSessionData = complete_session_data.nsn_session_data;
+
+                    // Detailed logging for session data parsing
+                    console.log(`🔄 C-Client: ===== SESSION DATA PARSING ANALYSIS =====`);
+                    console.log(`🔄 C-Client: complete_session_data received:`, JSON.stringify(complete_session_data, null, 2));
+                    console.log(`🔄 C-Client: complete_session_data.nsn_session_data:`, JSON.stringify(nsnSessionData, null, 2));
+                    console.log(`🔄 C-Client: nsnSessionData exists:`, !!nsnSessionData);
+                    console.log(`🔄 C-Client: nsnSessionData.loggedin:`, nsnSessionData ? nsnSessionData.loggedin : 'UNDEFINED');
+                    console.log(`🔄 C-Client: nsnSessionData.user_id:`, nsnSessionData ? nsnSessionData.user_id : 'UNDEFINED');
+                    console.log(`🔄 C-Client: nsnSessionData.username:`, nsnSessionData ? nsnSessionData.username : 'UNDEFINED');
+                    console.log(`🔄 C-Client: nsnSessionData.role:`, nsnSessionData ? nsnSessionData.role : 'UNDEFINED');
+                    console.log(`🔄 C-Client: ===== END SESSION DATA PARSING ANALYSIS =====`);
+
                     if (nsnSessionData && nsnSessionData.loggedin) {
                         console.log(`🔄 C-Client: Using complete session data for login:`, {
                             loggedin: nsnSessionData.loggedin,
@@ -1129,14 +1585,23 @@ class ElectronApp {
                                 console.log(`🔄 C-Client: Using main window's session for cookie setting`);
                             }
 
-                            const cookieUrl = 'http://localhost:5000'; // NSN URL
+                            // Get NSN URL from this specific session's B-Client
+                            let cookieUrl;
+                            if (nsn_url) {
+                                cookieUrl = nsn_url;
+                                console.log(`🔄 C-Client: Using NSN URL from originating B-Client for user ${username}: ${cookieUrl}`);
+                            } else {
+                                // Fallback: if no NSN URL provided, we cannot proceed safely
+                                console.error(`❌ C-Client: No NSN URL provided from B-Client for user ${username}, cannot set cookie`);
+                                return false;
+                            }
 
                             // Get NSN user info from session data (needed for session cookie)
                             const nsnUserId = complete_session_data.nsn_user_id;
                             const nsnUsername = complete_session_data.nsn_username;
                             const nsnRole = complete_session_data.nsn_role;
 
-                            // Use the original Flask session cookie from B-Client if available
+                            // Use the original session cookie from B-Client if available
                             // This ensures we use the exact same cookie format that works for manual access
                             let sessionCookieToUse = null;
 
@@ -1148,37 +1613,54 @@ class ElectronApp {
                                     const originalCookie = sessionMatch[1];
                                     console.log(`🔄 C-Client: Found original B-Client session cookie: ${originalCookie.substring(0, 50)}...`);
 
-                                    // Parse the original cookie to add NMP parameters
+                                    // Use JSON format directly (not Flask session format)
                                     try {
-                                        const cookieParts = originalCookie.split('.');
-                                        if (cookieParts.length >= 1) {
-                                            const decodedData = Buffer.from(cookieParts[0], 'base64').toString('utf-8');
-                                            const sessionData = JSON.parse(decodedData);
+                                        // Try to parse as JSON first (new format)
+                                        const sessionData = JSON.parse(originalCookie);
+                                        console.log(`🔄 C-Client: Original cookie is JSON format, adding NMP parameters`);
 
-                                            // Add NMP parameters to the original session data
-                                            const updatedSessionData = {
-                                                ...sessionData,
-                                                nmp_user_id: user_id,      // C-Client user ID
-                                                nmp_username: username,    // C-Client username
-                                                nmp_client_type: 'c-client',
-                                                nmp_timestamp: Date.now().toString()
-                                            };
+                                        // Add NMP parameters to the original session data
+                                        const updatedSessionData = {
+                                            ...sessionData,
+                                            nmp_user_id: user_id,      // C-Client user ID
+                                            nmp_username: username,    // C-Client username
+                                            nmp_client_type: 'c-client',  // Hardcoded as requested
+                                            nmp_timestamp: Date.now().toString()  // Current timestamp
+                                        };
 
-                                            // Recreate the cookie with NMP parameters
-                                            const updatedSessionJson = JSON.stringify(updatedSessionData);
-                                            const updatedSessionBase64 = Buffer.from(updatedSessionJson).toString('base64');
-                                            sessionCookieToUse = `${updatedSessionBase64}.${Date.now()}.${Math.random().toString(36).substring(2)}`;
+                                        // Use JSON format directly
+                                        sessionCookieToUse = JSON.stringify(updatedSessionData);
+                                        console.log(`🔄 C-Client: Updated original JSON cookie with NMP parameters`);
+                                    } catch (jsonError) {
+                                        // If JSON parsing fails, try Flask format (legacy)
+                                        try {
+                                            const cookieParts = originalCookie.split('.');
+                                            if (cookieParts.length >= 1) {
+                                                const decodedData = Buffer.from(cookieParts[0], 'base64').toString('utf-8');
+                                                const sessionData = JSON.parse(decodedData);
 
-                                            console.log(`🔄 C-Client: Updated original cookie with NMP parameters`);
-                                        } else {
+                                                // Add NMP parameters to the original session data
+                                                const updatedSessionData = {
+                                                    ...sessionData,
+                                                    nmp_user_id: user_id,      // C-Client user ID
+                                                    nmp_username: username,    // C-Client username
+                                                    nmp_client_type: 'c-client',  // Hardcoded as requested
+                                                    nmp_timestamp: Date.now().toString()  // Current timestamp
+                                                };
+
+                                                // Use JSON format (convert from Flask format)
+                                                sessionCookieToUse = JSON.stringify(updatedSessionData);
+                                                console.log(`🔄 C-Client: Converted Flask cookie to JSON with NMP parameters`);
+                                            } else {
+                                                // Fallback to original cookie if parsing fails
+                                                sessionCookieToUse = originalCookie;
+                                                console.log(`🔄 C-Client: Using original cookie as fallback`);
+                                            }
+                                        } catch (error) {
                                             // Fallback to original cookie if parsing fails
                                             sessionCookieToUse = originalCookie;
-                                            console.log(`🔄 C-Client: Using original cookie as fallback`);
+                                            console.log(`🔄 C-Client: Error parsing original cookie, using as-is: ${error.message}`);
                                         }
-                                    } catch (error) {
-                                        // Fallback to original cookie if parsing fails
-                                        sessionCookieToUse = originalCookie;
-                                        console.log(`🔄 C-Client: Error parsing original cookie, using as-is: ${error.message}`);
                                     }
                                 }
                             }
@@ -1203,14 +1685,12 @@ class ElectronApp {
                                     // Include NMP parameters for logout functionality
                                     nmp_user_id: user_id,      // C-Client user ID
                                     nmp_username: username,    // C-Client username
-                                    nmp_client_type: 'c-client',
-                                    nmp_timestamp: Date.now().toString()
+                                    nmp_client_type: 'c-client',  // Hardcoded as requested
+                                    nmp_timestamp: Date.now().toString()  // Current timestamp
                                 };
 
-                                // Create Flask session cookie format (base64 encoded JSON)
-                                const sessionJson = JSON.stringify(sessionDataToUse);
-                                const sessionBase64 = Buffer.from(sessionJson).toString('base64');
-                                sessionCookieToUse = `${sessionBase64}.${Date.now()}.${Math.random().toString(36).substring(2)}`;
+                                // Use JSON format directly (not Flask session format)
+                                sessionCookieToUse = JSON.stringify(sessionDataToUse);
 
                                 console.log(`🔄 C-Client: Created new session cookie: ${sessionCookieToUse.substring(0, 50)}...`);
                             }
@@ -1219,7 +1699,7 @@ class ElectronApp {
                             console.log(`🔄 C-Client: Target URL: ${cookieUrl}`);
                             console.log(`🔄 C-Client: C-Client User ID (UUID): ${user_id}`);
                             console.log(`🔄 C-Client: Using session cookie: ${sessionCookieToUse.substring(0, 50)}...`);
-                            console.log(`🔄 C-Client: Setting Flask session cookie...`);
+                            console.log(`🔄 C-Client: Setting JSON session cookie...`);
 
                             await targetSession.cookies.set({
                                 url: cookieUrl,
@@ -1232,7 +1712,7 @@ class ElectronApp {
                                 sameSite: 'lax'
                             });
 
-                            console.log(`🔄 C-Client: Flask session cookie set successfully`);
+                            console.log(`🔄 C-Client: Session cookie set successfully`);
 
                             // Also set additional cookies that NSN might need for session
                             // These cookies are from NSN's own session data, not exposed sensitive info
@@ -1319,12 +1799,12 @@ class ElectronApp {
                                         cookiesSet = true;
                                     } else {
                                         console.log(`🔄 C-Client: Session cookie not found or empty, retrying... (${retryCount + 1}/${maxRetries})`);
-                                        await new Promise(resolve => setTimeout(resolve, 200)); // Wait 200ms
+                                        await new Promise(resolve => setTimeout(resolve, 50)); // Wait 50ms
                                         retryCount++;
                                     }
                                 } catch (error) {
                                     console.log(`🔄 C-Client: Error checking cookies: ${error.message}`);
-                                    await new Promise(resolve => setTimeout(resolve, 200));
+                                    await new Promise(resolve => setTimeout(resolve, 50));
                                     retryCount++;
                                 }
                             }
@@ -1355,15 +1835,25 @@ class ElectronApp {
                                     const nmpParams = new URLSearchParams({
                                         nmp_user_id: localUserInfo.user_id,  // Use local user ID
                                         nmp_username: localUserInfo.username,  // Use local username
-                                        nmp_client_type: 'c-client',
-                                        nmp_timestamp: Date.now().toString(),
+                                        nmp_client_type: 'c-client',  // Hardcoded as requested
+                                        nmp_timestamp: Date.now().toString(),  // Current timestamp
                                         nmp_bind: 'true',
                                         nmp_bind_type: 'bind',
                                         nmp_auto_refresh: 'true',
                                         nmp_injected: 'true',
                                         nmp_cookie_reload: 'true'  // Add flag to prevent infinite loop
                                     });
-                                    const nsnUrl = `http://localhost:5000/?${nmpParams.toString()}`;
+                                    // Get NSN URL from this specific session's originating B-Client
+                                    let nsnBaseUrl;
+                                    if (nsn_url) {
+                                        nsnBaseUrl = nsn_url;
+                                        console.log(`🔄 C-Client: Using NSN URL from originating B-Client for user ${username} navigation: ${nsnBaseUrl}`);
+                                    } else {
+                                        // Fallback: if no NSN URL provided, we cannot proceed safely
+                                        console.error(`❌ C-Client: No NSN URL provided from B-Client for user ${username}, cannot navigate`);
+                                        return false;
+                                    }
+                                    const nsnUrl = `${nsnBaseUrl}/?${nmpParams.toString()}`;
                                     console.log(`🔄 C-Client: Loading NSN URL with local NMP parameters: ${nsnUrl}`);
 
                                     // Add page load event listener to check cookies after page loads
@@ -1394,7 +1884,7 @@ class ElectronApp {
                                 console.log(`🔄 C-Client: No current view to navigate, session cookies are set`);
                             }
                         } catch (error) {
-                            console.error(`❌ C-Client: Error setting Flask session cookies:`, error);
+                            console.error(`❌ C-Client: Error setting session cookies:`, error);
                             console.error(`❌ C-Client: Cannot proceed without valid session cookies`);
                         }
                     } else {
@@ -1461,13 +1951,18 @@ class ElectronApp {
 
                         // Navigate to a neutral page or refresh
                         const currentUrl = view.webContents.getURL();
-                        if (currentUrl && currentUrl.includes('localhost:5000')) {
+                        // Get NSN URL from configuration for comparison and navigation
+                        const apiConfig = require('./config/apiConfig');
+                        const nsnConfig = apiConfig.getCurrentNsnWebsite();
+                        const nsnDomain = nsnConfig.domain;
+
+                        if (currentUrl && (currentUrl.includes('localhost:5000') || currentUrl.includes(nsnDomain))) {
                             console.log(`🔓 C-Client: Navigating to NSN homepage for view ${viewId}`);
                             // Use navigation method to ensure URL parameter injection
                             if (this.viewOperations) {
-                                await this.viewOperations.navigateTo('http://localhost:5000/');
+                                await this.viewOperations.navigateTo(`${nsnConfig.url}/`);
                             } else {
-                                await view.webContents.loadURL('http://localhost:5000/');
+                                await view.webContents.loadURL(`${nsnConfig.url}/`);
                             }
                         }
 

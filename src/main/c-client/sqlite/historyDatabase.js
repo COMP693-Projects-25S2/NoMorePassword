@@ -84,13 +84,15 @@ class HistoryDatabase {
     // ===================== Visit History Operations =====================
 
     // Add visit record
-    addVisitRecord(url, title, timestamp, enterTime, viewId, domain, userId = null) {
-        const stmt = db.prepare(`
-            INSERT INTO visit_history (user_id, url, title, timestamp, enter_time, view_id, domain, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        const info = stmt.run(userId, url, title, timestamp, enterTime, viewId, domain, Date.now());
-        return info.lastInsertRowid;
+    async addVisitRecord(url, title, timestamp, enterTime, viewId, domain, userId = null) {
+        return await this.retryDatabaseOperation(() => {
+            const stmt = db.prepare(`
+                INSERT INTO visit_history (user_id, url, title, timestamp, enter_time, view_id, domain, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+            const info = stmt.run(userId, url, title, timestamp, enterTime, viewId, domain, Date.now());
+            return info.lastInsertRowid;
+        });
     }
 
     // Update record title
@@ -104,13 +106,36 @@ class HistoryDatabase {
     }
 
     // Update record stay duration
-    updateRecordDuration(visitId, stayDuration) {
-        const stmt = db.prepare(`
-            UPDATE visit_history 
-            SET stay_duration = ?, updated_at = ?
-            WHERE id = ?
-        `);
-        return stmt.run(stayDuration, Date.now(), visitId);
+    async updateRecordDuration(visitId, stayDuration) {
+        return await this.retryDatabaseOperation(() => {
+            const stmt = db.prepare(`
+                UPDATE visit_history 
+                SET stay_duration = ?, updated_at = ?
+                WHERE id = ?
+            `);
+            return stmt.run(stayDuration, Date.now(), visitId);
+        });
+    }
+
+    // Helper method to retry database operations on lock
+    async retryDatabaseOperation(operation, maxRetries = 3, delay = 100) {
+        for (let i = 0; i < maxRetries; i++) {
+            try {
+                return operation();
+            } catch (error) {
+                if (error.code === 'SQLITE_BUSY' || error.code === 'SQLITE_BUSY_SNAPSHOT') {
+                    if (i === maxRetries - 1) {
+                        console.error(`❌ Database operation failed after ${maxRetries} retries:`, error);
+                        throw error;
+                    }
+                    console.warn(`⚠️ Database locked, retrying in ${delay}ms... (attempt ${i + 1}/${maxRetries})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2; // Exponential backoff
+                } else {
+                    throw error;
+                }
+            }
+        }
     }
 
     // Get visit history (with pagination and user filtering)
@@ -349,17 +374,41 @@ class HistoryDatabase {
 
     // Begin transaction
     beginTransaction() {
-        return db.prepare('BEGIN TRANSACTION').run();
+        try {
+            return db.prepare('BEGIN TRANSACTION').run();
+        } catch (error) {
+            if (error.message.includes('cannot start a transaction within a transaction')) {
+                console.log('ℹ️ Database: Transaction already active, skipping begin');
+                return { changes: 0 };
+            }
+            throw error;
+        }
     }
 
     // Commit transaction
     commitTransaction() {
-        return db.prepare('COMMIT').run();
+        try {
+            return db.prepare('COMMIT').run();
+        } catch (error) {
+            if (error.message.includes('no transaction is active')) {
+                console.log('ℹ️ Database: No active transaction to commit');
+                return { changes: 0 };
+            }
+            throw error;
+        }
     }
 
     // Rollback transaction
     rollbackTransaction() {
-        return db.prepare('ROLLBACK').run();
+        try {
+            return db.prepare('ROLLBACK').run();
+        } catch (error) {
+            if (error.message.includes('no transaction is active')) {
+                console.log('ℹ️ Database: No active transaction to rollback');
+                return { changes: 0 };
+            }
+            throw error;
+        }
     }
 }
 

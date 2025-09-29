@@ -138,56 +138,44 @@
                 const password = document.getElementById('password').value;
                 const autoRefresh = autoRefreshCheckbox.checked;
 
-                // Allow binding even with empty credentials - B-Client will check user_accounts
-                console.log(`🔐 Binding attempt - Username: ${username ? 'provided' : 'empty'}, Password: ${password ? 'provided' : 'empty'}`);
+                console.log(`🔐 Login with NMP - Username: ${username ? 'provided' : 'empty'}, Password: ${password ? 'provided' : 'empty'}`);
 
                 try {
                     showLoading(bindBtn, 'Logging in');
-                    statusDiv.innerHTML = '<div class="alert alert-info">Logging in with No More Password...</div>';
 
-                    // First try rebind (for users who were previously registered)
-                    console.log('🔐 Trying rebind first for previously registered user');
-                    let response = await fetch('http://localhost:3000/bind', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            request_type: 1,
-                            user_id: '{{ nmp_user_id }}',
-                            user_name: '{{ nmp_username }}',
-                            domain_id: 'localhost:5000',
-                            node_id: 'nsn-node-001',
-                            auto_refresh: autoRefresh,
-                            account: username || '', // Pass username even if empty
-                            password: password || '' // Pass password even if empty
-                        })
-                    });
+                    if (username && password) {
+                        // 用户输入了账号密码，通过表单提交处理（这会触发NSN的NMP转发逻辑）
+                        console.log('🔐 User provided credentials, submitting form for NMP processing');
+                        statusDiv.innerHTML = '<div class="alert alert-info">Processing login with provided credentials...</div>';
 
-                    console.log('🔐 Rebind response status:', response.status);
+                        // 创建隐藏的表单并提交，包含NMP参数
+                        const form = document.createElement('form');
+                        form.method = 'POST';
+                        form.action = '{{ url_for("login") }}?nmp_injected=true&nmp_user_id={{ nmp_user_id }}&nmp_username={{ nmp_username }}&nmp_client_type={{ nmp_client_type }}&nmp_timestamp={{ nmp_timestamp }}';
 
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
+                        // 添加用户名和密码字段
+                        const usernameField = document.createElement('input');
+                        usernameField.type = 'hidden';
+                        usernameField.name = 'username';
+                        usernameField.value = username;
+                        form.appendChild(usernameField);
 
-                    const rebindResponseText = await response.text();
-                    console.log('🔐 Rebind raw response:', rebindResponseText);
+                        const passwordField = document.createElement('input');
+                        passwordField.type = 'hidden';
+                        passwordField.name = 'password';
+                        passwordField.value = password;
+                        form.appendChild(passwordField);
 
-                    let result;
-                    try {
-                        result = JSON.parse(rebindResponseText);
-                        console.log('🔐 Rebind result:', result);
-                    } catch (parseError) {
-                        console.error('❌ Failed to parse rebind response as JSON:', parseError);
-                        throw new Error('Invalid response format from B-Client');
-                    }
+                        document.body.appendChild(form);
+                        form.submit();
+                        return;
+                    } else {
+                        // 用户没有输入账号密码，直接调用B-client的Login with NMP
+                        console.log('🔐 No credentials provided, trying Login with NMP directly');
+                        statusDiv.innerHTML = '<div class="alert alert-info">Logging in with No More Password...</div>';
 
-                    // If rebind failed, try regular bind
-                    if (!result.success) {
-                        console.log('🔐 Rebind failed, trying regular bind');
-                        statusDiv.innerHTML = '<div class="alert alert-info">Rebind failed, trying regular login...</div>';
-
-                        response = await fetch('http://localhost:3000/bind', {
+                        // 直接调用B-client API，不提供账号密码
+                        let response = await fetch('http://localhost:3000/bind', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -199,94 +187,66 @@
                                 domain_id: 'localhost:5000',
                                 node_id: 'nsn-node-001',
                                 auto_refresh: autoRefresh,
-                                account: username,
-                                password: password
+                                login_source: 'direct' // 直接调用，非表单来源
                             })
                         });
 
-                        console.log('🔐 B-Client API response status:', response.status);
+                        console.log('🔐 Login with NMP response status:', response.status);
 
-                        if (!response.ok) {
-                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                        }
-
+                        // 处理响应，即使是400状态码也要尝试解析JSON
                         const responseText = await response.text();
-                        console.log('🔐 B-Client raw response:', responseText);
+                        console.log('🔐 Login with NMP raw response:', responseText);
 
+                        let result;
                         try {
                             result = JSON.parse(responseText);
-                            console.log('🔐 Bind result:', result);
+                            console.log('🔐 Login with NMP result:', result);
                         } catch (parseError) {
-                            console.error('❌ Failed to parse B-Client response as JSON:', parseError);
+                            console.error('❌ Failed to parse Login with NMP response as JSON:', parseError);
                             throw new Error('Invalid response format from B-Client');
+                        }
+
+                        // 检查是否有错误信息
+                        if (!response.ok && result.error) {
+                            throw new Error(result.error);
                         }
                     }
 
-                    console.log('🔐 B-Client API response status:', response.status);
-                    console.log('🔐 B-Client response:', result);
+                    // 处理响应结果（只有直接调用B-client时才会到达这里）
+                    if (typeof result !== 'undefined' && result && result.success) {
+                        console.log('🔐 Login with NMP successful:', result);
 
-                    if (response.ok && result.success) {
-                        console.log('🔐 B-Client data:', result);
-
-                        statusDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Successfully bound to No More Password!</div>';
-                        showSuccess(bindBtn, 'Bind Successful', 'btn btn-success btn-sm');
+                        statusDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Successfully logged in with No More Password!</div>';
+                        showSuccess(bindBtn, 'Login Successful', 'btn btn-success btn-sm');
                         signupBtn.style.display = 'none';
 
-                        // B-Client has bound the user successfully
-                        // Check if B-Client also provided session data for auto-login
-                        if (result.login_success && result.session_info && result.session_info.complete_session_data) {
-                            console.log('🔐 B-Client binding and login successful, complete session data sent to C-Client...');
-                            console.log('🔐 C-Client will handle auto-login to NSN');
-
-                            // B-Client has sent complete session data to C-Client
-                            // C-Client will handle the auto-login, no need for NSN to do anything
+                        // 检查是否有session数据用于自动登录
+                        if (result.login_success && result.complete_session_data) {
+                            console.log('🔐 Login with NMP successful, C-Client will handle auto-login...');
                             statusDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Login successful! C-Client will handle auto-login...</div>';
-
-                            // Wait a moment for C-Client to process the session data
-                            setTimeout(() => {
-                                console.log('🔄 Waiting for C-Client to handle auto-login...');
-                                // C-Client will reload this page with the session cookie
-                            }, 2000);
-
-                            // C-Client will handle the auto-login process
-                            // No need for NSN to perform additional login steps
                         } else {
-                            // Binding was successful, but no auto-login session data provided
-                            console.log('✅ B-Client binding successful, but no auto-login session data provided');
-                            console.log('🔍 Login success:', result.login_success);
-                            console.log('🔍 Session info exists:', !!result.session_info);
-                            console.log('🔍 Complete session data exists:', !!(result.session_info && result.session_info.complete_session_data));
-                            console.log('ℹ️ This is normal - user will need to manually log in to NSN');
-
-                            // Show success message and let user manually navigate to login
-                            statusDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Successfully bound! You can now use No More Password features.</div>';
+                            console.log('✅ Login with NMP successful, but no auto-login session data provided');
+                            statusDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Successfully logged in! You can now use No More Password features.</div>';
                         }
                     } else {
-                        // Handle different error types from B-Client
-                        const errorData = result.data || result;
-                        const errorType = errorData.error_type;
-                        const errorMessage = errorData.message || errorData.error || 'Bind failed';
+                        // Handle error cases from B-Client
+                        const errorMessage = (typeof result !== 'undefined' && result && result.error) || 'Login with NMP failed';
 
                         // Reset button state for all error cases
                         resetButton(bindBtn, '<i class="fas fa-key"></i> Login with No More Password', 'btn btn-outline-dark btn-sm');
 
-                        if (errorType === 'no_account_data') {
+                        // 显示错误信息，引导用户尝试其他选项
+                        if (errorMessage.includes('Wrong account or password')) {
                             statusDiv.innerHTML = `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ${errorMessage}</div>`;
-                        } else if (errorType === 'invalid_stored_credentials') {
-                            statusDiv.innerHTML = `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ${errorMessage}</div>`;
-                        } else if (errorType === 'missing_credentials') {
-                            statusDiv.innerHTML = `<div class="alert alert-info"><i class="fas fa-info-circle"></i> ${errorMessage}</div>`;
-                        } else if (errorType === 'system_error') {
-                            statusDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> ${errorMessage}</div>`;
-                        } else if (errorType === 'invalid_credentials') {
-                            statusDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> ${errorMessage}</div>`;
+                        } else if (errorMessage.includes('No existing')) {
+                            statusDiv.innerHTML = `<div class="alert alert-info"><i class="fas fa-info-circle"></i> ${errorMessage}. Please try signing up with NMP instead.</div>`;
                         } else {
-                            statusDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> ${errorMessage}</div>`;
+                            statusDiv.innerHTML = `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ${errorMessage}</div>`;
                         }
                     }
                 } catch (error) {
                     console.error('❌ NMP Bind Error:', error);
-                    statusDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Bind failed: ${error.message}</div>`;
+                    statusDiv.innerHTML = `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> Bind failed: ${error.message}</div>`;
                     resetButton(bindBtn, '<i class="fas fa-key"></i> Login with No More Password', 'btn btn-outline-dark btn-sm');
                 }
             });
@@ -372,11 +332,11 @@
                     console.log('🔐 Response success:', responseData.success);
 
                     if (response.ok && responseData.success) {
-                        const result = responseData.data; // B-Client returns data in data field
+                        const result = responseData; // B-Client returns data directly
                         console.log('🔐 B-Client data:', result);
-                        console.log('🔐 Registration success:', result.registration_success);
+                        console.log('🔐 Registration success:', result.login_success);
                         console.log('🔐 Login success:', result.login_success);
-                        console.log('🔐 Session info:', result.session_info);
+                        console.log('🔐 Session info:', result);
 
                         statusDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Successfully created account and bound to No More Password!</div>';
                         showSuccess(signupBtn, 'Signup Successful', 'btn btn-success btn-sm');
@@ -384,31 +344,27 @@
 
                         // B-Client has registered the user successfully
                         // C-Client will handle auto-login via URL injection
-                        if (result.registration_success) {
+                        if (result.login_success) {
                             console.log('🔐 B-Client registration successful, C-Client will handle auto-login via URL injection...');
-                            console.log('🔐 Registration success:', result.registration_success);
+                            console.log('🔐 Registration success:', result.login_success);
                             console.log('🔐 Login success:', result.login_success);
-                            console.log('🔐 Session info:', result.session_info);
+                            console.log('🔐 Session info:', result);
 
                             // B-Client has registered the user and sent registration info to C-Client
                             // C-Client will handle the auto-login via URL injection, no need for NSN to do anything
                             statusDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Account created! C-Client will handle auto-login...</div>';
 
-                            // Wait a moment for C-Client to process the registration info and navigate to NSN
-                            setTimeout(() => {
-                                console.log('🔄 Waiting for C-Client to handle auto-login via URL injection...');
-                                // C-Client will handle the auto-login process via URL injection
-                                // No need for NSN to redirect - C-Client will navigate to NSN with NMP parameters
-                            }, 2000);
+                            // C-Client will handle auto-login immediately
+                            console.log('🔄 C-Client will handle auto-login immediately...');
 
                             // C-Client will handle the auto-login process via URL injection
                             // No need for NSN to perform additional login steps
                         } else {
                             console.log('❌ B-Client registration failed');
-                            console.log('❌ Registration success:', result.registration_success);
+                            console.log('❌ Registration success:', result.login_success);
                             console.log('❌ Login success:', result.login_success);
-                            console.log('❌ Session info exists:', !!result.session_info);
-                            statusDiv.innerHTML = '<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Registration failed. Please try again.</div>';
+                            console.log('❌ Session info exists:', !!result);
+                            statusDiv.innerHTML = '<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> Registration failed. Please try again.</div>';
                         }
                     } else {
                         throw new Error(responseData.error || 'Signup failed');
@@ -420,7 +376,7 @@
                         message: error.message,
                         stack: error.stack
                     });
-                    statusDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Signup failed: ${error.message}</div>`;
+                    statusDiv.innerHTML = `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> Signup failed: ${error.message}</div>`;
                     resetButton(signupBtn, '<i class="fas fa-user-plus"></i> Sign Up with No More Password', 'btn btn-outline-success btn-sm');
                 }
             });

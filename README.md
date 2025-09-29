@@ -64,7 +64,7 @@ npm run build
 ```
 src/
 ├── main/                    # 主进程代码
-│   ├── b-client/           # B-Client 特定代码
+│   ├── discard-b/          # B-Client 特定代码
 │   │   ├── window/         # B-Client 窗口管理
 │   │   ├── sqlite/         # B-Client 数据库
 │   │   ├── history/        # B-Client 历史记录
@@ -102,7 +102,7 @@ src/
 
 数据库文件位置：
 - C-Client: `src/main/c-client/sqlite/secure.db`
-- B-Client: `src/main/b-client/sqlite/b_client_secure.db`
+- B-Client: `src/main/discard-b/sqlite/b_client_secure.db`
 
 ## 开发说明
 

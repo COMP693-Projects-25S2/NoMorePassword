@@ -6,10 +6,10 @@
   "scripts": {
     "start": "electron .",
     "start:c-client": "electron src/main/c-client/main.js --c-client",
-    "start:b-client": "electron src/main/b-client/bClientApp.js --b-client",
+    "start:b-client": "electron src/main/discard-b/bClientApp.js --b-client",
     "dev": "electron . --dev",
     "dev:c-client": "electron src/main/c-client/main.js --dev --c-client",
-    "dev:b-client": "electron src/main/b-client/bClientApp.js --dev --b-client",
+    "dev:b-client": "electron src/main/discard-b/bClientApp.js --dev --b-client",
     "build": "electron-builder",
     "dist": "npm run build",
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -40,7 +40,9 @@
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "mysql2": "^3.14.5",
+    "node-fetch": "^3.3.2",
     "sqlite3": "^5.1.7",
-    "uuid": "^10.0.0"
+    "uuid": "^10.0.0",
+    "ws": "^8.14.2"
   }
 }

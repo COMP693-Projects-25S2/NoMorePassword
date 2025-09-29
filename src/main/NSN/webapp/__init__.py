@@ -15,6 +15,17 @@ app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HT
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour
 
+# Configure JSON session serialization to prevent NMP parameter loss
+# This ensures all session data (including NMP parameters) are properly serialized
+app.config['SESSION_SERIALIZATION_FORMAT'] = 'json'
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_FILE_DIR'] = '/tmp/flask_session'
+app.config['SESSION_FILE_THRESHOLD'] = 500
+
+# Additional session security and reliability settings
+app.config['SESSION_COOKIE_MAX_SIZE'] = 4096  # 4KB max cookie size
+app.config['SESSION_USE_SIGNER'] = True  # Sign session cookies for security
+
 
 db.init_db(app, connect.dbuser, connect.dbpass, connect.dbhost, connect.dbname)
 from webapp import announcement

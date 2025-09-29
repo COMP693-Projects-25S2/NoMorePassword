@@ -386,10 +386,6 @@ class NodeStatusModal {
                     '<span class="status-label">Status:</span>' +
                     '<span class="status-value ' + (currentNode.status === 'active' ? 'main-node' : 'offline') + '">' + (currentNode.status || 'Unknown') + '</span>' +
                 '</div>' +
-                '<div class="status-item">' +
-                    '<span class="status-label">Priority:</span>' +
-                    '<span class="status-value">' + (currentNode.priority || 'Unknown') + '</span>' +
-                '</div>' +
             '</div>' +
 
             '<div class="status-section">' +

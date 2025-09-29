@@ -1,13 +1,16 @@
 const express = require('express');
 const cors = require('cors');
+const NodeManager = require('../nodeManager/nodeManager');
+const net = require('net');
 
 class CClientApiServer {
-    constructor(port, mainWindow = null) {
+    constructor(port = null, mainWindow = null) {
         this.port = port;
         this.app = express();
         this.mainWindow = mainWindow;
         this.storedCookie = null;
         this.pendingReload = null; // Store pending reload requests
+        this.nodeManager = new NodeManager();
         this.setupMiddleware();
         this.setupRoutes();
     }
@@ -16,6 +19,43 @@ class CClientApiServer {
         this.app.use(cors());
         this.app.use(express.json());
         this.app.use(express.urlencoded({ extended: true }));
+    }
+
+    // Check if a port is available
+    async isPortAvailable(port) {
+        return new Promise((resolve) => {
+            const server = net.createServer();
+
+            server.listen(port, () => {
+                server.once('close', () => {
+                    resolve(true);
+                });
+                server.close();
+            });
+
+            server.on('error', () => {
+                resolve(false);
+            });
+        });
+    }
+
+    // Find an available port in range 3001-6000
+    async findAvailablePort() {
+        const minPort = 3001;
+        const maxPort = 6000;
+        const maxAttempts = 100; // Prevent infinite loop
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            // Generate random port in range
+            const port = Math.floor(Math.random() * (maxPort - minPort + 1)) + minPort;
+
+            if (await this.isPortAvailable(port)) {
+                console.log(`[C-Client API] Found available port: ${port}`);
+                return port;
+            }
+        }
+
+        throw new Error('No available ports found in range 3001-6000');
     }
 
     /**
@@ -68,9 +108,26 @@ class CClientApiServer {
 
         // Receive cookie from B-Client
         this.app.post('/api/cookie', (req, res) => {
-            const { user_id, username, cookie, complete_session_data, source } = req.body;
+            const { user_id, username, cookie, complete_session_data, source, nsn_url, nsn_domain } = req.body;
             console.log(`[C-Client API] ===== RECEIVING DATA FROM B-CLIENT =====`);
             console.log(`[C-Client API] Receiving cookie from ${source} for user: ${username} (${user_id})`);
+            console.log(`[C-Client API] Raw request body:`, req.body);
+
+            console.log(`[C-Client API] ===== RECEIVED NSN INFO FROM B-CLIENT =====`);
+            console.log(`[C-Client API] Received NSN info: URL='${nsn_url}' (type: ${typeof nsn_url}), Domain='${nsn_domain}' (type: ${typeof nsn_domain})`);
+            console.log(`[C-Client API] Raw request body NSN fields:`, {
+                nsn_url: req.body.nsn_url,
+                nsn_domain: req.body.nsn_domain
+            });
+            console.log(`[C-Client API] ===== END RECEIVED NSN INFO =====`);
+
+            // Log NSN information received from B-Client
+            if (nsn_url || nsn_domain) {
+                console.log(`[C-Client API] NSN information from B-Client:`, {
+                    nsn_url: nsn_url,
+                    nsn_domain: nsn_domain
+                });
+            }
 
             try {
                 // Accept either cookie or complete_session_data
@@ -92,6 +149,23 @@ class CClientApiServer {
                         });
                         console.log(`[C-Client API] Full complete session data:`, complete_session_data);
                         console.log(`[C-Client API] NSN Session Data details:`, complete_session_data.nsn_session_data);
+
+                        // Detailed analysis of session data structure
+                        console.log(`[C-Client API] ===== C-CLIENT SESSION DATA ANALYSIS =====`);
+                        console.log(`[C-Client API] C-Client received complete_session_data structure:`);
+                        console.log(`[C-Client API]   complete_session_data:`, JSON.stringify(complete_session_data, null, 2));
+                        console.log(`[C-Client API]   complete_session_data.nsn_session_data:`, JSON.stringify(complete_session_data.nsn_session_data, null, 2));
+                        if (complete_session_data.nsn_session_data) {
+                            console.log(`[C-Client API]   complete_session_data.nsn_session_data.loggedin:`, complete_session_data.nsn_session_data.loggedin);
+                            console.log(`[C-Client API]   complete_session_data.nsn_session_data.user_id:`, complete_session_data.nsn_session_data.user_id);
+                            console.log(`[C-Client API]   complete_session_data.nsn_session_data.username:`, complete_session_data.nsn_session_data.username);
+                            console.log(`[C-Client API]   complete_session_data.nsn_session_data.role:`, complete_session_data.nsn_session_data.role);
+                        } else {
+                            console.log(`[C-Client API]   complete_session_data.nsn_session_data: UNDEFINED/NULL`);
+                        }
+                        console.log(`[C-Client API]   complete_session_data.nmp_user_id:`, complete_session_data.nmp_user_id);
+                        console.log(`[C-Client API]   complete_session_data.nmp_username:`, complete_session_data.nmp_username);
+                        console.log(`[C-Client API] ===== END C-CLIENT SESSION DATA ANALYSIS =====`);
                     }
 
                     // Store the cookie for the user (this could be stored in a database or cache)
@@ -105,8 +179,19 @@ class CClientApiServer {
                         console.log(`[C-Client API] Username: ${username}`);
                         console.log(`[C-Client API] Has cookie: ${!!cookie}`);
                         console.log(`[C-Client API] Has complete session data: ${!!complete_session_data}`);
+
+                        // Create reload data with NSN information
+                        const reloadData = {
+                            user_id: user_id,
+                            username: username,
+                            cookie: cookie,
+                            complete_session_data: complete_session_data,
+                            nsn_url: nsn_url,        // Pass NSN URL from B-Client
+                            nsn_domain: nsn_domain   // Pass NSN domain from B-Client
+                        };
+
                         // Trigger C-Client to reload the current tab with the cookie and complete session data
-                        this.triggerCClientReloadWithCookie(user_id, username, cookie, complete_session_data);
+                        this.triggerCClientReloadWithCookie(user_id, username, cookie, complete_session_data, reloadData);
                     }
 
                     res.json({
@@ -208,8 +293,8 @@ class CClientApiServer {
                         const nmpParams = {
                             nmp_user_id: localUserInfo.user_id,  // Use local user ID
                             nmp_username: localUserInfo.username,  // Use local username
-                            nmp_client_type: 'c-client',
-                            nmp_timestamp: Date.now().toString(),
+                            nmp_client_type: 'c-client',  // Hardcoded as requested
+                            nmp_timestamp: Date.now().toString(),  // Current timestamp
                             nmp_bind: 'true',
                             nmp_bind_type: 'signup',
                             nmp_auto_refresh: 'true',
@@ -390,21 +475,253 @@ class CClientApiServer {
                 });
             }
         });
+
+        // Node Management API Routes
+        this.setupNodeManagementRoutes();
+    }
+
+    setupNodeManagementRoutes() {
+        // New Domain Node
+        this.app.post('/newdomainnode', async (req, res) => {
+            try {
+                const result = await this.nodeManager.newDomainNode();
+
+                if (result.success) {
+                    res.json(result);
+                } else {
+                    res.status(400).json(result);
+                }
+            } catch (error) {
+                console.error('Error in newdomainnode endpoint:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // New Cluster Node
+        this.app.post('/newclusternode', async (req, res) => {
+            try {
+                const { node_id } = req.body;
+
+                if (!node_id) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'node_id parameter is required'
+                    });
+                }
+
+                const result = await this.nodeManager.newClusterNode(node_id);
+
+                if (result.success) {
+                    res.json(result);
+                } else {
+                    res.status(400).json(result);
+                }
+            } catch (error) {
+                console.error('Error in newclusternode endpoint:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // New Channel Node
+        this.app.post('/newchannelnode', async (req, res) => {
+            try {
+                const { node_id } = req.body;
+
+                if (!node_id) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'node_id parameter is required'
+                    });
+                }
+
+                const result = await this.nodeManager.newChannelNode(node_id);
+
+                if (result.success) {
+                    res.json(result);
+                } else {
+                    res.status(400).json(result);
+                }
+            } catch (error) {
+                console.error('Error in newchannelnode endpoint:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // Register to Domain Node
+        this.app.post('/registertodomainnode', async (req, res) => {
+            try {
+                const { domain_id, node_id } = req.body;
+
+                if (!domain_id || !node_id) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'domain_id and node_id parameters are required'
+                    });
+                }
+
+                const result = await this.nodeManager.registerToDomainNode(domain_id, node_id);
+
+                if (result.success) {
+                    res.json(result);
+                } else {
+                    res.status(400).json(result);
+                }
+            } catch (error) {
+                console.error('Error in registertodomainnode endpoint:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // Register to Cluster Node
+        this.app.post('/registertoclusternode', async (req, res) => {
+            try {
+                const { cluster_id, node_id } = req.body;
+
+                if (!cluster_id || !node_id) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'cluster_id and node_id parameters are required'
+                    });
+                }
+
+                const result = await this.nodeManager.registerToClusterNode(cluster_id, node_id);
+
+                if (result.success) {
+                    res.json(result);
+                } else {
+                    res.status(400).json(result);
+                }
+            } catch (error) {
+                console.error('Error in registertoclusternode endpoint:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // Register to Channel Node
+        this.app.post('/registertochannelnode', async (req, res) => {
+            try {
+                const { channel_id, node_id, target_node_id } = req.body;
+
+                if (!channel_id || !node_id || !target_node_id) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'channel_id, node_id, and target_node_id parameters are required'
+                    });
+                }
+
+                const result = await this.nodeManager.registerToChannelNode(channel_id, node_id, target_node_id);
+
+                if (result.success) {
+                    res.json(result);
+                } else {
+                    res.status(400).json(result);
+                }
+            } catch (error) {
+                console.error('Error in registertochannelnode endpoint:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // Add New Node
+        this.app.post('/addnewnode', async (req, res) => {
+            try {
+                const { domain_id, cluster_id, channel_id, node_id, target_node_id } = req.body;
+
+                if (!domain_id || !cluster_id || !channel_id || !node_id || !target_node_id) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'domain_id, cluster_id, channel_id, node_id, and target_node_id parameters are required'
+                    });
+                }
+
+                const result = await this.nodeManager.addNewNode(domain_id, cluster_id, channel_id, node_id, target_node_id);
+
+                if (result.success) {
+                    res.json(result);
+                } else {
+                    res.status(400).json(result);
+                }
+            } catch (error) {
+                console.error('Error in addnewnode endpoint:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // Register Confirmed
+        this.app.post('/registerconfirmed', async (req, res) => {
+            try {
+                const { domain_id, cluster_id, channel_id, node_id, target_node_id, confirmed_by } = req.body;
+
+                if (!domain_id || !cluster_id || !node_id || !target_node_id || !confirmed_by) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'domain_id, cluster_id, node_id, target_node_id, and confirmed_by parameters are required'
+                    });
+                }
+
+                const result = await this.nodeManager.registerConfirmed(domain_id, cluster_id, channel_id, node_id, target_node_id, confirmed_by);
+
+                if (result.success) {
+                    res.json(result);
+                } else {
+                    res.status(400).json(result);
+                }
+            } catch (error) {
+                console.error('Error in registerconfirmed endpoint:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
     }
 
     // Trigger C-Client to reload with cookie
-    triggerCClientReloadWithCookie(user_id, username, cookie, complete_session_data = null) {
+    triggerCClientReloadWithCookie(user_id, username, cookie, complete_session_data = null, reloadData = null) {
         try {
             console.log(`[C-Client API] ===== TRIGGERING C-CLIENT RELOAD WITH COOKIE =====`);
             console.log(`[C-Client API] Triggering C-Client reload with cookie for user: ${username}`);
 
+            console.log(`[C-Client API] ===== STORING NSN INFO FROM B-CLIENT =====`);
+            console.log(`[C-Client API] Storing NSN info: URL=${reloadData?.nsn_url}, Domain=${reloadData?.nsn_domain}`);
+            console.log(`[C-Client API] Full reloadData object:`, JSON.stringify(reloadData, null, 2));
+            console.log(`[C-Client API] reloadData exists:`, !!reloadData);
+            console.log(`[C-Client API] reloadData.nsn_url:`, reloadData?.nsn_url);
+            console.log(`[C-Client API] reloadData.nsn_domain:`, reloadData?.nsn_domain);
+            console.log(`[C-Client API] ===== END STORING NSN INFO =====`);
+
             // Store cookie and complete session data temporarily for the reload
+            // Each session maintains its own NSN information from the originating B-Client
             this.storedCookie = {
                 user_id: user_id,
                 username: username,
                 cookie: cookie,
                 complete_session_data: complete_session_data,
-                timestamp: Date.now()
+                nsn_url: reloadData?.nsn_url,        // Store NSN URL from originating B-Client
+                nsn_domain: reloadData?.nsn_domain,  // Store NSN domain from originating B-Client
+                timestamp: Date.now(),
+                source_b_client: 'unknown'  // Track which B-Client this session came from
             };
 
             console.log(`[C-Client API] Cookie and session data stored for reload: ${username}`);
@@ -419,17 +736,25 @@ class CClientApiServer {
             if (this.mainWindow && !this.mainWindow.isDestroyed()) {
                 console.log(`[C-Client API] Sending cookie reload request to main process for user: ${username}`);
 
-                const reloadData = {
+                const reloadDataToSend = {
                     user_id: user_id,
                     username: username,
                     cookie: cookie,
-                    complete_session_data: complete_session_data
+                    complete_session_data: complete_session_data,
+                    nsn_url: reloadData?.nsn_url,        // Pass NSN URL from B-Client
+                    nsn_domain: reloadData?.nsn_domain   // Pass NSN domain from B-Client
                 };
 
-                console.log(`[C-Client API] Reload data being sent:`, reloadData);
+                console.log(`[C-Client API] ===== IPC MESSAGE DATA PREPARATION =====`);
+                console.log(`[C-Client API] reloadDataToSend object:`, JSON.stringify(reloadDataToSend, null, 2));
+                console.log(`[C-Client API] NSN URL in IPC message: ${reloadDataToSend.nsn_url} (type: ${typeof reloadDataToSend.nsn_url})`);
+                console.log(`[C-Client API] NSN Domain in IPC message: ${reloadDataToSend.nsn_domain} (type: ${typeof reloadDataToSend.nsn_domain})`);
+                console.log(`[C-Client API] ===== END IPC MESSAGE DATA PREPARATION =====`);
+
+                console.log(`[C-Client API] Reload data being sent:`, reloadDataToSend);
 
                 // Use IPC to communicate with main process
-                this.mainWindow.webContents.send('cookie-reload-request', reloadData);
+                this.mainWindow.webContents.send('cookie-reload-request', reloadDataToSend);
 
                 console.log(`[C-Client API] Cookie reload request sent to main process for user: ${username}`);
             } else {
@@ -439,13 +764,24 @@ class CClientApiServer {
             // Also try direct call to main process method as backup
             try {
                 if (global.cClientMainProcess && typeof global.cClientMainProcess.handleCookieReload === 'function') {
+                    console.log(`[C-Client API] ===== DIRECT METHOD CALL PREPARATION =====`);
                     console.log(`[C-Client API] Also calling main process handleCookieReload directly for user: ${username}`);
-                    global.cClientMainProcess.handleCookieReload({
+
+                    const directCallData = {
                         user_id: user_id,
                         username: username,
                         cookie: cookie,
-                        complete_session_data: complete_session_data
-                    });
+                        complete_session_data: complete_session_data,
+                        nsn_url: reloadData?.nsn_url,        // Pass NSN URL from B-Client
+                        nsn_domain: reloadData?.nsn_domain   // Pass NSN domain from B-Client
+                    };
+
+                    console.log(`[C-Client API] Direct call data object:`, JSON.stringify(directCallData, null, 2));
+                    console.log(`[C-Client API] NSN URL in direct call: ${directCallData.nsn_url} (type: ${typeof directCallData.nsn_url})`);
+                    console.log(`[C-Client API] NSN Domain in direct call: ${directCallData.nsn_domain} (type: ${typeof directCallData.nsn_domain})`);
+                    console.log(`[C-Client API] ===== END DIRECT METHOD CALL PREPARATION =====`);
+
+                    global.cClientMainProcess.handleCookieReload(directCallData);
                 }
             } catch (error) {
                 console.log(`[C-Client API] Direct method not available: ${error.message}`);
@@ -462,12 +798,15 @@ class CClientApiServer {
         console.log(`[C-Client API] NMP parameters:`, nmpParams);
 
         try {
-            // Build NSN URL with NMP parameters
-            const nsnUrl = 'http://localhost:5000/';
-            const queryParams = new URLSearchParams(nmpParams).toString();
-            const fullUrl = `${nsnUrl}?${queryParams}`;
+            // This method should not be used in multi-tenant scenarios without B-Client context
+            // Each navigation should include the originating B-Client's NSN URL
+            console.warn(`[C-Client API] WARNING: triggerCClientNavigateToNSN called without B-Client NSN URL context`);
+            console.warn(`[C-Client API] In multi-tenant scenarios, navigation should use the NSN URL from the originating B-Client`);
 
-            console.log(`[C-Client API] Full NSN URL with NMP parameters: ${fullUrl}`);
+            // For now, we cannot proceed without knowing which NSN instance to navigate to
+            console.error(`[C-Client API] Cannot navigate to NSN without knowing the originating B-Client's NSN URL`);
+            console.error(`[C-Client API] Use the stored cookie data with NSN URL context instead`);
+            return false;
 
             // Use IPC to communicate with main process
             if (this.mainWindow && this.mainWindow.webContents) {
@@ -514,23 +853,46 @@ class CClientApiServer {
         }
     }
 
-    start() {
-        this.server = this.app.listen(this.port, () => {
-            console.log(`[C-Client API] Server started on port ${this.port}`);
-            console.log(`[C-Client API] Health check: http://localhost:${this.port}/health`);
-            console.log(`[C-Client API] Cookie endpoint: http://localhost:${this.port}/api/cookie/:user_id`);
-            console.log(`[C-Client API] Register endpoint: http://localhost:${this.port}/api/register`);
-            console.log(`[C-Client API] Login endpoint: http://localhost:${this.port}/api/login`);
-        }).on('error', (error) => {
-            if (error.code === 'EADDRINUSE') {
-                console.error(`[C-Client API] Port ${this.port} is already in use, trying next port...`);
-                // Try next port
-                this.port += 1;
-                this.start();
-            } else {
-                console.error(`[C-Client API] Failed to start server:`, error);
+    async start() {
+        try {
+            // If no port specified, find an available one
+            if (!this.port) {
+                this.port = await this.findAvailablePort();
             }
-        });
+
+            // Bind to all interfaces for public access
+            this.server = this.app.listen(this.port, '0.0.0.0', () => {
+                console.log(`🌐 C-Client: API server started on port ${this.port} (binding to all interfaces)`);
+                console.log(`[C-Client API] Server started on port ${this.port}`);
+                console.log(`[C-Client API] Health check: http://localhost:${this.port}/health`);
+                console.log(`[C-Client API] Cookie endpoint: http://localhost:${this.port}/api/cookie/:user_id`);
+                console.log(`[C-Client API] Register endpoint: http://localhost:${this.port}/api/register`);
+                console.log(`[C-Client API] Login endpoint: http://localhost:${this.port}/api/login`);
+                console.log(`[C-Client API] Node Management endpoints:`);
+                console.log(`[C-Client API]   - POST /newdomainnode`);
+                console.log(`[C-Client API]   - POST /newclusternode`);
+                console.log(`[C-Client API]   - POST /newchannelnode`);
+                console.log(`[C-Client API]   - POST /registertodomainnode`);
+                console.log(`[C-Client API]   - POST /registertoclusternode`);
+                console.log(`[C-Client API]   - POST /registertochannelnode`);
+                console.log(`[C-Client API]   - POST /addnewnode`);
+                console.log(`[C-Client API]   - POST /registerconfirmed`);
+            }).on('error', (error) => {
+                if (error.code === 'EADDRINUSE') {
+                    console.error(`[C-Client API] Port ${this.port} is already in use, trying next port...`);
+                    // Try next port
+                    this.port += 1;
+                    this.start();
+                } else {
+                    console.error(`[C-Client API] Failed to start server:`, error);
+                }
+            });
+
+            return this.port;
+        } catch (error) {
+            console.error(`[C-Client API] Error starting server:`, error);
+            throw error;
+        }
     }
 
 
@@ -538,6 +900,22 @@ class CClientApiServer {
         if (this.server) {
             this.server.close();
             console.log('[C-Client API] Server stopped');
+        }
+    }
+
+    // Set current user for NodeManager
+    setCurrentUser(currentUser) {
+        if (this.nodeManager) {
+            this.nodeManager.currentUser = currentUser;
+            console.log(`[C-Client API] Set current user for NodeManager: ${currentUser?.username || 'unknown'}`);
+        }
+    }
+
+    // Set API port for NodeManager
+    setApiPort(port) {
+        if (this.nodeManager) {
+            this.nodeManager.setApiPort(port);
+            console.log(`[C-Client API] Set API port for NodeManager: ${port}`);
         }
     }
 }

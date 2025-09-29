@@ -140,7 +140,7 @@ class ClientManager {
      */
     getClientDatabasePath() {
         if (this.isEnterpriseClient()) {
-            return path.join(__dirname, 'b-client', 'sqlite', 'b_client_secure.db');
+            return path.join(__dirname, 'discard-b', 'sqlite', 'b_client_secure.db');
         } else {
             return path.join(__dirname, 'sqlite', 'secure.db');
         }
@@ -151,7 +151,7 @@ class ClientManager {
      */
     getClientConstants() {
         if (this.isEnterpriseClient()) {
-            return require(path.join(__dirname, '..', 'b-client', 'config', 'constants'));
+            return require(path.join(__dirname, '..', 'discard-b', 'config', 'constants'));
         } else {
             return require('./config/constants');
         }
@@ -162,7 +162,7 @@ class ClientManager {
      */
     getClientDatabase() {
         if (this.isEnterpriseClient()) {
-            return require(path.join(__dirname, '..', 'b-client', 'sqlite', 'database'));
+            return require(path.join(__dirname, '..', 'discard-b', 'sqlite', 'database'));
         } else {
             return require('./sqlite/database');
         }
@@ -173,7 +173,7 @@ class ClientManager {
      */
     getClientFileUtils() {
         if (this.isEnterpriseClient()) {
-            return require(path.join(__dirname, '..', 'b-client', 'utils', 'fileUtils'));
+            return require(path.join(__dirname, '..', 'discard-b', 'utils', 'fileUtils'));
         } else {
             return require('./utils/fileUtils');
         }
@@ -184,7 +184,7 @@ class ClientManager {
      */
     getClientUrlUtils() {
         if (this.isEnterpriseClient()) {
-            return require(path.join(__dirname, '..', 'b-client', 'utils', 'urlUtils'));
+            return require(path.join(__dirname, '..', 'discard-b', 'utils', 'urlUtils'));
         } else {
             return require('./utils/urlUtils');
         }

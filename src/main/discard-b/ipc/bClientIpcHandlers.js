@@ -1,0 +1,947 @@
+const { ipcMain } = require('electron');
+
+// B-Client IPC handlers
+class BClientIpcHandlers {
+    constructor(viewManager, userManager, mainWindow = null, clientManager = null, mainApp = null) {
+        this.viewManager = viewManager;
+        this.userManager = userManager;
+        this.mainWindow = mainWindow;
+        this.clientManager = clientManager;
+        this.configModal = null;
+        this.mainApp = mainApp; // Reference to main app instance
+
+        this.registerHandlers();
+    }
+
+    /**
+     * Register all IPC handlers
+     */
+    registerHandlers() {
+        // Tab management
+        this.registerTabHandlers();
+
+        // History management
+        this.registerHistoryHandlers();
+
+        // Navigation control
+        this.registerNavigationHandlers();
+
+        // View management
+        this.registerViewHandlers();
+
+        // Database management
+        this.registerDatabaseHandlers();
+
+        // Client management
+        this.registerClientHandlers();
+
+        // Configuration modal
+        this.registerConfigHandlers();
+    }
+
+    /**
+     * Register tab-related handlers
+     */
+    registerTabHandlers() {
+        // Create new tab
+        ipcMain.handle('create-tab', async (_, url) => {
+            try {
+                const view = await this.viewManager.createBrowserView(url);
+                if (view && url && this.userManager) {
+                    // Record visit start
+                    const viewId = view.id || Date.now(); // Ensure viewId exists
+                    const record = this.userManager.recordVisit(url, viewId);
+                    if (record) {
+                        console.log(`Recorded initial visit for new tab: ${url}`);
+                    }
+                }
+                return view;
+            } catch (error) {
+                console.error('Failed to create tab:', error);
+                return null;
+            }
+        });
+
+
+
+        // Create history tab
+        ipcMain.handle('create-history-tab', async () => {
+            try {
+                return await this.viewManager.createHistoryView();
+            } catch (error) {
+                console.error('Failed to create history tab:', error);
+                return null;
+            }
+        });
+
+
+
+        // Switch tab
+        ipcMain.handle('switch-tab', (_, id) => {
+            try {
+                const result = this.viewManager.switchTab(id);
+
+                // When switching tabs, end previous tab's active records
+                if (result && this.userManager) {
+                    const now = Date.now();
+                    // Get all views, end active records except current view
+                    const allViews = this.viewManager.getAllViews();
+                    Object.keys(allViews).forEach(viewId => {
+                        if (parseInt(viewId) !== parseInt(id)) {
+                            this.userManager.finishActiveRecords(parseInt(viewId), now);
+                        }
+                    });
+                }
+
+                return result;
+            } catch (error) {
+                console.error('Failed to switch tab:', error);
+                return false;
+            }
+        });
+
+        // Close tab
+        ipcMain.handle('close-tab', (_, id) => {
+            try {
+                // End this tab's active records
+                if (this.userManager) {
+                    this.userManager.finishActiveRecords(id, Date.now());
+                }
+
+                return this.viewManager.closeTab(id);
+            } catch (error) {
+                console.error('Failed to close tab:', error);
+                return null;
+            }
+        });
+
+        // Get tab info
+        ipcMain.handle('get-tab-info', (_, id) => {
+            try {
+                return this.viewManager.getTabInfo(id);
+            } catch (error) {
+                console.error('Failed to get tab info:', error);
+                return null;
+            }
+        });
+    }
+
+    /**
+     * Register history-related handlers
+     */
+    registerHistoryHandlers() {
+        // Get visit history
+        ipcMain.handle('get-visit-history', (_, limit) => {
+            try {
+                return this.userManager.getHistory(limit);
+            } catch (error) {
+                console.error('Failed to get visit history:', error);
+                return [];
+            }
+        });
+
+        // Get visit statistics
+        ipcMain.handle('get-visit-stats', () => {
+            try {
+                return this.userManager.getStats();
+            } catch (error) {
+                console.error('Failed to get visit stats:', error);
+                return {
+                    totalVisits: 0,
+                    totalTime: 0,
+                    averageStayTime: 0,
+                    topPages: {},
+                    activeRecords: 0
+                };
+            }
+        });
+
+        // Get history data (including statistics and records)
+        ipcMain.handle('get-history-data', (_, limit) => {
+            try {
+                return this.userManager.getHistoryData(limit || 100);
+            } catch (error) {
+                console.error('Failed to get history data:', error);
+                return {
+                    stats: {
+                        totalVisits: 0,
+                        totalTime: 0,
+                        averageStayTime: 0,
+                        topPages: {},
+                        activeRecords: 0
+                    },
+                    history: []
+                };
+            }
+        });
+
+        // Get current user
+        ipcMain.handle('get-current-user', () => {
+            try {
+                return this.userManager.userActivityManager.getCurrentUser();
+            } catch (error) {
+                console.error('Failed to get current user:', error);
+                return null;
+            }
+        });
+
+        // Auto-fetch titles for loading records
+        ipcMain.handle('auto-fetch-titles', async () => {
+            try {
+                if (!this.userManager) {
+                    throw new Error('User manager not available');
+                }
+                const result = await this.userManager.autoFetchTitleForLoadingRecords();
+                return {
+                    success: true,
+                    updated: result.updated,
+                    total: result.total
+                };
+            } catch (error) {
+                console.error('Failed to auto-fetch titles:', error);
+                return {
+                    success: false,
+                    error: error.message
+                };
+            }
+        });
+
+        // Get shutdown history
+        ipcMain.handle('get-shutdown-history', () => {
+            try {
+                return this.userManager.getShutdownHistory();
+            } catch (error) {
+                console.error('Failed to get shutdown history:', error);
+                return [];
+            }
+        });
+
+        // Manually trigger shutdown log (for testing)
+        ipcMain.handle('trigger-shutdown-log', (_, reason) => {
+            try {
+                this.userManager.logShutdown(reason || 'manual');
+                return true;
+            } catch (error) {
+                console.error('Failed to trigger shutdown log:', error);
+                return false;
+            }
+        });
+
+        // Get active records information
+        ipcMain.handle('get-active-records', () => {
+            try {
+                return this.userManager.getActiveRecordsInfo();
+            } catch (error) {
+                console.error('Failed to get active records:', error);
+                return {
+                    activeRecords: [],
+                    totalActive: 0,
+                    maxActive: 50
+                };
+            }
+        });
+
+        // Get history by date range
+        ipcMain.handle('get-history-by-date-range', (_, startDate, endDate) => {
+            try {
+                const start = new Date(startDate);
+                const end = new Date(endDate);
+                return this.userManager.getHistoryByDateRange(start, end);
+            } catch (error) {
+                console.error('Failed to get history by date range:', error);
+                return [];
+            }
+        });
+
+        // Get top domains statistics
+        ipcMain.handle('get-top-domains', (_, limit) => {
+            try {
+                return this.userManager.getTopDomains(limit || 10);
+            } catch (error) {
+                console.error('Failed to get top domains:', error);
+                return [];
+            }
+        });
+
+        // Export history data
+        ipcMain.handle('export-history-data', (_, limit) => {
+            try {
+                return this.userManager.exportHistoryData(limit);
+            } catch (error) {
+                console.error('Failed to export history data:', error);
+                return {
+                    exportTime: new Date().toISOString(),
+                    error: error.message,
+                    stats: {},
+                    history: [],
+                    shutdownHistory: [],
+                    totalRecords: 0
+                };
+            }
+        });
+
+        // Manually record visit (for testing or special cases)
+        ipcMain.handle('record-manual-visit', (_, url, viewId) => {
+            try {
+                if (!url || !viewId) {
+                    throw new Error('URL and viewId are required');
+                }
+                const record = this.userManager.recordVisit(url, viewId);
+                return record;
+            } catch (error) {
+                console.error('Failed to record manual visit:', error);
+                return null;
+            }
+        });
+
+        // Update record title (for frontend manual update)
+        ipcMain.handle('update-record-title', (_, recordId, title) => {
+            try {
+                if (!recordId || !title) {
+                    throw new Error('Record ID and title are required');
+                }
+                // Need to get record object first here
+                const record = { id: recordId };
+                this.userManager.updateRecordTitle(record, title);
+                return true;
+            } catch (error) {
+                console.error('Failed to update record title:', error);
+                return false;
+            }
+        });
+    }
+
+    /**
+     * Register navigation-related handlers
+     */
+    registerNavigationHandlers() {
+        // Navigate to specified URL
+        ipcMain.handle('navigate-to', async (_, url) => {
+            try {
+                await this.viewManager.navigateTo(url);
+
+                // Record new visit
+                if (url && this.userManager) {
+                    const currentView = this.viewManager.getCurrentView();
+                    if (currentView) {
+                        const viewId = currentView.id || Date.now();
+                        const record = this.userManager.recordVisit(url, viewId);
+                        if (record) {
+                            console.log(`Recorded navigation visit: ${url}`);
+                        }
+
+                        // Record navigation activity
+                        this.userManager.recordNavigationActivity(url, 'Loading...', 'navigate');
+                    }
+                }
+
+                return true;
+            } catch (error) {
+                console.error('Failed to navigate to URL:', error);
+                return false;
+            }
+        });
+
+        // Go back
+        ipcMain.handle('go-back', () => {
+            try {
+                const result = this.viewManager.goBack();
+
+                // Record back navigation
+                if (result && this.userManager) {
+                    const currentView = this.viewManager.getCurrentView();
+                    if (currentView && currentView.webContents) {
+                        const url = currentView.webContents.getURL();
+                        const viewId = currentView.id || Date.now();
+                        if (url) {
+                            this.userManager.recordVisit(url, viewId);
+                            console.log(`Recorded back navigation visit: ${url}`);
+
+                            // Record navigation activity
+                            this.userManager.recordNavigationActivity(url, 'Loading...', 'back');
+                        }
+                    }
+                }
+
+                return result;
+            } catch (error) {
+                console.error('Failed to go back:', error);
+                return false;
+            }
+        });
+
+        // Go forward
+        ipcMain.handle('go-forward', () => {
+            try {
+                const result = this.viewManager.goForward();
+
+                // Record forward navigation
+                if (result && this.userManager) {
+                    const currentView = this.viewManager.getCurrentView();
+                    if (currentView && currentView.webContents) {
+                        const url = currentView.webContents.getURL();
+                        const viewId = currentView.id || Date.now();
+                        if (url) {
+                            this.userManager.recordVisit(url, viewId);
+                            console.log(`Recorded forward navigation visit: ${url}`);
+
+                            // Record navigation activity
+                            this.userManager.recordNavigationActivity(url, 'Loading...', 'forward');
+                        }
+                    }
+                }
+
+                return result;
+            } catch (error) {
+                console.error('Failed to go forward:', error);
+                return false;
+            }
+        });
+
+        // Refresh page
+        ipcMain.handle('refresh', () => {
+            try {
+                const result = this.viewManager.refresh();
+
+                // Record page refresh
+                if (result && this.userManager) {
+                    const currentView = this.viewManager.getCurrentView();
+                    if (currentView && currentView.webContents) {
+                        const url = currentView.webContents.getURL();
+                        const viewId = currentView.id || Date.now();
+                        if (url) {
+                            this.userManager.recordVisit(url, viewId);
+                            console.log(`Recorded refresh visit: ${url}`);
+
+                            // Record navigation activity
+                            this.userManager.recordNavigationActivity(url, 'Loading...', 'refresh');
+                        }
+                    }
+                }
+
+                return result;
+            } catch (error) {
+                console.error('Failed to refresh page:', error);
+                return false;
+            }
+        });
+    }
+
+    /**
+     * Register view management related handlers
+     */
+    registerViewHandlers() {
+        // Hide current BrowserView
+        ipcMain.handle('hide-browser-view', () => {
+            try {
+                return this.viewManager.hideBrowserView();
+            } catch (error) {
+                console.error('Failed to hide browser view:', error);
+                return false;
+            }
+        });
+
+        // Show current BrowserView
+        ipcMain.handle('show-browser-view', () => {
+            try {
+                return this.viewManager.showBrowserView();
+            } catch (error) {
+                console.error('Failed to show browser view:', error);
+                return false;
+            }
+        });
+
+        // Get current view information
+        ipcMain.handle('get-current-view-info', () => {
+            try {
+                const currentView = this.viewManager.getCurrentView();
+                if (currentView && currentView.webContents) {
+                    return {
+                        id: currentView.id,
+                        url: currentView.webContents.getURL(),
+                        title: currentView.webContents.getTitle(),
+                        canGoBack: currentView.webContents.canGoBack(),
+                        canGoForward: currentView.webContents.canGoForward()
+                    };
+                }
+                return null;
+            } catch (error) {
+                console.error('Failed to get current view info:', error);
+                return null;
+            }
+        });
+
+        // Get all views information
+        ipcMain.handle('get-all-views-info', () => {
+            try {
+                const allViews = this.viewManager.getAllViews();
+                const viewsInfo = {};
+
+                Object.entries(allViews).forEach(([viewId, view]) => {
+                    if (view && view.webContents) {
+                        viewsInfo[viewId] = {
+                            id: viewId,
+                            url: view.webContents.getURL(),
+                            title: view.webContents.getTitle(),
+                            canGoBack: view.webContents.canGoBack(),
+                            canGoForward: view.webContents.canGoForward()
+                        };
+                    }
+                });
+
+                return viewsInfo;
+            } catch (error) {
+                console.error('Failed to get all views info:', error);
+                return {};
+            }
+        });
+    }
+
+    /**
+     * Register database management related handlers
+     */
+    registerDatabaseHandlers() {
+        // Get database statistics
+        ipcMain.handle('get-database-stats', () => {
+            try {
+                return this.userManager.getDatabaseStats();
+            } catch (error) {
+                console.error('Failed to get database stats:', error);
+                return {
+                    visitHistory: 0,
+                    activeRecords: 0,
+                    shutdownLogs: 0
+                };
+            }
+        });
+
+        // Clean up old data
+        ipcMain.handle('cleanup-old-data', (_, daysToKeep) => {
+            try {
+                const days = daysToKeep || 30;
+                return this.userManager.cleanupOldData(days);
+            } catch (error) {
+                console.error('Failed to cleanup old data:', error);
+                return { changes: 0 };
+            }
+        });
+
+        // Force write data (mainly for testing)
+        ipcMain.handle('force-write-data', () => {
+            try {
+                this.userManager.forceWrite();
+                return true;
+            } catch (error) {
+                console.error('Failed to force write data:', error);
+                return false;
+            }
+        });
+
+        // Clear local users - B-Client doesn't use local_users table
+        ipcMain.handle('clear-local-users', () => {
+            try {
+                // B-Client is an enterprise server, it doesn't have local users
+                console.log('B-Client: No local users to clear (enterprise server)');
+                return { success: true, changes: 0 };
+            } catch (error) {
+                console.error('Error clearing local users:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Exit application
+        ipcMain.handle('exit-app', () => {
+            try {
+                const { app } = require('electron');
+                app.quit();
+                return { success: true };
+            } catch (error) {
+                console.error('Error exiting application:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Clear current user activities
+        ipcMain.handle('clear-current-user-activities', () => {
+            try {
+                if (this.userManager) {
+                    const result = this.userManager.clearCurrentUserActivities();
+                    return result;
+                } else {
+                    return { success: false, error: 'History manager not available' };
+                }
+            } catch (error) {
+                console.error('Error clearing current user activities:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+
+
+        // Get browser session information
+        ipcMain.handle('get-session-info', () => {
+            try {
+                const stats = this.userManager.getStats();
+                const activeRecords = this.userManager.getActiveRecordsInfo();
+
+                return {
+                    totalVisits: stats.totalVisits,
+                    totalTime: stats.totalTime,
+                    averageStayTime: stats.averageStayTime,
+                    activeRecords: activeRecords.totalActive,
+                    maxActiveRecords: activeRecords.maxActive,
+                    topDomains: Object.keys(stats.topPages).length,
+                    sessionStartTime: new Date().toISOString() // Can store actual session start time here
+                };
+            } catch (error) {
+                console.error('Failed to get session info:', error);
+                return {
+                    totalVisits: 0,
+                    totalTime: 0,
+                    averageStayTime: 0,
+                    activeRecords: 0,
+                    maxActiveRecords: 50,
+                    topDomains: 0,
+                    sessionStartTime: new Date().toISOString()
+                };
+            }
+        });
+
+        // User registration
+        ipcMain.handle('submit-username', async (event, username) => {
+            try {
+                console.log('Handling submit-username:', username);
+
+                if (!username || username.trim() === '') {
+                    throw new Error('Username cannot be empty');
+                }
+
+                // Generate user ID and get public IP
+                const { v4: uuidv4 } = require('uuid');
+                const userId = uuidv4();
+
+                // Get public IP
+                let ipAddress = '127.0.0.1';
+                try {
+                    const response = await fetch('https://api.ipify.org?format=json');
+                    const data = await response.json();
+                    ipAddress = data.ip;
+                } catch (byteError) {
+                    console.error('Failed to get public IP:', byteError);
+                }
+
+                const userData = {
+                    username: username.trim(),
+                    userId: userId,
+                    domainId: null,
+                    clusterId: null,
+                    channelId: null,
+                    ipAddress: ipAddress,
+                    isCurrent: 1
+                };
+
+                console.log('User data prepared:', userData);
+
+                // Insert new user into database
+                const db = require('../sqlite/initDatabase');
+
+                // B-Client is an enterprise server, it doesn't manage local users
+                console.log('B-Client: Cannot register local user (enterprise server)');
+                return { success: false, error: 'B-Client is an enterprise server, cannot register local users' };
+
+            } catch (error) {
+                console.error('Error submitting username:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Handle dialog close request
+        ipcMain.on('close-user-registration-dialog', (event) => {
+            console.log('Received close dialog request from renderer');
+            // The dialog will handle its own closing
+        });
+
+
+        // Handle user selector modal open request
+        ipcMain.handle('open-user-selector', async (event) => {
+            try {
+                const UserSelectorModal = require('../userSelectorModal');
+                const userSelectorModal = new UserSelectorModal();
+
+                // Use the stored main window reference
+                if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                    const result = await userSelectorModal.show(this.mainWindow);
+                    return result;
+                } else {
+                    throw new Error('Main window not found');
+                }
+            } catch (error) {
+                console.error('Failed to open user selector modal:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Handle user switch request
+        ipcMain.handle('switch-user', async (event, userId) => {
+            try {
+                console.log('Switching to user:', userId);
+
+                const db = require('../sqlite/initDatabase');
+
+                // B-Client is an enterprise server, it doesn't manage local users
+                console.log('B-Client: Cannot switch local user (enterprise server)');
+                return { success: false, error: 'B-Client is an enterprise server, cannot switch local users' };
+            } catch (error) {
+                console.error('Error switching user:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Handle new user registration request
+        ipcMain.handle('open-user-registration', async (event) => {
+            try {
+                const UserRegistrationDialog = require('../userManager/bClientUserRegistrationDialog');
+                const userRegistrationDialog = new UserRegistrationDialog();
+
+                // Use the stored main window reference
+                if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                    await userRegistrationDialog.show(this.mainWindow);
+                    return { success: true };
+                } else {
+                    throw new Error('Main window not found');
+                }
+            } catch (error) {
+                console.error('Failed to open user registration dialog:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+
+
+
+    }
+
+
+
+    /**
+     * Clean up all IPC handlers
+     */
+    cleanup() {
+        // Remove all registered handlers
+        const handlers = [
+            // Tab related
+            'create-tab',
+            'create-history-tab',
+            'switch-tab',
+            'close-tab',
+            'get-tab-info',
+
+            // History related
+            'get-visit-history',
+            'get-visit-stats',
+            'get-history-data',
+            'get-current-user',
+            'get-shutdown-history',
+            'trigger-shutdown-log',
+            'get-active-records',
+            'get-history-by-date-range',
+            'get-top-domains',
+            'export-history-data',
+            'record-manual-visit',
+            'update-record-title',
+
+            // Navigation related
+            'navigate-to',
+            'go-back',
+            'go-forward',
+            'refresh',
+
+            // View management related
+            'hide-browser-view',
+            'show-browser-view',
+            'get-current-view-info',
+            'get-all-views-info',
+
+            // Database management related
+            'get-database-stats',
+            'cleanup-old-data',
+            'force-write-data',
+            'clear-local-users',
+            'exit-app',
+            'get-session-info',
+
+            // User registration related
+            'submit-username',
+            'open-config-modal',
+            'open-node-status-modal',
+            'get-node-status',
+            'open-user-selector',
+            'switch-user',
+            'open-user-registration',
+
+            // User activities related
+            'clear-current-user-activities',
+
+            // Client management related
+            'switch-client',
+            'switch-to-client',
+            'get-current-client',
+            'get-client-info',
+            'manual-connect-to-bclient',
+            'get-url-injection-status',
+
+        ];
+
+        handlers.forEach(handler => {
+            try {
+                ipcMain.removeHandler(handler);
+            } catch (error) {
+                console.log(`B-Client: Warning: Failed to remove handler ${handler}:`, error.message);
+            }
+        });
+
+        console.log('IPC handlers cleaned up');
+    }
+
+    /**
+     * Register client management handlers
+     */
+    registerClientHandlers() {
+        // Switch client (show selector modal)
+        ipcMain.handle('switch-client', async () => {
+            try {
+                if (!this.clientManager) {
+                    return { success: false, error: 'Client manager not available' };
+                }
+
+                // Show client selector modal
+                const ClientSelectorModal = require('../clientSelectorModal');
+                const clientSelector = new ClientSelectorModal();
+                await clientSelector.show(this.mainWindow);
+
+                return { success: true, message: 'Client selector modal opened' };
+            } catch (error) {
+                console.error('Failed to show client selector:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Switch to specific client
+        ipcMain.handle('switch-to-client', async (event, targetClient) => {
+            try {
+                if (!this.clientManager) {
+                    console.error('B-Client IPC: Client manager not available');
+                    return { success: false, error: 'Client manager not available' };
+                }
+
+                // Hide browser views when switching away from B-Client
+                if (targetClient !== 'b-client' && this.viewManager) {
+                    this.viewManager.hideAllViews();
+                    console.log('🔄 B-Client IPC: Hidden all browser views for client switch');
+                }
+
+                const result = this.clientManager.switchClient(targetClient);
+                return result;
+            } catch (error) {
+                console.error('B-Client IPC: Exception during switch to specific client:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Get current client
+        ipcMain.handle('get-current-client', async () => {
+            try {
+                if (!this.clientManager) {
+                    return { success: false, error: 'Client manager not available' };
+                }
+
+                return {
+                    success: true,
+                    client: this.clientManager.currentClient,
+                    displayName: this.clientManager.getClientDisplayName(),
+                    isEnterprise: this.clientManager.isEnterpriseClient()
+                };
+            } catch (error) {
+                console.error('Failed to get current client:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Get client info
+        ipcMain.handle('get-client-info', async () => {
+            try {
+                if (!this.clientManager) {
+                    return { success: false, error: 'Client manager not available' };
+                }
+
+                return {
+                    success: true,
+                    currentClient: this.clientManager.currentClient,
+                    displayName: this.clientManager.getClientDisplayName(),
+                    isEnterprise: this.clientManager.isEnterpriseClient(),
+                    otherClient: this.clientManager.getOtherClient(),
+                    features: this.clientManager.getClientFeatures(),
+                    blockedDomains: this.clientManager.getClientBlockedDomains()
+                };
+            } catch (error) {
+                console.error('Failed to get client info:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Set B-Client environment configuration
+        ipcMain.handle('set-b-client-environment', async (event, environment) => {
+            try {
+                // Validate environment
+                if (!['local', 'production'].includes(environment)) {
+                    return { success: false, error: 'Invalid environment. Must be "local" or "production"' };
+                }
+
+                // Update apiConfig
+                const apiConfig = require('../config/apiConfig');
+                const success = apiConfig.setCurrentEnvironment(environment);
+
+                if (success) {
+                    console.log(`[B-Client IPC] Environment configuration updated: ${environment}`);
+                    return { success: true, message: `Environment set to ${environment}` };
+                } else {
+                    return { success: false, error: 'Failed to update environment configuration' };
+                }
+            } catch (error) {
+                console.error('Failed to update environment configuration:', error);
+                return { success: false, error: error.message };
+            }
+        });
+    }
+
+    /**
+     * Register configuration modal handlers
+     */
+    registerConfigHandlers() {
+        // Open configuration modal
+        ipcMain.handle('open-config-modal', async () => {
+            try {
+                if (!this.configModal) {
+                    const ConfigModal = require('../configModal');
+                    this.configModal = new ConfigModal();
+                }
+
+                if (!this.configModal.isModalOpen()) {
+                    this.configModal.show(this.mainWindow);
+
+                    // Add to main app's modal tracking
+                    if (this.mainApp && this.mainApp.openModals) {
+                        this.mainApp.openModals.add(this.configModal);
+                    }
+                }
+
+                return { success: true };
+            } catch (error) {
+                console.error('Failed to open config modal:', error);
+                return { success: false, error: error.message };
+            }
+        });
+    }
+}
+
+module.exports = BClientIpcHandlers;

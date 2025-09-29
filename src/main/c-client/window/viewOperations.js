@@ -66,32 +66,12 @@ class ViewOperations {
                 // Method 2: Execute JavaScript if method 1 fails
                 if (!title || title === 'Loading...' || title === 'Untitled Page') {
                     try {
-                        title = await view.webContents.executeJavaScript(`
-                            (function() {
-                                let title = document.title;
-                                if (!title || title === 'Loading...' || title === 'Untitled Page') {
-                                    // Try meta tags
-                                    const metaTitle = document.querySelector('meta[property="og:title"]');
-                                    if (metaTitle) title = metaTitle.getAttribute('content');
-                                    
-                                    // Try h1 tags
-                                    if (!title || title === 'Loading...' || title === 'Untitled Page') {
-                                        const h1 = document.querySelector('h1');
-                                        if (h1) title = h1.textContent.trim();
-                                    }
-                                    
-                                    // Infer from URL domain
-                                    if (!title || title === 'Loading...' || title === 'Untitled Page') {
-                                        const url = window.location.href;
-                                        const domain = window.location.hostname;
-                                        if (domain && domain !== 'localhost') {
-                                            title = domain.charAt(0).toUpperCase() + domain.slice(1);
-                                        }
-                                    }
-                                }
-                                return title || 'Untitled';
-                            })()
-                        `);
+                        // Simplified title extraction - just use the URL domain
+                        const url = view.webContents.getURL();
+                        const domain = new URL(url).hostname;
+                        title = domain && domain !== 'localhost' ?
+                            domain.charAt(0).toUpperCase() + domain.slice(1) :
+                            'Page';
                     } catch (executeError) {
                         title = 'Loading...';
                     }
@@ -139,15 +119,15 @@ class ViewOperations {
     setupNavigationListeners(view, id) {
         const { historyManager } = this.viewManager;
 
-        view.webContents.on('did-navigate', (event, url) => {
+        view.webContents.on('did-navigate', async (event, url) => {
             if (historyManager) {
-                historyManager.recordVisit(url, id);
+                await historyManager.recordVisit(url, id);
             }
         });
 
-        view.webContents.on('did-navigate-in-page', (event, url) => {
+        view.webContents.on('did-navigate-in-page', async (event, url) => {
             if (historyManager) {
-                historyManager.recordVisit(url, id);
+                await historyManager.recordVisit(url, id);
             }
         });
     }
@@ -188,14 +168,22 @@ class ViewOperations {
             if (this.viewManager.currentViewId && views[this.viewManager.currentViewId]) {
                 const currentView = views[this.viewManager.currentViewId];
                 if (!currentView.webContents.isDestroyed()) {
-                    mainWindow.getMainWindow().removeBrowserView(currentView);
+                    // Get the actual Electron BrowserWindow instance
+                    const electronMainWindow = mainWindow.windowManager ? mainWindow.windowManager.getMainWindow() : mainWindow;
+                    if (electronMainWindow && typeof electronMainWindow.removeBrowserView === 'function') {
+                        electronMainWindow.removeBrowserView(currentView);
+                    }
                 }
             }
 
             // Show target view
             const bounds = this.getViewBounds();
             targetView.setBounds(bounds);
-            mainWindow.getMainWindow().addBrowserView(targetView);
+            // Get the actual Electron BrowserWindow instance
+            const electronMainWindow = mainWindow.windowManager ? mainWindow.windowManager.getMainWindow() : mainWindow;
+            if (electronMainWindow && typeof electronMainWindow.addBrowserView === 'function') {
+                electronMainWindow.addBrowserView(targetView);
+            }
 
             // Update current view ID
             this.viewManager.currentViewId = id;
@@ -217,38 +205,83 @@ class ViewOperations {
      * Close tab
      */
     closeTab(id) {
+        console.log(`🗑️ ViewOperations: Starting closeTab for view ${id}...`);
         const { views, mainWindow } = this.viewManager;
         const view = views[id];
 
         if (!view) {
+            console.warn(`⚠️ ViewOperations: View ${id} not found in views object`);
             return;
         }
 
+        console.log(`🔍 ViewOperations: View ${id} details:`);
+        console.log(`   - View exists: ${!!view}`);
+        console.log(`   - View has webContents: ${!!(view && view.webContents)}`);
+        console.log(`   - View webContents destroyed: ${view && view.webContents ? view.webContents.isDestroyed() : 'N/A'}`);
+        console.log(`   - Main window available: ${!!mainWindow}`);
+        console.log(`   - Is current view: ${this.viewManager.currentViewId === id}`);
+
         try {
-            // Remove from main window if it's the current view
-            if (this.viewManager.currentViewId === id) {
-                if (view.webContents && !view.webContents.isDestroyed() && mainWindow && mainWindow.getMainWindow()) {
-                    mainWindow.getMainWindow().removeBrowserView(view);
+            // Always remove from main window, regardless of whether it's the current view
+            if (view.webContents && !view.webContents.isDestroyed() && mainWindow) {
+                try {
+                    console.log(`🧹 ViewOperations: Removing view ${id} from main window...`);
+                    // Get the actual Electron BrowserWindow instance
+                    const electronMainWindow = mainWindow.windowManager ? mainWindow.windowManager.getMainWindow() : mainWindow;
+                    if (electronMainWindow && typeof electronMainWindow.removeBrowserView === 'function') {
+                        electronMainWindow.removeBrowserView(view);
+                        console.log(`✅ ViewOperations: Successfully removed view ${id} from main window`);
+                    } else {
+                        console.warn(`⚠️ ViewOperations: Cannot remove browser view ${id}: mainWindow.removeBrowserView not available`);
+                    }
+                } catch (error) {
+                    console.error(`❌ ViewOperations: Error removing browser view ${id}:`, error);
                 }
+            } else {
+                console.log(`⚠️ ViewOperations: Skipping main window removal for view ${id} - conditions not met`);
+            }
+
+            // Update current view ID if this was the current view
+            if (this.viewManager.currentViewId === id) {
+                console.log(`🔄 ViewOperations: Updating current view ID from ${id} to null`);
                 this.viewManager.currentViewId = null;
             }
 
             // Destroy the view
             if (view.webContents && !view.webContents.isDestroyed()) {
+                console.log(`💥 ViewOperations: Destroying webContents for view ${id}...`);
                 view.webContents.destroy();
+                console.log(`✅ ViewOperations: WebContents destroyed for view ${id}`);
+            } else {
+                console.log(`⚠️ ViewOperations: Skipping webContents destruction for view ${id} - already destroyed or not available`);
             }
 
             // Remove from views object
+            console.log(`🗑️ ViewOperations: Removing view ${id} from views object...`);
             delete views[id];
+            console.log(`✅ ViewOperations: View ${id} removed from views object`);
+            console.log(`   - Views remaining: ${Object.keys(views).length}`);
+            console.log(`   - View ${id} still exists: ${!!views[id]}`);
 
             // Notify renderer
+            console.log(`📡 ViewOperations: Notifying renderer about tab closure for view ${id}...`);
             if (mainWindow && mainWindow.sendToWindow) {
-                mainWindow.sendToWindow('tab-closed', { id: parseInt(id) });
+                try {
+                    mainWindow.sendToWindow('tab-closed', { id: parseInt(id) });
+                    console.log(`✅ ViewOperations: Tab closure notification sent for view ${id}`);
+                } catch (error) {
+                    console.error(`❌ ViewOperations: Error sending tab closure notification for view ${id}:`, error);
+                }
+            } else {
+                console.warn(`⚠️ ViewOperations: Main window or sendToWindow not available for view ${id} notification`);
             }
 
+            console.log(`✅ ViewOperations: View ${id} closed successfully`);
 
         } catch (error) {
-            console.error(`Error closing tab ${id}:`, error);
+            console.error(`❌ ViewOperations: Error closing tab ${id}:`, error);
+            console.error(`   - Error message: ${error.message}`);
+            console.error(`   - Error stack: ${error.stack}`);
         }
     }
 
@@ -272,9 +305,9 @@ class ViewOperations {
 
         try {
             // Process URL with parameter injection
-            const UrlParameterInjector = require('../utils/urlParameterInjector');
-            const urlInjector = new UrlParameterInjector();
-            const processedUrl = urlInjector.processUrl(url);
+            const { getUrlParameterInjector } = require('../utils/urlParameterInjector');
+            const urlInjector = getUrlParameterInjector();
+            const processedUrl = await urlInjector.processUrl(url);
 
             console.log(`🔗 ViewOperations: Navigating to URL: ${url} -> ${processedUrl}`);
 

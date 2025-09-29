@@ -106,7 +106,7 @@ class VisitTracker {
     /**
      * Complete record and save to database
      */
-    finishRecord(visitId, endTime) {
+    async finishRecord(visitId, endTime) {
         try {
             // Find active record from cache
             const activeRecord = this.activeRecordsCache.find(ar => ar.visitId === visitId);
@@ -118,7 +118,11 @@ class VisitTracker {
             const stayDuration = (endTime - activeRecord.enterTime) / 1000;
             if (stayDuration >= 0) {
                 // Update stay duration in database
-                this.historyDB.updateRecordDuration(visitId, stayDuration);
+                try {
+                    await this.historyDB.updateRecordDuration(visitId, stayDuration);
+                } catch (error) {
+                    console.error('Failed to update record duration:', error);
+                }
 
                 // Delete from active records table
                 this.historyDB.deleteActiveRecord(activeRecord.id);
@@ -175,14 +179,14 @@ class VisitTracker {
     /**
      * Create new visit record and save to database
      */
-    createNewVisitRecord(url, viewId, currentTime, userId = null) {
+    async createNewVisitRecord(url, viewId, currentTime, userId = null) {
         try {
             const timestamp = new Date(currentTime).toISOString();
             const domain = UrlUtils.extractDomain(url);
 
 
             // Insert into database and get ID
-            const visitId = this.historyDB.addVisitRecord(
+            const visitId = await this.historyDB.addVisitRecord(
                 url,
                 'Loading...',
                 timestamp,
@@ -217,7 +221,7 @@ class VisitTracker {
     /**
      * Main visit record method - all using database
      */
-    recordVisit(url, viewId, userId = null) {
+    async recordVisit(url, viewId, userId = null) {
         // Skip special URLs
         if (!UrlUtils.isValidUrl(url)) {
             console.log(`Skipping invalid URL: ${url}`);
@@ -252,7 +256,7 @@ class VisitTracker {
             this.finishActiveRecordsByViewId(viewId, now);
 
             // 4. Create new record
-            const newRecord = this.createNewVisitRecord(url, viewId, now, userId);
+            const newRecord = await this.createNewVisitRecord(url, viewId, now, userId);
             if (!newRecord) {
                 throw new Error('Failed to create new visit record');
             }

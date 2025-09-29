@@ -9,7 +9,20 @@ const ViewOperations = require('./viewOperations');
 // BrowserView Manager - Refactored
 class ViewManager {
     constructor(mainWindow, historyManager, apiPort = null) {
-        this.mainWindow = mainWindow;
+        // Handle both ElectronApp instance and BrowserWindow instance
+        if (mainWindow && mainWindow.mainWindow) {
+            // If mainWindow is ElectronApp instance, get the actual BrowserWindow
+            this.mainWindow = mainWindow.mainWindow;
+            this.electronApp = mainWindow; // Store reference to ElectronApp for handleNSNResponse
+        } else {
+            // If mainWindow is already BrowserWindow instance
+            this.mainWindow = mainWindow;
+            this.electronApp = null;
+        }
+
+        // Initialize registered websites array
+        this.registeredWebsites = [];
+
         this.historyManager = historyManager;
         this.apiPort = apiPort; // Store API port for C-Client API calls
         this.views = {};
@@ -22,9 +35,9 @@ class ViewManager {
         this.viewOperations = new ViewOperations(this);
 
         // Set window resize callbacks
-        if (mainWindow && mainWindow.setResizeCallback) {
-            mainWindow.setResizeCallback((bounds) => this.viewOperations.updateCurrentViewBounds(bounds));
-            mainWindow.setMoveCallback((bounds) => this.viewOperations.updateAllViewBounds(bounds));
+        if (this.mainWindow && this.mainWindow.setResizeCallback) {
+            this.mainWindow.setResizeCallback((bounds) => this.viewOperations.updateCurrentViewBounds(bounds));
+            this.mainWindow.setMoveCallback((bounds) => this.viewOperations.updateAllViewBounds(bounds));
         }
     }
 
@@ -61,36 +74,44 @@ class ViewManager {
         const { views } = this;
         const mainWindow = this.mainWindow;
 
-        if (!mainWindow || !mainWindow.getMainWindow) {
+        if (!mainWindow || !mainWindow.windowManager || !mainWindow.windowManager.getMainWindow) {
+            console.warn(`⚠️ ViewManager: Cannot hide views - mainWindow not available`);
             return;
         }
 
-        const electronMainWindow = mainWindow.getMainWindow();
+        const electronMainWindow = mainWindow.windowManager.getMainWindow();
+        const viewIds = Object.keys(views);
+
+        console.log(`🧹 ViewManager: Hiding ${viewIds.length} views from main window`);
 
         // Hide all views by removing them from the main window
-        Object.keys(views).forEach(viewId => {
+        viewIds.forEach(viewId => {
             const view = views[viewId];
             if (view && !view.webContents.isDestroyed()) {
                 try {
                     electronMainWindow.removeBrowserView(view);
+                    console.log(`✅ ViewManager: Successfully hid view ${viewId} from main window`);
                 } catch (error) {
-                    console.log(`⚠️ ViewManager: Error hiding view ${viewId}:`, error.message);
+                    console.error(`❌ ViewManager: Error hiding view ${viewId}:`, error);
                 }
+            } else {
+                console.warn(`⚠️ ViewManager: View ${viewId} is already destroyed or not available`);
             }
         });
 
         this.currentViewId = null;
+        console.log(`✅ ViewManager: All views hidden, currentViewId set to null`);
     }
 
     showAllViews() {
         const { views } = this;
         const mainWindow = this.mainWindow;
 
-        if (!mainWindow || !mainWindow.getMainWindow) {
+        if (!mainWindow || !mainWindow.windowManager || !mainWindow.windowManager.getMainWindow) {
             return;
         }
 
-        const electronMainWindow = mainWindow.getMainWindow();
+        const electronMainWindow = mainWindow.windowManager.getMainWindow();
 
         // Show all views by adding them back to the main window
         Object.keys(views).forEach(viewId => {
@@ -120,63 +141,148 @@ class ViewManager {
      * Close all tabs and create a new default page
      */
     async closeAllTabsAndCreateDefault() {
+        console.log(`🔄 ViewManager: Starting closeAllTabsAndCreateDefault process...`);
+        console.log(`📊 ViewManager: Current state before closing:`);
+        console.log(`   - Total views: ${Object.keys(this.views).length}`);
+        console.log(`   - Current view ID: ${this.currentViewId}`);
+        console.log(`   - View counter: ${this.viewCounter}`);
+        console.log(`   - View IDs: [${Object.keys(this.views).join(', ')}]`);
 
         try {
+            // First, hide all views from the main window
+            console.log(`🧹 ViewManager: Step 1 - Hiding all views from main window...`);
+            this.hideAllViews();
+
             // Close all existing tabs and clear their sessions
             const viewIds = Object.keys(this.views);
-            for (const viewId of viewIds) {
-                // Clear session data before closing tab
-                const view = this.views[viewId];
-                if (view && view.webContents) {
+            console.log(`🧹 ViewManager: Step 2 - Closing ${viewIds.length} tabs during user switch...`);
+
+            if (viewIds.length === 0) {
+                console.log(`ℹ️ ViewManager: No views to close, proceeding to create default page`);
+            } else {
+                for (const viewId of viewIds) {
+                    console.log(`🔍 ViewManager: Processing view ${viewId}...`);
                     try {
-                        console.log(`🧹 Clearing session data for tab ${viewId} before user switch...`);
-                        await view.webContents.session.clearStorageData({
-                            storages: ['cookies', 'localStorage', 'sessionStorage', 'cache']
-                        });
-                        await view.webContents.session.clearCache();
-                        console.log(`✅ Session data cleared for tab ${viewId}`);
+                        const view = this.views[viewId];
+                        console.log(`   - View exists: ${!!view}`);
+                        console.log(`   - View has webContents: ${!!(view && view.webContents)}`);
+                        console.log(`   - View webContents destroyed: ${view && view.webContents ? view.webContents.isDestroyed() : 'N/A'}`);
+
+                        // Clear session data before closing tab
+                        if (view && view.webContents && !view.webContents.isDestroyed()) {
+                            console.log(`🧹 ViewManager: Clearing session data for view ${viewId}...`);
+                            try {
+                                await view.webContents.session.clearStorageData({
+                                    storages: ['cookies', 'localStorage', 'sessionStorage', 'cache']
+                                });
+                                await view.webContents.session.clearCache();
+                                console.log(`✅ ViewManager: Session data cleared for view ${viewId}`);
+                            } catch (sessionError) {
+                                console.error(`❌ ViewManager: Error clearing session for view ${viewId}:`, sessionError);
+                            }
+                        } else {
+                            console.log(`⚠️ ViewManager: Skipping session cleanup for view ${viewId} - view or webContents not available`);
+                        }
+
+                        // Close the tab
+                        console.log(`🗑️ ViewManager: Closing view ${viewId}...`);
+                        this.closeTab(viewId);
+                        console.log(`✅ ViewManager: View ${viewId} closed successfully`);
+
+                        // Verify the view was removed from views object
+                        if (this.views[viewId]) {
+                            console.warn(`⚠️ ViewManager: View ${viewId} still exists in views object after closeTab`);
+                        } else {
+                            console.log(`✅ ViewManager: View ${viewId} successfully removed from views object`);
+                        }
+
                     } catch (error) {
-                        console.error(`❌ Error clearing session for tab ${viewId}:`, error);
+                        console.error(`❌ ViewManager: Error closing view ${viewId}:`, error);
+                        console.error(`   - Error message: ${error.message}`);
+                        console.error(`   - Error stack: ${error.stack}`);
                     }
                 }
-                this.closeTab(viewId);
             }
 
             // Clear all views
+            console.log(`🧹 ViewManager: Step 3 - Clearing views object and resetting state...`);
+            const remainingViews = Object.keys(this.views).length;
+            console.log(`   - Views remaining before clear: ${remainingViews}`);
+
             this.views = {};
             this.currentViewId = null;
             this.viewCounter = 0;
 
+            console.log(`✅ ViewManager: Views object cleared and state reset`);
+            console.log(`   - Views after clear: ${Object.keys(this.views).length}`);
+            console.log(`   - Current view ID after clear: ${this.currentViewId}`);
+            console.log(`   - View counter after clear: ${this.viewCounter}`);
+
             // Notify renderer process to close all tabs in UI
-            if (this.mainWindow && this.mainWindow.sendToWindow) {
+            console.log(`🧹 ViewManager: Step 4 - Notifying renderer process to close all tabs in UI...`);
+            if (this.electronApp && this.electronApp.sendToWindow) {
                 try {
-                    this.mainWindow.sendToWindow('close-all-tabs');
+                    this.electronApp.sendToWindow('close-all-tabs');
+                    console.log(`✅ ViewManager: Sent close-all-tabs notification to renderer`);
                 } catch (error) {
-                    console.error('❌ ViewManager: Error sending close-all-tabs event:', error);
+                    console.error(`❌ ViewManager: Error sending close-all-tabs notification:`, error);
                 }
+            } else {
+                console.warn(`⚠️ ViewManager: Electron app or sendToWindow method not available for UI notification`);
             }
 
             // Create a new default tab with URL parameter injection
-            const UrlParameterInjector = require('../utils/urlParameterInjector');
-            const urlInjector = new UrlParameterInjector();
-            const processedUrl = urlInjector.processUrl('https://www.google.com');
+            console.log(`🔄 ViewManager: Step 5 - Creating new default page...`);
+            try {
+                const { getUrlParameterInjector } = require('../utils/urlParameterInjector');
+                const urlInjector = getUrlParameterInjector();
+                console.log(`   - URL injector available: ${!!urlInjector}`);
 
-            const defaultView = await this.createBrowserView(processedUrl);
+                const processedUrl = await urlInjector.processUrl('https://www.google.com');
+                console.log(`   - Original URL: https://www.google.com`);
+                console.log(`   - Processed URL: ${processedUrl}`);
+                console.log(`   - URL injection successful: ${!!processedUrl}`);
 
-            if (defaultView) {
+                const defaultView = await this.createBrowserView(processedUrl);
+                console.log(`   - createBrowserView result: ${!!defaultView}`);
+                console.log(`   - Default view ID: ${defaultView ? defaultView.id : 'N/A'}`);
 
-                // Notify renderer process to create tab UI for the new view
-                if (this.mainWindow && this.mainWindow.sendToWindow) {
-                    this.mainWindow.sendToWindow('auto-tab-created', {
-                        id: defaultView.id,
-                        title: 'Google',
-                        url: processedUrl
-                    });
+                if (defaultView) {
+                    console.log(`✅ ViewManager: New default page created successfully`);
+                    console.log(`   - Default view ID: ${defaultView.id}`);
+                    console.log(`   - Default view exists in views object: ${!!this.views[defaultView.id]}`);
+                    console.log(`   - Current view ID set to: ${this.currentViewId}`);
+                    console.log(`   - Total views after creation: ${Object.keys(this.views).length}`);
+
+                    // Notify renderer process to create tab UI for the new view
+                    console.log(`📡 ViewManager: Sending tab UI notification for new default page...`);
+                    if (this.electronApp && this.electronApp.sendToWindow) {
+                        try {
+                            this.electronApp.sendToWindow('auto-tab-created', {
+                                id: defaultView.id,
+                                title: 'Google',
+                                url: processedUrl
+                            });
+                            console.log(`✅ ViewManager: Tab UI notification sent for new default page`);
+                        } catch (error) {
+                            console.error(`❌ ViewManager: Error sending tab UI notification:`, error);
+                        }
+                    } else {
+                        console.warn(`⚠️ ViewManager: Electron app or sendToWindow method not available for tab UI notification`);
+                    }
+
+                    console.log(`🎉 ViewManager: closeAllTabsAndCreateDefault completed successfully`);
+                    return defaultView;
+                } else {
+                    console.error(`❌ ViewManager: Failed to create default page - createBrowserView returned null/undefined`);
+                    console.error(`   - Views object after failed creation: ${Object.keys(this.views).length}`);
+                    console.error(`   - Current view ID after failed creation: ${this.currentViewId}`);
+                    return null;
                 }
-
-                return defaultView;
-            } else {
-                console.error('❌ ViewManager: Failed to create new default page');
+            } catch (error) {
+                console.error(`❌ ViewManager: Error creating default page:`, error);
+                console.error(`   - Error message: ${error.message}`);
+                console.error(`   - Error stack: ${error.stack}`);
                 return null;
             }
         } catch (error) {
@@ -248,23 +354,135 @@ class ViewManager {
         return await this.sessionManager.clearAllSessions();
     }
 
+    /**
+     * Clear only NSN-related sessions (views and partitions)
+     */
+    async clearNSNSessions() {
+        return await this.sessionManager.clearNSNSessions();
+    }
+
     autoCleanupLoadingTitles() {
         return this.sessionManager.autoCleanupLoadingTitles();
     }
 
     /**
-     * Check if URL is NSN
+     * Check if URL belongs to a registered website (based on B-client configuration)
      */
-    isNSNUrl(url) {
-        if (!url || typeof url !== 'string') return false;
-        try {
-            const urlObj = new URL(url);
-            return urlObj.hostname === 'localhost' && urlObj.port === '5000' ||
-                urlObj.hostname === '127.0.0.1' && urlObj.port === '5000' ||
-                urlObj.hostname === 'comp639nsn.pythonanywhere.com';
-        } catch (error) {
+    isRegisteredWebsiteUrl(url) {
+        if (!url || typeof url !== 'string') {
+            console.log(`🔍 ViewManager: isRegisteredWebsiteUrl - Invalid URL:`, url);
             return false;
         }
+        try {
+            const urlObj = new URL(url);
+            const currentOrigin = urlObj.origin;
+            console.log(`🔍 ViewManager: isRegisteredWebsiteUrl - Checking URL:`, url);
+            console.log(`🔍 ViewManager: isRegisteredWebsiteUrl - Current origin:`, currentOrigin);
+            console.log(`🔍 ViewManager: isRegisteredWebsiteUrl - Registered websites:`, this.registeredWebsites);
+
+            // Check against registered website root paths
+            if (this.registeredWebsites && Array.isArray(this.registeredWebsites)) {
+                const isRegistered = this.registeredWebsites.some(website => {
+                    try {
+                        const websiteUrl = new URL(website.rootPath);
+                        console.log(`🔍 ViewManager: isRegisteredWebsiteUrl - Comparing with:`, websiteUrl.origin);
+                        return websiteUrl.origin === currentOrigin;
+                    } catch (error) {
+                        console.warn('Invalid website root path:', website.rootPath);
+                        return false;
+                    }
+                });
+                console.log(`🔍 ViewManager: isRegisteredWebsiteUrl - Is registered via config:`, isRegistered);
+                if (isRegistered) return true;
+            }
+
+            // Fallback to hardcoded NSN URLs for backward compatibility
+            const isNSNUrl = urlObj.hostname === 'localhost' && urlObj.port === '5000' ||
+                urlObj.hostname === '127.0.0.1' && urlObj.port === '5000' ||
+                urlObj.hostname === 'comp639nsn.pythonanywhere.com';
+            console.log(`🔍 ViewManager: isRegisteredWebsiteUrl - Is NSN URL (fallback):`, isNSNUrl);
+            console.log(`🔍 ViewManager: isRegisteredWebsiteUrl - Hostname:`, urlObj.hostname);
+            console.log(`🔍 ViewManager: isRegisteredWebsiteUrl - Port:`, urlObj.port);
+            return isNSNUrl;
+        } catch (error) {
+            console.error(`❌ ViewManager: isRegisteredWebsiteUrl - Error:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Get website configuration for a given URL
+     */
+    getWebsiteConfig(url) {
+        if (!url || typeof url !== 'string') return null;
+        try {
+            const urlObj = new URL(url);
+            const currentOrigin = urlObj.origin;
+
+            if (this.registeredWebsites && Array.isArray(this.registeredWebsites)) {
+                return this.registeredWebsites.find(website => {
+                    try {
+                        const websiteUrl = new URL(website.rootPath);
+                        return websiteUrl.origin === currentOrigin;
+                    } catch (error) {
+                        return false;
+                    }
+                });
+            }
+
+            return null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    /**
+     * Get session partition name for a website
+     */
+    getSessionPartitionForWebsite(url) {
+        const websiteConfig = this.getWebsiteConfig(url);
+        if (websiteConfig && websiteConfig.sessionPartition) {
+            return websiteConfig.sessionPartition;
+        }
+
+        // Default partition for registered websites
+        if (this.isRegisteredWebsiteUrl(url)) {
+            return 'persist:registered';
+        }
+
+        // Default partition for other websites
+        return 'persist:main';
+    }
+
+    /**
+     * Register website configuration from B-client
+     */
+    registerWebsite(websiteConfig) {
+        if (!this.registeredWebsites) {
+            this.registeredWebsites = [];
+        }
+
+        // Check if website already registered
+        const existingIndex = this.registeredWebsites.findIndex(w => w.rootPath === websiteConfig.rootPath);
+        if (existingIndex >= 0) {
+            // Update existing configuration
+            this.registeredWebsites[existingIndex] = websiteConfig;
+        } else {
+            // Add new website configuration
+            this.registeredWebsites.push(websiteConfig);
+        }
+
+        console.log('🌐 ViewManager: Website registered:', websiteConfig);
+        console.log('🌐 ViewManager: Total registered websites:', this.registeredWebsites.length);
+    }
+
+    /**
+     * Legacy method for backward compatibility - checks if URL is NSN
+     * @deprecated Use isRegisteredWebsiteUrl instead
+     */
+    isNSNUrl(url) {
+        // For backward compatibility, check if it's a registered website
+        return this.isRegisteredWebsiteUrl(url);
     }
 
     /**
@@ -289,7 +507,7 @@ class ViewManager {
     async getUserCookie(userId) {
         try {
             const axios = require('axios');
-            const apiPort = this.apiPort || 4001; // Use stored API port or fallback
+            const apiPort = this.apiPort; // Use stored NodeManager API port
             const apiUrl = `http://localhost:${apiPort}`;
 
             const response = await axios.get(`${apiUrl}/api/cookie/${userId}`);
@@ -306,21 +524,46 @@ class ViewManager {
     /**
      * Set cookie in view's session
      */
-    async setCookieInView(view, cookie) {
+    async setCookieInView(view, cookie, nsnUrl = null) {
         try {
             // Parse cookie string and set it in the view's session
             const session = view.webContents.session;
             const cookies = session.cookies;
 
-            // Check if this is a Flask session cookie (base64 encoded JSON)
-            if (cookie.startsWith('eyJ') || cookie.includes('.')) {
-                // This is a Flask session cookie, set it directly
-                console.log(`🍪 ViewManager: Setting Flask session cookie: ${cookie.substring(0, 50)}...`);
+            // Get NSN URL - prefer provided parameter, fallback to configuration for backward compatibility
+            let targetUrl, targetDomain;
+            if (nsnUrl) {
+                targetUrl = nsnUrl;
+                try {
+                    const urlObj = new URL(nsnUrl);
+                    targetDomain = urlObj.hostname;
+                    console.log(`🍪 ViewManager: Using provided NSN URL: ${targetUrl}, domain: ${targetDomain}`);
+                } catch (error) {
+                    console.error(`🍪 ViewManager: Invalid NSN URL provided: ${nsnUrl}`);
+                    return false;
+                }
+            } else {
+                // Fallback to configuration (should be avoided in multi-tenant scenarios)
+                const apiConfig = require('../config/apiConfig');
+                const nsnConfig = apiConfig.getCurrentNsnWebsite();
+                targetUrl = nsnConfig.url;
+                targetDomain = nsnConfig.domain.split(':')[0];
+                console.warn(`🍪 ViewManager: Using configuration NSN URL (not recommended for multi-tenant): ${targetUrl}`);
+            }
+
+            // Check if this is a JSON session cookie or Flask session cookie
+            if (cookie.startsWith('{') || cookie.startsWith('eyJ') || cookie.includes('.')) {
+                // This is a JSON or Flask session cookie, set it directly
+                if (cookie.startsWith('{')) {
+                    console.log(`🍪 ViewManager: Setting JSON session cookie: ${cookie.substring(0, 50)}...`);
+                } else {
+                    console.log(`🍪 ViewManager: Setting Flask session cookie: ${cookie.substring(0, 50)}...`);
+                }
                 await cookies.set({
-                    url: 'http://localhost:5000',
+                    url: targetUrl,
                     name: 'session',
                     value: cookie,
-                    domain: 'localhost',
+                    domain: targetDomain,
                     path: '/',
                     httpOnly: true,
                     secure: false
@@ -332,10 +575,10 @@ class ViewManager {
                     const [name, value] = part.trim().split('=');
                     if (name && value) {
                         await cookies.set({
-                            url: 'http://localhost:5000',
+                            url: targetUrl,
                             name: name.trim(),
                             value: value.trim(),
-                            domain: 'localhost',
+                            domain: targetDomain,
                             path: '/',
                             httpOnly: true,
                             secure: false
@@ -359,11 +602,15 @@ class ViewManager {
             let processedUrl = url;
 
             // Process URL with parameter injection
-            const UrlParameterInjector = require('../utils/urlParameterInjector');
-            const urlInjector = new UrlParameterInjector();
-            processedUrl = urlInjector.processUrl(url);
+            const { getUrlParameterInjector } = require('../utils/urlParameterInjector');
+            const urlInjector = getUrlParameterInjector();
+            processedUrl = await urlInjector.processUrl(url);
 
             console.log(`🔗 ViewManager: Creating browser view with URL: ${url} -> ${processedUrl}`);
+
+            // Determine which session partition to use based on URL
+            const sessionPartition = this.getSessionPartitionForWebsite(processedUrl);
+            console.log(`🔗 ViewManager: Using session partition '${sessionPartition}' for URL: ${processedUrl}`);
 
             const view = new BrowserView({
                 webPreferences: {
@@ -372,8 +619,8 @@ class ViewManager {
                     webSecurity: true,
                     allowRunningInsecureContent: false,
                     experimentalFeatures: false,
-                    // Add network configuration
-                    partition: 'persist:main',
+                    // Use appropriate session partition
+                    partition: sessionPartition,
                     cache: false
                 }
             });
@@ -385,10 +632,26 @@ class ViewManager {
             const bounds = this.getViewBounds();
             view.setBounds(bounds);
 
-            // If this is NSN and we have a user, NSN will query B-Client for cookie
-            if (this.isNSNUrl(url) && currentUser) {
-                console.log(`🍪 ViewManager: NSN detected, NSN will query B-Client for cookie for user ${currentUser.username}`);
-                // NSN will handle cookie querying from B-Client, no need to do it here
+            // If this is a registered website and we have a user, website will query B-Client for cookie
+            if (this.isRegisteredWebsiteUrl(url) && currentUser) {
+                const websiteConfig = this.getWebsiteConfig(url);
+                console.log(`🍪 ViewManager: Registered website detected (${websiteConfig?.name || 'Unknown'}), will query B-Client for cookie for user ${currentUser.username}`);
+
+                // Check WebSocket connection status for registered websites
+                if (this.electronApp && this.electronApp.webSocketClient) {
+                    console.log(`🔍 ViewManager: Checking WebSocket connection status for registered website...`);
+                    console.log(`🔍 ViewManager: WebSocket client exists:`, !!this.electronApp.webSocketClient);
+                    console.log(`🔍 ViewManager: WebSocket client connected:`, this.electronApp.webSocketClient.isConnected);
+
+                    if (!this.electronApp.webSocketClient.isConnected) {
+                        console.log(`⚠️ ViewManager: WebSocket connection is not active for registered website`);
+                        console.log(`⚠️ ViewManager: This may cause issues with B-Client communication`);
+                        console.log(`⚠️ ViewManager: WebSocket will be reconnected when NSN response is detected`);
+                    } else {
+                        console.log(`✅ ViewManager: WebSocket connection is active for registered website`);
+                    }
+                }
+                // Website will handle cookie querying from B-Client, no need to do it here
             }
 
             // Load processed URL with injected parameters
@@ -398,13 +661,35 @@ class ViewManager {
             this.setupViewTitleListeners(view, id);
             this.viewOperations.setupNavigationListeners(view, id);
 
+            // Add website response detection for registered website URLs
+            console.log(`🔍 ViewManager: Checking if URL needs website response detection:`, url);
+            const needsDetection = this.isRegisteredWebsiteUrl(url);
+            console.log(`🔍 ViewManager: URL needs website response detection:`, needsDetection);
+            if (needsDetection) {
+                console.log(`🔍 ViewManager: Setting up website response detection for view ${id}`);
+                this.setupWebsiteResponseDetection(view, id);
+            } else {
+                console.log(`🔍 ViewManager: Skipping website response detection for view ${id} - not a registered website`);
+            }
+
             // Add to main window and switch to it
-            this.mainWindow.getMainWindow().addBrowserView(view);
+            try {
+                // Get the actual Electron BrowserWindow instance
+                const electronMainWindow = this.mainWindow.windowManager ? this.mainWindow.windowManager.getMainWindow() : this.mainWindow;
+                if (electronMainWindow && typeof electronMainWindow.addBrowserView === 'function') {
+                    electronMainWindow.addBrowserView(view);
+                    console.log(`✅ ViewManager: Successfully added view ${id} to main window`);
+                } else {
+                    console.error(`❌ ViewManager: Cannot add view ${id} to main window - addBrowserView not available`);
+                }
+            } catch (error) {
+                console.error(`❌ ViewManager: Error adding view ${id} to main window:`, error);
+            }
             this.currentViewId = id;
 
             // Send to renderer
-            if (this.mainWindow && this.mainWindow.sendToWindow) {
-                this.mainWindow.sendToWindow('tab-created', {
+            if (this.electronApp && this.electronApp.sendToWindow) {
+                this.electronApp.sendToWindow('tab-created', {
                     id: id,
                     url: url,
                     title: 'Loading...'
@@ -447,12 +732,12 @@ class ViewManager {
             this.setupViewTitleListeners(view, id);
 
             // Add to main window and switch to it
-            this.mainWindow.getMainWindow().addBrowserView(view);
+            this.mainWindow.addBrowserView(view);
             this.currentViewId = id;
 
             // Send to renderer
-            if (this.mainWindow && this.mainWindow.sendToWindow) {
-                this.mainWindow.sendToWindow('tab-created', {
+            if (this.electronApp && this.electronApp.sendToWindow) {
+                this.electronApp.sendToWindow('tab-created', {
                     id: id,
                     url: 'history://local',
                     title: 'History'
@@ -516,12 +801,12 @@ class ViewManager {
             await view.webContents.loadURL(url);
 
             // Add to main window and switch to it
-            this.mainWindow.getMainWindow().addBrowserView(view);
+            this.mainWindow.windowManager.getMainWindow().addBrowserView(view);
             this.currentViewId = id;
 
             // Send to renderer
-            if (this.mainWindow && this.mainWindow.sendToWindow) {
-                this.mainWindow.sendToWindow('tab-created', {
+            if (this.electronApp && this.electronApp.sendToWindow) {
+                this.electronApp.sendToWindow('tab-created', {
                     id: id,
                     url: url,
                     title: 'OAuth Login'
@@ -601,9 +886,14 @@ class ViewManager {
      * Find NSN tab
      */
     findNSNTab() {
+        // Get NSN URL from configuration for comparison
+        const apiConfig = require('../config/apiConfig');
+        const nsnConfig = apiConfig.getCurrentNsnWebsite();
+        const nsnDomain = nsnConfig.domain;
+
         for (const [id, view] of Object.entries(this.views)) {
             const url = view.webContents.getURL();
-            if (url.includes('localhost:5000') || url.includes('127.0.0.1:5000')) {
+            if (url.includes('localhost:5000') || url.includes('127.0.0.1:5000') || url.includes(nsnDomain)) {
                 console.log(`🔍 ViewManager: Found NSN tab with ID ${id}, URL: ${url}`);
                 return view;
             }
@@ -615,16 +905,25 @@ class ViewManager {
     /**
      * Create view with cookie
      */
-    createViewWithCookie(url, cookie, username) {
+    createViewWithCookie(url, cookie, username, nsnUrl = null) {
         try {
             console.log(`🔄 ViewManager: Creating new view with cookie for user: ${username}`);
+
+            // Determine which session partition to use based on URL
+            let sessionPartition = 'persist:main';
+            if (this.isNSNUrl(url)) {
+                sessionPartition = 'persist:nsn';
+                console.log(`🔄 ViewManager: Using NSN session partition for cookie view: ${url}`);
+            }
 
             // Create new view
             const view = new BrowserView({
                 webPreferences: {
                     nodeIntegration: false,
                     contextIsolation: true,
-                    webSecurity: true
+                    webSecurity: true,
+                    // Use appropriate session partition
+                    partition: sessionPartition
                 }
             });
 
@@ -633,13 +932,25 @@ class ViewManager {
             this.currentViewId = id;
 
             // Set up the view
-            this.mainWindow.getMainWindow().setBrowserView(view);
+            this.mainWindow.windowManager.getMainWindow().setBrowserView(view);
             this.setupViewTitleListeners(view, id);
             this.updateCurrentViewBounds(this.getViewBounds());
 
             // Set cookie before loading URL
+            // Get NSN URL - prefer provided parameter, fallback to configuration
+            let targetUrl;
+            if (nsnUrl) {
+                targetUrl = nsnUrl;
+                console.log(`🔄 ViewManager: Using provided NSN URL for cookie: ${targetUrl}`);
+            } else {
+                const apiConfig = require('../config/apiConfig');
+                const nsnConfig = apiConfig.getCurrentNsnWebsite();
+                targetUrl = nsnConfig.url;
+                console.warn(`🔄 ViewManager: Using configuration NSN URL (not recommended for multi-tenant): ${targetUrl}`);
+            }
+
             view.webContents.session.cookies.set({
-                url: 'http://localhost:5000',
+                url: targetUrl,
                 name: 'session',
                 value: cookie,
                 httpOnly: true,
@@ -663,6 +974,219 @@ class ViewManager {
         }
     }
 
+
+    /**
+     * Setup NSN response detection for WebSocket connection
+     * @param {BrowserView} view - Browser view instance
+     * @param {number} id - View ID
+     */
+    setupWebsiteResponseDetection(view, id) {
+        try {
+            console.log(`🔍 ViewManager: ===== SETTING UP NSN RESPONSE DETECTION =====`);
+            console.log(`🔍 ViewManager: Setting up NSN response detection for view ${id}`);
+            console.log(`🔍 ViewManager: View object:`, !!view);
+            console.log(`🔍 ViewManager: WebContents object:`, !!view.webContents);
+            console.log(`🔍 ViewManager: Current URL:`, view.webContents.getURL());
+
+            // Start detection immediately when DOM content is loaded
+            console.log(`🔍 ViewManager: Adding DOM-ready event listener for immediate detection...`);
+            view.webContents.once('dom-ready', async () => {
+                console.log(`🔍 ViewManager: ===== DOM-READY EVENT TRIGGERED =====`);
+                console.log(`🔍 ViewManager: DOM content loaded for view ${id}`);
+                console.log(`🔍 ViewManager: Current URL: ${view.webContents.getURL()}`);
+
+                // Wait a short time for any dynamic content to be injected
+                console.log(`🔍 ViewManager: Waiting 50ms for dynamic content injection...`);
+                await new Promise(resolve => setTimeout(resolve, 50));
+
+                await this.detectNSNResponse(view, id, 'DOM-READY');
+            });
+
+            // Add backup event listener for page load completion
+            console.log(`🔍 ViewManager: Adding did-finish-load event listener as backup...`);
+            view.webContents.once('did-finish-load', async () => {
+                console.log(`🔍 ViewManager: ===== DID-FINISH-LOAD EVENT TRIGGERED (BACKUP) =====`);
+                console.log(`🔍 ViewManager: Page load completed for view ${id}`);
+                console.log(`🔍 ViewManager: Current URL: ${view.webContents.getURL()}`);
+
+                await this.detectNSNResponse(view, id, 'DID-FINISH-LOAD');
+            });
+
+            // Add another backup event listener for page load stop
+            console.log(`🔍 ViewManager: Adding did-stop-loading event listener as backup...`);
+            view.webContents.once('did-stop-loading', async () => {
+                console.log(`🔍 ViewManager: ===== DID-STOP-LOADING EVENT TRIGGERED (BACKUP) =====`);
+                console.log(`🔍 ViewManager: Page stopped loading for view ${id}`);
+                console.log(`🔍 ViewManager: Current URL: ${view.webContents.getURL()}`);
+
+                await this.detectNSNResponse(view, id, 'DID-STOP-LOADING');
+            });
+
+            // Add error event listener
+            console.log(`🔍 ViewManager: Adding did-fail-load event listener...`);
+            view.webContents.once('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+                console.error(`❌ ViewManager: ===== PAGE LOAD FAILED =====`);
+                console.error(`❌ ViewManager: View ${id} failed to load`);
+                console.error(`❌ ViewManager: Error code: ${errorCode}`);
+                console.error(`❌ ViewManager: Error description: ${errorDescription}`);
+                console.error(`❌ ViewManager: URL: ${validatedURL}`);
+            });
+
+            console.log(`🔍 ViewManager: ===== NSN RESPONSE DETECTION SETUP COMPLETED =====`);
+        } catch (error) {
+            console.error(`❌ ViewManager: ===== ERROR SETTING UP NSN RESPONSE DETECTION =====`);
+            console.error(`❌ ViewManager: Error setting up NSN response detection:`, error);
+        }
+    }
+
+    /**
+     * Detect NSN response in the page
+     * @param {BrowserView} view - Browser view instance
+     * @param {number} id - View ID
+     * @param {string} trigger - Event that triggered the detection
+     */
+    async detectNSNResponse(view, id, trigger) {
+        try {
+            console.log(`🔍 ViewManager: ===== EXECUTING JAVASCRIPT DETECTION (${trigger}) =====`);
+            console.log(`🔍 ViewManager: View ID: ${id}`);
+            console.log(`🔍 ViewManager: Current URL: ${view.webContents.getURL()}`);
+            console.log(`🔍 ViewManager: Executing JavaScript to check for NSN response...`);
+
+            const responseData = await view.webContents.executeJavaScript(`
+                (() => {
+                    try {
+                        console.log('🔍 JavaScript: ===== STARTING NSN RESPONSE DETECTION (${trigger}) =====');
+                        console.log('🔍 JavaScript: Document ready state:', document.readyState);
+                        console.log('🔍 JavaScript: Document title:', document.title);
+                        console.log('🔍 JavaScript: Document URL:', window.location.href);
+                        
+                        // Look for the c-client-responses div
+                        console.log('🔍 JavaScript: Looking for c-client-responses div...');
+                        const cClientResponsesDiv = document.getElementById('c-client-responses');
+                        console.log('🔍 JavaScript: c-client-responses div found:', !!cClientResponsesDiv);
+                        
+                        if (cClientResponsesDiv) {
+                            console.log('🔍 JavaScript: ===== FOUND C-CLIENT-RESPONSES DIV (${trigger}) =====');
+                            console.log('🔍 JavaScript: Div element:', cClientResponsesDiv);
+                            console.log('🔍 JavaScript: Div style display:', cClientResponsesDiv.style.display);
+                            console.log('🔍 JavaScript: Div innerHTML length:', cClientResponsesDiv.innerHTML.length);
+                            
+                            const jsonText = cClientResponsesDiv.textContent.trim();
+                            console.log('🔍 JavaScript: JSON text length:', jsonText.length);
+                            console.log('🔍 JavaScript: JSON text preview:', jsonText.substring(0, 200));
+                            console.log('🔍 JavaScript: Full JSON text:', jsonText);
+                            
+                            try {
+                                const parsed = JSON.parse(jsonText);
+                                console.log('🔍 JavaScript: ===== JSON PARSING SUCCESS (${trigger}) =====');
+                                console.log('🔍 JavaScript: Parsed JSON object:', parsed);
+                                console.log('🔍 JavaScript: Action:', parsed.action);
+                                console.log('🔍 JavaScript: WebSocket URL:', parsed.websocket_url);
+                                console.log('🔍 JavaScript: User ID:', parsed.user_id);
+                                console.log('🔍 JavaScript: Username:', parsed.username);
+                                console.log('🔍 JavaScript: Needs Registration:', parsed.needs_registration);
+                                console.log('🔍 JavaScript: ===== RETURNING PARSED DATA (${trigger}) =====');
+                                return parsed;
+                            } catch (e) {
+                                console.log('🔍 JavaScript: ===== JSON PARSING FAILED (${trigger}) =====');
+                                console.log('🔍 JavaScript: Parse error:', e.message);
+                                console.log('🔍 JavaScript: Error stack:', e.stack);
+                                console.log('🔍 JavaScript: Raw JSON text:', jsonText);
+                                return null;
+                            }
+                        }
+                        
+                        // Fallback: Check if the page contains NSN response data in body text
+                        console.log('🔍 JavaScript: ===== FALLBACK: CHECKING BODY TEXT (${trigger}) =====');
+                        console.log('🔍 JavaScript: No c-client-responses div found, checking body text...');
+                        const bodyText = document.body ? document.body.innerText : '';
+                        console.log('🔍 JavaScript: Body text length:', bodyText.length);
+                        console.log('🔍 JavaScript: Body text preview:', bodyText.substring(0, 300));
+                        
+                        // Use regex to find JSON in body text
+                        const jsonMatch = bodyText.match(/\\{[\\s\\S]*?"action"[\\s\\S]*?\\}/);
+                        console.log('🔍 JavaScript: JSON match found in body:', !!jsonMatch);
+                        
+                        if (jsonMatch) {
+                            console.log('🔍 JavaScript: ===== FOUND JSON IN BODY TEXT (${trigger}) =====');
+                            console.log('🔍 JavaScript: Matched text:', jsonMatch[0]);
+                            try {
+                                const parsed = JSON.parse(jsonMatch[0]);
+                                console.log('🔍 JavaScript: Successfully parsed JSON from body text:', parsed);
+                                return parsed;
+                            } catch (e) {
+                                console.log('🔍 JavaScript: Failed to parse JSON from body:', e.message);
+                                return null;
+                            }
+                        }
+                        
+                        console.log('🔍 JavaScript: ===== NO NSN RESPONSE FOUND (${trigger}) =====');
+                        console.log('🔍 JavaScript: No c-client-responses div and no JSON in body text');
+                        return null;
+                    } catch (error) {
+                        console.error('❌ JavaScript: ===== ERROR IN DETECTION (${trigger}) =====');
+                        console.error('❌ JavaScript: Error checking for NSN response:', error);
+                        console.error('❌ JavaScript: Error stack:', error.stack);
+                        return null;
+                    }
+                })()
+            `);
+
+            console.log(`🔍 ViewManager: ===== JAVASCRIPT EXECUTION COMPLETED (${trigger}) =====`);
+            console.log(`🔍 ViewManager: Response data type:`, typeof responseData);
+            console.log(`🔍 ViewManager: Response data:`, responseData);
+            console.log(`🔍 ViewManager: Response data is null:`, responseData === null);
+            console.log(`🔍 ViewManager: Response data is undefined:`, responseData === undefined);
+
+            if (responseData && responseData.action) {
+                console.log(`🔍 ViewManager: ===== NSN RESPONSE DETECTED (${trigger}) =====`);
+                console.log(`🔍 ViewManager: Detected NSN response:`, responseData);
+                console.log(`🔍 ViewManager: Action: ${responseData.action}`);
+                console.log(`🔍 ViewManager: User ID: ${responseData.user_id}`);
+                console.log(`🔍 ViewManager: Username: ${responseData.username}`);
+                console.log(`🔍 ViewManager: WebSocket URL: ${responseData.websocket_url}`);
+                console.log(`🔍 ViewManager: B-Client URL: ${responseData.b_client_url}`);
+                console.log(`🔍 ViewManager: Needs Registration: ${responseData.needs_registration}`);
+                console.log(`🔍 ViewManager: Has Cookie: ${responseData.has_cookie}`);
+                console.log(`🔍 ViewManager: Has Node: ${responseData.has_node}`);
+                console.log(`🔍 ViewManager: Message: ${responseData.message}`);
+
+                // Process the NSN response
+                if (this.electronApp && this.electronApp.handleNSNResponse) {
+                    console.log(`🔍 ViewManager: ===== CALLING ELECTRON APP HANDLER (${trigger}) =====`);
+                    console.log(`🔍 ViewManager: Electron app available:`, !!this.electronApp);
+                    console.log(`🔍 ViewManager: handleNSNResponse method available:`, typeof this.electronApp.handleNSNResponse === 'function');
+                    console.log(`🔍 ViewManager: Calling electron app handleNSNResponse...`);
+
+                    try {
+                        await this.electronApp.handleNSNResponse(responseData);
+                        console.log(`✅ ViewManager: ===== NSN RESPONSE PROCESSED SUCCESSFULLY (${trigger}) =====`);
+                        console.log(`✅ ViewManager: Auto-registration process initiated`);
+                    } catch (error) {
+                        console.error(`❌ ViewManager: ===== ERROR PROCESSING NSN RESPONSE (${trigger}) =====`);
+                        console.error(`❌ ViewManager: Error in handleNSNResponse:`, error);
+                        console.error(`❌ ViewManager: Error stack:`, error.stack);
+                    }
+                } else {
+                    console.error(`❌ ViewManager: ===== ELECTRON APP HANDLER NOT AVAILABLE (${trigger}) =====`);
+                    console.error(`🔍 ViewManager: Electron app available:`, !!this.electronApp);
+                    console.error(`🔍 ViewManager: handleNSNResponse method available:`, this.electronApp ? typeof this.electronApp.handleNSNResponse === 'function' : 'N/A');
+                }
+            } else {
+                console.log(`🔍 ViewManager: ===== NO NSN RESPONSE DETECTED (${trigger}) =====`);
+                console.log(`🔍 ViewManager: No NSN response detected in page content`);
+                console.log(`🔍 ViewManager: Response data:`, responseData);
+                console.log(`🔍 ViewManager: Response data action:`, responseData ? responseData.action : 'N/A');
+                console.log(`🔍 ViewManager: This might be a normal NSN page without WebSocket connection request`);
+                console.log(`🔍 ViewManager: Or the user might not need registration`);
+            }
+
+            console.log(`🔍 ViewManager: ===== DETECTION COMPLETED (${trigger}) =====`);
+        } catch (error) {
+            console.error(`❌ ViewManager: ===== ERROR IN DETECTION (${trigger}) =====`);
+            console.error(`❌ ViewManager: Error detecting NSN response:`, error);
+        }
+    }
 
     /**
      * Cleanup all views

@@ -69,7 +69,7 @@ class HistoryManager {
     /**
      * Record visit
      */
-    recordVisit(url, viewId) {
+    async recordVisit(url, viewId) {
         try {
             // Get current user ID for visit tracking
             const currentUser = this.userActivityManager ? this.userActivityManager.getCurrentUser() : null;
@@ -81,7 +81,7 @@ class HistoryManager {
                 return null;
             }
 
-            const result = this.visitTracker.recordVisit(url, viewId, userId);
+            const result = await this.visitTracker.recordVisit(url, viewId, userId);
 
             // Also record user activity if we have a current user
             if (result && this.userActivityManager) {
@@ -567,6 +567,131 @@ class HistoryManager {
         } catch (error) {
             console.error('Failed to cleanup loading titles:', error);
             return { updated: 0, total: 0 };
+        }
+    }
+
+    /**
+     * Auto-fetch title for loading records
+     */
+    async autoFetchTitleForLoadingRecords() {
+        try {
+            const db = require('../sqlite/database');
+            const axios = require('axios');
+
+            const loadingRecords = db.prepare(`
+                SELECT id, url, title, view_id, domain, enter_time
+                FROM visit_history 
+                WHERE title = 'Loading...' OR title = 'Untitled Page' OR title IS NULL
+                ORDER BY enter_time DESC
+                LIMIT 10
+            `).all();
+
+            let updatedCount = 0;
+
+            for (const record of loadingRecords) {
+                try {
+                    if (!record.url || record.url === 'about:blank') {
+                        continue;
+                    }
+
+                    console.log(`[HistoryManager] Auto-fetching title for URL: ${record.url}`);
+
+                    // Try to fetch the page and extract title
+                    const response = await axios.get(record.url, {
+                        timeout: 10000,
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                        }
+                    });
+
+                    if (response.data) {
+                        let newTitle = this.extractTitleFromHTML(response.data);
+
+                        if (!newTitle) {
+                            // Fallback to domain name
+                            try {
+                                const url = new URL(record.url);
+                                newTitle = url.hostname.charAt(0).toUpperCase() + url.hostname.slice(1);
+                            } catch (err) {
+                                newTitle = 'Untitled Page';
+                            }
+                        }
+
+                        if (newTitle && newTitle !== record.title) {
+                            db.prepare(`
+                                UPDATE visit_history 
+                                SET title = ?, updated_at = ?
+                                WHERE id = ?
+                            `).run(newTitle, Date.now(), record.id);
+
+                            updatedCount++;
+                            console.log(`[HistoryManager] Updated title for record ${record.id}: ${newTitle}`);
+                        }
+                    }
+
+                } catch (error) {
+                    console.log(`[HistoryManager] Failed to fetch title for ${record.url}:`, error.message);
+
+                    // Mark as failed to load if it's been more than 5 minutes
+                    const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+                    if (record.enter_time < fiveMinutesAgo) {
+                        db.prepare(`
+                            UPDATE visit_history 
+                            SET title = 'Failed to load', updated_at = ?
+                            WHERE id = ?
+                        `).run(Date.now(), record.id);
+                        updatedCount++;
+                    }
+                }
+
+                // Add small delay to avoid overwhelming the server
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+
+            return { updated: updatedCount, total: loadingRecords.length };
+
+        } catch (error) {
+            console.error('Failed to auto-fetch titles:', error);
+            return { updated: 0, total: 0 };
+        }
+    }
+
+    /**
+     * Extract title from HTML content
+     */
+    extractTitleFromHTML(html) {
+        try {
+            // Extract title from <title> tag
+            const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+            if (titleMatch && titleMatch[1]) {
+                let title = titleMatch[1].trim();
+                if (title && title !== 'Loading...' && title !== 'Untitled Page') {
+                    return title;
+                }
+            }
+
+            // Try Open Graph title
+            const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']*)["'][^>]*>/i);
+            if (ogTitleMatch && ogTitleMatch[1]) {
+                let title = ogTitleMatch[1].trim();
+                if (title && title !== 'Loading...' && title !== 'Untitled Page') {
+                    return title;
+                }
+            }
+
+            // Try Twitter title
+            const twitterTitleMatch = html.match(/<meta[^>]*name=["']twitter:title["'][^>]*content=["']([^"']*)["'][^>]*>/i);
+            if (twitterTitleMatch && twitterTitleMatch[1]) {
+                let title = twitterTitleMatch[1].trim();
+                if (title && title !== 'Loading...' && title !== 'Untitled Page') {
+                    return title;
+                }
+            }
+
+            return null;
+        } catch (error) {
+            console.error('Error extracting title from HTML:', error);
+            return null;
         }
     }
 

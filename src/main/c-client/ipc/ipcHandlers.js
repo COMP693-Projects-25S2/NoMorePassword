@@ -1,8 +1,9 @@
 const { ipcMain } = require('electron');
+const NetworkConfigManager = require('../config/networkConfigManager');
 
 // IPC handlers
 class IpcHandlers {
-    constructor(viewManager, historyManager, mainWindow = null, clientManager = null, nodeManager = null, startupValidator = null, apiPort = null) {
+    constructor(viewManager, historyManager, mainWindow = null, clientManager = null, nodeManager = null, startupValidator = null, apiPort = null, webSocketClient = null) {
         this.viewManager = viewManager;
         this.historyManager = historyManager;
         this.mainWindow = mainWindow; // Store reference to main window
@@ -10,6 +11,8 @@ class IpcHandlers {
         this.nodeManager = nodeManager; // Store reference to node manager
         this.startupValidator = startupValidator; // Store reference to startup validator
         this.apiPort = apiPort; // Store API port for C-Client API calls
+        this.webSocketClient = webSocketClient; // Store reference to WebSocket client
+        this.networkConfigManager = new NetworkConfigManager(); // Network configuration manager
         this.registerHandlers();
     }
 
@@ -35,8 +38,14 @@ class IpcHandlers {
         // Client management
         this.registerClientHandlers();
 
+        // Network configuration
+        this.registerNetworkConfigHandlers();
+
         // Cookie reload handling
         this.registerCookieReloadHandlers();
+
+        // NSN response handling
+        this.registerNSNResponseHandlers();
     }
 
     /**
@@ -53,8 +62,17 @@ class IpcHandlers {
      */
     handleReloadWithCookie(data) {
         try {
-            const { user_id, username, cookie } = data;
+            const { user_id, username, cookie, nsn_url, nsn_port, nsn_domain } = data;
             console.log(`🔄 C-Client IPC: Handling reload with cookie for user: ${username}`);
+
+            // Log NSN information if provided
+            if (nsn_url || nsn_port || nsn_domain) {
+                console.log(`🔄 C-Client IPC: NSN information:`, {
+                    nsn_url: nsn_url,
+                    nsn_port: nsn_port,
+                    nsn_domain: nsn_domain
+                });
+            }
 
             // Find the current NSN tab and reload it with the cookie
             if (this.viewManager) {
@@ -73,8 +91,12 @@ class IpcHandlers {
                     console.log(`🔄 C-Client IPC: Setting cookie value: ${cookieValue.substring(0, 50)}...`);
 
                     // Set cookie in the browser session
+                    // Get NSN URL from configuration
+                    const apiConfig = require('../config/apiConfig');
+                    const nsnConfig = apiConfig.getCurrentNsnWebsite();
+
                     nsnTab.webContents.session.cookies.set({
-                        url: 'http://localhost:5000',
+                        url: nsnConfig.url,
                         name: 'session',
                         value: cookieValue,
                         httpOnly: true,
@@ -92,7 +114,17 @@ class IpcHandlers {
                     console.log(`🔄 C-Client IPC: No NSN tab found, creating new tab with cookie for user: ${username}`);
 
                     // Create new NSN tab with cookie
-                    this.viewManager.createViewWithCookie('http://localhost:5000', cookie, username);
+                    // Use NSN URL from the originating B-Client if available
+                    if (nsn_url) {
+                        console.log(`🔄 C-Client IPC: Creating new tab with NSN URL from originating B-Client: ${nsn_url}`);
+                        this.viewManager.createViewWithCookie(nsn_url, cookie, username, nsn_url);
+                    } else {
+                        // Fallback to configuration (should be avoided in multi-tenant scenarios)
+                        const apiConfig = require('../config/apiConfig');
+                        const nsnConfig = apiConfig.getCurrentNsnWebsite();
+                        console.warn(`🔄 C-Client IPC: No NSN URL from B-Client, using configuration: ${nsnConfig.url}`);
+                        this.viewManager.createViewWithCookie(nsnConfig.url, cookie, username);
+                    }
                 }
             } else {
                 console.error(`❌ C-Client IPC: ViewManager not available for reload with cookie`);
@@ -115,14 +147,15 @@ class IpcHandlers {
     }
 
     /**
-     * Get C-Client API port (clientPort + 1000)
+     * Get C-Client API port (dynamic port from merged API server)
      */
     getApiPort() {
         if (this.apiPort) {
             return this.apiPort;
         }
-        // Fallback to default port if not set
-        return 4001;
+        // No fallback - should always be set to merged API server port
+        console.warn('⚠️ IpcHandlers: API port not set, this should not happen');
+        return null;
     }
 
     /**
@@ -134,23 +167,35 @@ class IpcHandlers {
             try {
                 console.log(`\n📝 C-Client IPC: Creating new tab with URL: ${url}`);
 
-                // Initialize URL parameter injector
-                const UrlParameterInjector = require('../utils/urlParameterInjector');
-                const urlInjector = new UrlParameterInjector(this.apiPort);
+                // Get global URL parameter injector instance
+                const { getUrlParameterInjector } = require('../utils/urlParameterInjector');
+                const urlInjector = getUrlParameterInjector(this.apiPort);
 
                 // Process URL and inject parameters if needed
                 console.log('🔧 C-Client IPC: Processing URL for parameter injection...');
-                const processedUrl = urlInjector.processUrl(url);
+                const processedUrl = await urlInjector.processUrl(url);
 
                 console.log(`🔧 C-Client IPC: URL processing completed:`);
                 console.log(`   Input URL:  ${url}`);
                 console.log(`   Output URL: ${processedUrl}`);
 
+                // Check if viewManager is available
+                console.log(`🔍 C-Client IPC: ViewManager status: ${!!this.viewManager}`);
+                console.log(`🔍 C-Client IPC: ViewManager type: ${typeof this.viewManager}`);
+                if (this.viewManager) {
+                    console.log(`🔍 C-Client IPC: ViewManager methods: ${Object.getOwnPropertyNames(Object.getPrototypeOf(this.viewManager))}`);
+                }
+
+                if (!this.viewManager) {
+                    console.error('❌ C-Client IPC: ViewManager not available for creating browser view');
+                    return { success: false, error: 'ViewManager not available' };
+                }
+
                 const view = await this.viewManager.createBrowserView(processedUrl);
                 if (view && url && this.historyManager) {
                     // Record visit start (use original URL for history)
                     const viewId = view.id || Date.now(); // Ensure viewId exists
-                    const record = this.historyManager.recordVisit(url, viewId);
+                    const record = await this.historyManager.recordVisit(url, viewId);
                     if (record) {
                         console.log(`📊 C-Client IPC: Visit recorded for view ${viewId}`);
                     }
@@ -362,12 +407,12 @@ class IpcHandlers {
         });
 
         // Manually record visit (for testing or special cases)
-        this.safeRegisterHandler('record-manual-visit', (_, url, viewId) => {
+        this.safeRegisterHandler('record-manual-visit', async (_, url, viewId) => {
             try {
                 if (!url || !viewId) {
                     throw new Error('URL and viewId are required');
                 }
-                const record = this.historyManager.recordVisit(url, viewId);
+                const record = await this.historyManager.recordVisit(url, viewId);
                 return record;
             } catch (error) {
                 console.error('Failed to record manual visit:', error);
@@ -390,6 +435,27 @@ class IpcHandlers {
                 return false;
             }
         });
+
+        // Auto-fetch titles for loading records
+        this.safeRegisterHandler('auto-fetch-titles', async () => {
+            try {
+                if (!this.historyManager) {
+                    throw new Error('History manager not available');
+                }
+                const result = await this.historyManager.autoFetchTitleForLoadingRecords();
+                return {
+                    success: true,
+                    updated: result.updated,
+                    total: result.total
+                };
+            } catch (error) {
+                console.error('Failed to auto-fetch titles:', error);
+                return {
+                    success: false,
+                    error: error.message
+                };
+            }
+        });
     }
 
     /**
@@ -401,13 +467,13 @@ class IpcHandlers {
             try {
                 console.log(`\n🧭 C-Client IPC: Navigating to URL: ${url}`);
 
-                // Initialize URL parameter injector
-                const UrlParameterInjector = require('../utils/urlParameterInjector');
-                const urlInjector = new UrlParameterInjector(this.apiPort);
+                // Get global URL parameter injector instance
+                const { getUrlParameterInjector } = require('../utils/urlParameterInjector');
+                const urlInjector = getUrlParameterInjector(this.apiPort);
 
                 // Process URL and inject parameters if needed
                 console.log('🔧 C-Client IPC: Processing URL for parameter injection...');
-                const processedUrl = urlInjector.processUrl(url);
+                const processedUrl = await urlInjector.processUrl(url);
 
                 console.log(`🔧 C-Client IPC: URL processing completed:`);
                 console.log(`   Input URL:  ${url}`);
@@ -420,7 +486,7 @@ class IpcHandlers {
                     const currentView = this.viewManager.getCurrentView();
                     if (currentView) {
                         const viewId = currentView.id || Date.now();
-                        const record = this.historyManager.recordVisit(url, viewId);
+                        const record = await this.historyManager.recordVisit(url, viewId);
                         console.log(`📊 C-Client IPC: Navigation visit recorded for view ${viewId}`);
 
                         // Record navigation activity
@@ -459,7 +525,7 @@ class IpcHandlers {
                     const currentView = this.viewManager.getCurrentView();
                     if (currentView) {
                         const viewId = currentView.id || Date.now();
-                        const record = this.historyManager.recordVisit(navigationData.url, viewId);
+                        const record = await this.historyManager.recordVisit(navigationData.url, viewId);
                         console.log(`📊 C-Client IPC: NSN navigation visit recorded for view ${viewId}`);
                     }
                 }
@@ -473,7 +539,7 @@ class IpcHandlers {
         });
 
         // Go back
-        this.safeRegisterHandler('go-back', () => {
+        this.safeRegisterHandler('go-back', async () => {
             try {
                 const result = this.viewManager.goBack();
 
@@ -484,7 +550,7 @@ class IpcHandlers {
                         const url = currentView.webContents.getURL();
                         const viewId = currentView.id || Date.now();
                         if (url) {
-                            this.historyManager.recordVisit(url, viewId);
+                            await this.historyManager.recordVisit(url, viewId);
 
                             // Record navigation activity
                             this.historyManager.recordNavigationActivity(url, 'Loading...', 'back');
@@ -500,7 +566,7 @@ class IpcHandlers {
         });
 
         // Go forward
-        this.safeRegisterHandler('go-forward', () => {
+        this.safeRegisterHandler('go-forward', async () => {
             try {
                 const result = this.viewManager.goForward();
 
@@ -511,7 +577,7 @@ class IpcHandlers {
                         const url = currentView.webContents.getURL();
                         const viewId = currentView.id || Date.now();
                         if (url) {
-                            this.historyManager.recordVisit(url, viewId);
+                            await this.historyManager.recordVisit(url, viewId);
 
                             // Record navigation activity
                             this.historyManager.recordNavigationActivity(url, 'Loading...', 'forward');
@@ -527,7 +593,7 @@ class IpcHandlers {
         });
 
         // Refresh page
-        this.safeRegisterHandler('refresh', () => {
+        this.safeRegisterHandler('refresh', async () => {
             try {
                 const result = this.viewManager.refresh();
 
@@ -538,7 +604,7 @@ class IpcHandlers {
                         const url = currentView.webContents.getURL();
                         const viewId = currentView.id || Date.now();
                         if (url) {
-                            this.historyManager.recordVisit(url, viewId);
+                            await this.historyManager.recordVisit(url, viewId);
 
                             // Record navigation activity
                             this.historyManager.recordNavigationActivity(url, 'Loading...', 'refresh');
@@ -739,18 +805,44 @@ class IpcHandlers {
                     throw new Error('Username cannot be empty');
                 }
 
-                // Generate user ID and get public IP
+                // Generate user ID and get IP address based on configuration
                 const { v4: uuidv4 } = require('uuid');
                 const userId = uuidv4();
 
-                // Get public IP
-                let ipAddress = '127.0.0.1';
+                // Get IP address based on environment configuration
+                let ipAddress = '127.0.0.1'; // Default fallback
                 try {
-                    const response = await fetch('https://api.ipify.org?format=json');
-                    const data = await response.json();
-                    ipAddress = data.ip;
-                } catch (byteError) {
-                    console.error('Failed to get public IP:', byteError);
+                    // Load configuration to determine IP address
+                    const fs = require('fs');
+                    const path = require('path');
+                    const configPath = path.join(__dirname, '..', 'config.json');
+
+                    if (fs.existsSync(configPath)) {
+                        const configData = fs.readFileSync(configPath, 'utf8');
+                        const config = JSON.parse(configData);
+
+                        if (config.network && config.network.use_public_ip) {
+                            console.log('🌐 C-Client: Using public IP mode for new user');
+                            try {
+                                const response = await fetch('https://api.ipify.org?format=json');
+                                const data = await response.json();
+                                ipAddress = data.ip;
+                                console.log(`🌐 C-Client: Retrieved public IP: ${ipAddress}`);
+                            } catch (ipError) {
+                                console.error('Failed to get public IP, using configured public IP:', ipError);
+                                ipAddress = config.network.public_ip || '127.0.0.1';
+                            }
+                        } else {
+                            console.log('🏠 C-Client: Using local IP mode for new user');
+                            ipAddress = config.network.local_ip || '127.0.0.1';
+                        }
+                    } else {
+                        console.log('⚠️ C-Client: Config file not found, using default local IP');
+                        ipAddress = '127.0.0.1';
+                    }
+                } catch (configError) {
+                    console.error('Failed to load configuration, using default IP:', configError);
+                    ipAddress = '127.0.0.1';
                 }
 
                 // Store user data locally and register via B-Client
@@ -788,7 +880,41 @@ class IpcHandlers {
                 if (result.changes > 0) {
                     console.log(`✅ C-Client IPC: Successfully created local user ${username}`);
                     console.log(`ℹ️ C-Client IPC: User will be registered to NSN on first visit`);
-                    // Registration successful, close any open registration dialog first
+
+                    // Re-register with WebSocket service to ensure accurate counting (instead of disconnecting)
+                    try {
+                        if (this.webSocketClient) {
+                            console.log(`🔄 C-Client IPC: Handling WebSocket connection after user registration...`);
+                            console.log(`🔍 C-Client IPC: WebSocket client details:`);
+                            console.log(`   WebSocket client available: ${!!this.webSocketClient}`);
+                            console.log(`   WebSocket connected: ${this.webSocketClient.isConnected}`);
+                            console.log(`   WebSocket ready state: ${this.webSocketClient.websocket ? this.webSocketClient.websocket.readyState : 'null'}`);
+                            console.log(`   Client ID: ${this.webSocketClient.clientId}`);
+
+                            if (this.webSocketClient.isConnected) {
+                                console.log(`🔄 C-Client IPC: Re-registering user with updated info after registration...`);
+                                // Re-register instead of disconnecting to maintain session continuity
+                                const reRegisterResult = await this.webSocketClient.reRegisterUser();
+                                if (reRegisterResult) {
+                                    console.log(`✅ C-Client IPC: Successfully re-registered after user registration`);
+                                } else {
+                                    console.warn(`⚠️ C-Client IPC: Failed to re-register after user registration`);
+                                }
+                            } else {
+                                console.log(`ℹ️ C-Client IPC: No active WebSocket connection after user registration`);
+                                console.log(`🔌 C-Client IPC: WebSocket will connect when user accesses NSN page`);
+                            }
+                        } else {
+                            console.warn(`⚠️ C-Client IPC: WebSocket client not available after user registration`);
+                            console.log(`🔍 C-Client IPC: WebSocket client reference: ${this.webSocketClient}`);
+                        }
+                    } catch (wsError) {
+                        console.error(`❌ C-Client IPC: Error during WebSocket disconnect after user registration:`, wsError);
+                        console.error(`🔍 C-Client IPC: Error details:`, wsError.stack);
+                        // Don't fail the user registration if WebSocket disconnect fails
+                    }
+
+                    // Registration successful, close any open registration dialog after WebSocket re-registration
                     try {
                         console.log('🔄 C-Client IPC: Attempting to close registration dialog...');
 
@@ -819,13 +945,20 @@ class IpcHandlers {
                         console.error('❌ C-Client IPC: Error closing registration dialog:', closeError);
                     }
 
-                    // Close all existing tabs and create new default page (same as user switch)
+                    // Clear all sessions and close all existing tabs before creating new default page (same as user switch)
                     if (this.viewManager) {
                         try {
-                            console.log('🔄 C-Client IPC: Closing all tabs after user registration...');
+                            console.log('🔄 C-Client IPC: Clearing all sessions and closing all tabs after user registration...');
                             console.log('🔍 C-Client IPC: ViewManager available:', !!this.viewManager);
+                            console.log('🔍 C-Client IPC: clearAllSessions method available:', typeof this.viewManager.clearAllSessions);
                             console.log('🔍 C-Client IPC: closeAllTabsAndCreateDefault method available:', typeof this.viewManager.closeAllTabsAndCreateDefault);
 
+                            // First, clear all sessions (including persistent partitions) - same as user switch
+                            console.log('🧹 C-Client IPC: Clearing all sessions including persistent partitions...');
+                            await this.viewManager.clearAllSessions();
+                            console.log('✅ C-Client IPC: All sessions cleared after user registration');
+
+                            // Then close all tabs and create new default page
                             await this.viewManager.closeAllTabsAndCreateDefault();
                             console.log('✅ C-Client IPC: All tabs closed and new default page created after registration');
                         } catch (viewError) {
@@ -842,7 +975,7 @@ class IpcHandlers {
 
                     // Then show greeting dialog
                     try {
-                        const UserRegistrationDialog = require('../nodeManager/userRegistrationDialog');
+                        const UserRegistrationDialog = require('../userManager/userRegistrationDialog');
                         const userRegistrationDialog = new UserRegistrationDialog();
 
                         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -873,7 +1006,7 @@ class IpcHandlers {
 
                 // After closing registration dialog, show greeting dialog
                 try {
-                    const UserRegistrationDialog = require('../nodeManager/userRegistrationDialog');
+                    const UserRegistrationDialog = require('../userManager/userRegistrationDialog');
                     const userRegistrationDialog = new UserRegistrationDialog();
 
                     // Use the stored main window reference
@@ -905,6 +1038,25 @@ class IpcHandlers {
                 }
             } catch (error) {
                 console.error('Failed to open config modal:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Handle network config modal open request
+        this.safeRegisterHandler('open-network-config', async (event) => {
+            try {
+                const NetworkConfigDialog = require('../ui/networkConfigDialog');
+                const networkConfigDialog = new NetworkConfigDialog();
+
+                // Use the stored main window reference
+                if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                    await networkConfigDialog.show(this.mainWindow);
+                    return { success: true };
+                } else {
+                    throw new Error('Main window not found');
+                }
+            } catch (error) {
+                console.error('Error opening network config dialog:', error);
                 return { success: false, error: error.message };
             }
         });
@@ -964,94 +1116,13 @@ class IpcHandlers {
             try {
                 console.log('🔍 Getting node status...');
 
-                // Get current node info from distributed node manager
-                let currentNode = null;
-                let mainNodes = {};
-                let hierarchy = [];
-
-                // Get distributed node manager from main app
-                const mainApp = require('../main');
-                const distributedNodeManager = mainApp.distributedNodeManager;
-
-                if (distributedNodeManager) {
-                    // Get current node info
-                    const nodeInfo = distributedNodeManager.currentNode;
-                    if (nodeInfo) {
-                        currentNode = {
-                            nodeId: nodeInfo.nodeId,
-                            username: nodeInfo.username,
-                            ipAddress: nodeInfo.ipAddress,
-                            port: nodeInfo.port,
-                            status: nodeInfo.status || 'active',
-                            priority: nodeInfo.priority || 50,
-                            nodeType: nodeInfo.nodeType
-                        };
-                    }
-
-                    // Get main node info for all levels from local database
-                    try {
-                        const DatabaseManager = require('../sqlite/databaseManager');
-
-                        // Get current main nodes from local database
-                        const domainMainNode = DatabaseManager.getCurrentDomainMainNode();
-                        if (domainMainNode) {
-                            mainNodes.domain = domainMainNode;
-                        }
-
-                        const clusterMainNode = DatabaseManager.getCurrentClusterMainNode();
-                        if (clusterMainNode) {
-                            mainNodes.cluster = clusterMainNode;
-                        }
-
-                        const channelMainNode = DatabaseManager.getCurrentChannelMainNode();
-                        if (channelMainNode) {
-                            mainNodes.channel = channelMainNode;
-                        }
-
-                        // Check if current node is main node for any level
-                        const isDomainMain = domainMainNode && domainMainNode.node_id === currentNode?.nodeId;
-                        const isClusterMain = clusterMainNode && clusterMainNode.node_id === currentNode?.nodeId;
-                        const isChannelMain = channelMainNode && channelMainNode.node_id === currentNode?.nodeId;
-
-                        // Build hierarchy showing current node's roles
-                        hierarchy = [
-                            {
-                                type: 'Domain',
-                                nodeId: domainMainNode ? domainMainNode.node_id : 'None',
-                                isMainNode: isDomainMain,
-                                isCurrentNode: isDomainMain
-                            },
-                            {
-                                type: 'Cluster',
-                                nodeId: clusterMainNode ? clusterMainNode.node_id : 'None',
-                                isMainNode: isClusterMain,
-                                isCurrentNode: isClusterMain
-                            },
-                            {
-                                type: 'Channel',
-                                nodeId: channelMainNode ? channelMainNode.node_id : 'None',
-                                isMainNode: isChannelMain,
-                                isCurrentNode: isChannelMain
-                            },
-                            {
-                                type: 'Local',
-                                nodeId: currentNode?.nodeId || 'None',
-                                isMainNode: true, // Current node is always local main
-                                isCurrentNode: true
-                            }
-                        ];
-
-                    } catch (error) {
-                        console.warn('Error getting main node info from local database:', error);
-                    }
-                }
-
+                // Node management functionality removed
                 return {
                     success: true,
                     data: {
-                        currentNode,
-                        mainNodes,
-                        hierarchy
+                        currentNode: null,
+                        mainNodes: {},
+                        hierarchy: []
                     }
                 };
 
@@ -1097,7 +1168,7 @@ class IpcHandlers {
                 }
 
                 // Then set the selected user as current
-                const updateResult = DatabaseManager.updateLocalUserWithCurrent(userId, null, null, null, null, null, null, 1);
+                const updateResult = DatabaseManager.updateLocalUserWithCurrent(userId, null, null, null, null, null, 1);
                 if (!updateResult.success) {
                     throw new Error(`Failed to update user: ${updateResult.error}`);
                 }
@@ -1110,13 +1181,53 @@ class IpcHandlers {
 
                 console.log(`✅ C-Client IPC: User switched to: ${newUser.username}`);
 
-                // Close all existing tabs and create new default page
+                // Re-register with WebSocket service to ensure accurate counting (instead of disconnecting)
+                try {
+                    if (this.webSocketClient) {
+                        console.log(`🔄 C-Client IPC: Handling WebSocket connection during user switch...`);
+                        console.log(`🔍 C-Client IPC: WebSocket client details:`);
+                        console.log(`   WebSocket client available: ${!!this.webSocketClient}`);
+                        console.log(`   WebSocket connected: ${this.webSocketClient.isConnected}`);
+                        console.log(`   WebSocket ready state: ${this.webSocketClient.websocket ? this.webSocketClient.websocket.readyState : 'null'}`);
+                        console.log(`   Client ID: ${this.webSocketClient.clientId}`);
+
+                        if (this.webSocketClient.isConnected) {
+                            console.log(`🔄 C-Client IPC: Re-registering user with updated info after user switch...`);
+                            // Re-register instead of disconnecting to maintain session continuity
+                            const reRegisterResult = await this.webSocketClient.reRegisterUser();
+                            if (reRegisterResult) {
+                                console.log(`✅ C-Client IPC: Successfully re-registered after user switch`);
+                            } else {
+                                console.warn(`⚠️ C-Client IPC: Failed to re-register after user switch`);
+                            }
+                        } else {
+                            console.log(`ℹ️ C-Client IPC: No active WebSocket connection during user switch`);
+                            console.log(`🔌 C-Client IPC: WebSocket will connect when user accesses NSN page`);
+                        }
+                    } else {
+                        console.warn(`⚠️ C-Client IPC: WebSocket client not available`);
+                        console.log(`🔍 C-Client IPC: WebSocket client reference: ${this.webSocketClient}`);
+                    }
+                } catch (wsError) {
+                    console.error(`❌ C-Client IPC: Error during WebSocket disconnect:`, wsError);
+                    console.error(`🔍 C-Client IPC: Error details:`, wsError.stack);
+                    // Don't fail the user switch if WebSocket disconnect fails
+                }
+
+                // Clear all sessions and close all existing tabs before creating new default page
                 if (this.viewManager) {
                     try {
-                        console.log('🔄 C-Client IPC: Closing all tabs and creating new default page...');
+                        console.log('🔄 C-Client IPC: Clearing all sessions and closing all tabs...');
                         console.log('🔍 C-Client IPC: ViewManager available:', !!this.viewManager);
+                        console.log('🔍 C-Client IPC: clearAllSessions method available:', typeof this.viewManager.clearAllSessions);
                         console.log('🔍 C-Client IPC: closeAllTabsAndCreateDefault method available:', typeof this.viewManager.closeAllTabsAndCreateDefault);
 
+                        // First, clear all sessions (including persistent partitions)
+                        console.log('🧹 C-Client IPC: Clearing all sessions including persistent partitions...');
+                        await this.viewManager.clearAllSessions();
+                        console.log('✅ C-Client IPC: All sessions cleared');
+
+                        // Then close all tabs and create new default page
                         await this.viewManager.closeAllTabsAndCreateDefault();
                         console.log('✅ C-Client IPC: All tabs closed and new default page created');
                     } catch (viewError) {
@@ -1144,7 +1255,7 @@ class IpcHandlers {
 
                 // Show greeting dialog for the switched user
                 try {
-                    const UserRegistrationDialog = require('../nodeManager/userRegistrationDialog');
+                    const UserRegistrationDialog = require('../userManager/userRegistrationDialog');
                     const greetingDialog = new UserRegistrationDialog();
 
                     // Use the stored main window reference instead of event.sender
@@ -1172,7 +1283,7 @@ class IpcHandlers {
         // Handle new user registration request
         this.safeRegisterHandler('open-user-registration', async (event) => {
             try {
-                const UserRegistrationDialog = require('../nodeManager/userRegistrationDialog');
+                const UserRegistrationDialog = require('../userManager/userRegistrationDialog');
                 const userRegistrationDialog = new UserRegistrationDialog();
 
                 // Store the dialog instance in nodeManager so it can be closed later
@@ -1252,6 +1363,7 @@ class IpcHandlers {
             // User registration related
             'submit-username',
             'open-config-modal',
+            'open-network-config',
             'open-node-status-modal',
             'get-node-status',
             'open-user-selector',
@@ -1433,8 +1545,8 @@ class IpcHandlers {
         // Get URL parameter injection status
         this.safeRegisterHandler('get-url-injection-status', async (_, url) => {
             try {
-                const UrlParameterInjector = require('../utils/urlParameterInjector');
-                const urlInjector = new UrlParameterInjector(this.apiPort);
+                const { getUrlParameterInjector } = require('../utils/urlParameterInjector');
+                const urlInjector = getUrlParameterInjector(this.apiPort);
                 const status = urlInjector.getInjectionStatus(url);
 
                 return {
@@ -1443,6 +1555,109 @@ class IpcHandlers {
                 };
             } catch (error) {
                 console.error('Failed to get URL injection status:', error);
+                return { success: false, error: error.message };
+            }
+        });
+    }
+
+    /**
+     * Register network configuration handlers
+     */
+    registerNetworkConfigHandlers() {
+        // Get current network configuration
+        ipcMain.handle('get-network-config', async () => {
+            try {
+                const config = this.networkConfigManager.getConfigSummary();
+                console.log('🌐 IPC: Network config requested:', config);
+                return { success: true, config: config };
+            } catch (error) {
+                console.error('Failed to get network configuration:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Switch to local IP mode
+        ipcMain.handle('switch-to-local-mode', async () => {
+            try {
+                console.log('🔄 IPC: Switching to local IP mode...');
+                const result = await this.networkConfigManager.switchToLocalMode();
+                console.log('🌐 IPC: Local mode switch result:', result);
+                return result;
+            } catch (error) {
+                console.error('Failed to switch to local mode:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Switch to public IP mode
+        ipcMain.handle('switch-to-public-mode', async () => {
+            try {
+                console.log('🔄 IPC: Switching to public IP mode...');
+                const result = await this.networkConfigManager.switchToPublicMode();
+                console.log('🌐 IPC: Public mode switch result:', result);
+                return result;
+            } catch (error) {
+                console.error('Failed to switch to public mode:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Update IP addresses
+        ipcMain.handle('update-ip-addresses', async (event, { localIp, publicIp }) => {
+            try {
+                console.log(`🔄 IPC: Updating IP addresses - Local: ${localIp}, Public: ${publicIp}`);
+                const success = this.networkConfigManager.updateIpAddresses(localIp, publicIp);
+                return { success: success };
+            } catch (error) {
+                console.error('Failed to update IP addresses:', error);
+                return { success: false, error: error.message };
+            }
+        });
+    }
+
+    /**
+     * Register NSN response handlers
+     */
+    registerNSNResponseHandlers() {
+        // Handle NSN response processing
+        this.safeRegisterHandler('process-nsn-response', async (event, response) => {
+            try {
+                console.log('🔍 C-Client IPC: Processing NSN response:', response);
+
+                if (response.action === 'connect_websocket') {
+                    console.log('🔌 C-Client IPC: Received WebSocket connection request from NSN');
+                    console.log(`   WebSocket URL: ${response.websocket_url}`);
+                    console.log(`   User ID: ${response.user_id}`);
+                    console.log(`   Message: ${response.message}`);
+
+                    if (this.webSocketClient && response.websocket_url) {
+                        // Connect to NSN-provided WebSocket server
+                        const success = await this.webSocketClient.connectToNSNProvidedWebSocket(response.websocket_url);
+                        if (success) {
+                            console.log('✅ C-Client IPC: Successfully connected to NSN-provided WebSocket');
+                            return { success: true, message: 'WebSocket connected successfully' };
+                        } else {
+                            console.error('❌ C-Client IPC: Failed to connect to NSN-provided WebSocket');
+                            return { success: false, error: 'Failed to connect to WebSocket' };
+                        }
+                    } else {
+                        console.error('❌ C-Client IPC: Missing WebSocket client or URL');
+                        return { success: false, error: 'Missing WebSocket client or URL' };
+                    }
+                } else if (response.action === 'auto_login') {
+                    console.log('🔐 C-Client IPC: Received auto-login request from NSN');
+                    console.log(`   User ID: ${response.user_id}`);
+                    console.log(`   Session Data: ${JSON.stringify(response.session_data)}`);
+
+                    // Handle auto-login with session data
+                    // TODO: Implement auto-login logic here
+                    return { success: true, message: 'Auto-login request received' };
+                } else {
+                    console.log('ℹ️ C-Client IPC: Unknown NSN response action:', response.action);
+                    return { success: false, error: `Unknown action: ${response.action}` };
+                }
+            } catch (error) {
+                console.error('❌ C-Client IPC: Error processing NSN response:', error);
                 return { success: false, error: error.message };
             }
         });

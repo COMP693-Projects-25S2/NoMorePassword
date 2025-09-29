@@ -198,13 +198,17 @@ class ConfigModal {
         </div>
 
         <div class="modal-body">
-            <div class="config-option" id="node-status">
+            <div class="config-option" id="network-config">
                 <span class="config-option-icon">🌐</span>
+                <span class="config-option-text">Network Configuration</span>
+            </div>
+            <div class="config-option" id="node-status">
+                <span class="config-option-icon">📊</span>
                 <span class="config-option-text">Node Status</span>
             </div>
-            <div class="config-option" id="manual-connect">
+            <div class="config-option" id="b-client-config">
                 <span class="config-option-icon">🔗</span>
-                <span class="config-option-text">Manual Connect</span>
+                <span class="config-option-text">B-Client Configuration</span>
             </div>
             <div class="config-option" id="switch-client">
                 <span class="config-option-icon">🔄</span>
@@ -217,14 +221,6 @@ class ConfigModal {
             <div class="config-option" id="switch-user">
                 <span class="config-option-icon">👤</span>
                 <span class="config-option-text">Switch User</span>
-            </div>
-            <div class="config-option" id="clear-local-users">
-                <span class="config-option-icon">🗑️</span>
-                <span class="config-option-text">Clear Local Users</span>
-            </div>
-            <div class="config-option" id="clear-user-activities">
-                <span class="config-option-icon">📊</span>
-                <span class="config-option-text">Clear My Activities</span>
             </div>
             <div class="config-option" id="exit-app">
                 <span class="config-option-icon">🚪</span>
@@ -239,17 +235,31 @@ class ConfigModal {
         document.addEventListener('DOMContentLoaded', () => {
 
             const closeBtn = document.getElementById('closeBtn');
+            const networkConfigBtn = document.getElementById('network-config');
             const nodeStatusBtn = document.getElementById('node-status');
-            const manualConnectBtn = document.getElementById('manual-connect');
+            const bClientConfigBtn = document.getElementById('b-client-config');
             const switchClientBtn = document.getElementById('switch-client');
             const newUserBtn = document.getElementById('new-user');
             const switchUserBtn = document.getElementById('switch-user');
-            const clearUsersBtn = document.getElementById('clear-local-users');
-            const clearActivitiesBtn = document.getElementById('clear-user-activities');
             const exitAppBtn = document.getElementById('exit-app');
 
             // Handle close button click
             closeBtn.addEventListener('click', () => {
+                window.close();
+            });
+
+            // Handle network configuration button click
+            networkConfigBtn.addEventListener('click', async () => {
+                try {
+                    console.log('🌐 Network Configuration button clicked');
+                    const result = await ipcRenderer.invoke('open-network-config');
+                    console.log('🌐 Network Configuration IPC result:', result);
+                    if (!result.success) {
+                        console.error('Failed to open network config:', result.error);
+                    }
+                } catch (error) {
+                    console.error('Error opening network config:', error);
+                }
                 window.close();
             });
 
@@ -267,17 +277,17 @@ class ConfigModal {
                 }
             });
 
-            // Handle manual connect button click
-            manualConnectBtn.addEventListener('click', async () => {
+            // Handle B-Client configuration button click
+            bClientConfigBtn.addEventListener('click', async () => {
                 try {
-                    const result = await ipcRenderer.invoke('manual-connect-to-bclient');
-                    if (result.success) {
-                        alert('Successfully connected to B-Client!');
-                    } else {
-                        alert('Failed to connect to B-Client: ' + result.error);
+                    console.log('🔗 B-Client Configuration button clicked');
+                    const result = await ipcRenderer.invoke('show-b-client-config');
+                    console.log('🔗 B-Client Configuration IPC result:', result);
+                    if (!result.success) {
+                        console.error('Failed to open B-Client config:', result.error);
                     }
                 } catch (error) {
-                    alert('Error connecting to B-Client: ' + error.message);
+                    console.error('Error opening B-Client config:', error);
                 }
                 window.close();
             });
@@ -332,35 +342,6 @@ class ConfigModal {
                 window.close();
             });
 
-            // Handle clear local users
-            clearUsersBtn.addEventListener('click', async () => {
-                try {
-                    const result = await ipcRenderer.invoke('clear-local-users');
-                    if (result.success) {
-                        alert('Successfully cleared ' + result.changes + ' users from local_users table');
-                    } else {
-                        alert('Failed to clear local_users table: ' + result.error);
-                    }
-                } catch (error) {
-                    alert('Error clearing local_users table: ' + error.message);
-                }
-                window.close();
-            });
-
-            // Handle clear user activities
-            clearActivitiesBtn.addEventListener('click', async () => {
-                try {
-                    const result = await ipcRenderer.invoke('clear-current-user-activities');
-                    if (result.success) {
-                        alert('Successfully cleared ' + result.changes + ' activities for current user');
-                    } else {
-                        alert('Failed to clear user activities: ' + result.error);
-                    }
-                } catch (error) {
-                    alert('Error clearing user activities: ' + error.message);
-                }
-                window.close();
-            });
 
             // Handle exit app
             exitAppBtn.addEventListener('click', async () => {

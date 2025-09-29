@@ -50,7 +50,7 @@ class WindowManager {
         let interfaceFile;
 
         if (currentClient === 'b-client') {
-            interfaceFile = path.join(__dirname, '../../b-client/pages/dashboard.html');
+            interfaceFile = path.join(__dirname, '../../discard-b/pages/dashboard.html');
         } else {
             interfaceFile = path.join(__dirname, '../pages/index.html');
         }
@@ -106,18 +106,31 @@ class WindowManager {
 
         // Window close event
         this.mainWindow.on('close', async (event) => {
+            console.log('🚪 WindowManager: Main window closing, starting cleanup...');
 
-            // Clear all sessions and login status
+            // Clear all sessions and login status (same as user switch)
             if (this.viewManager) {
                 try {
+                    console.log('🧹 WindowManager: Clearing all sessions including persistent partitions...');
                     await this.viewManager.clearAllSessions();
+                    console.log('✅ WindowManager: All sessions cleared successfully');
                 } catch (error) {
-                    console.error('❌ Error clearing sessions:', error);
+                    console.error('❌ WindowManager: Error clearing sessions:', error);
+                    console.error('❌ WindowManager: Error details:', {
+                        message: error.message,
+                        stack: error.stack
+                    });
                 }
+            } else {
+                console.error('❌ WindowManager: ViewManager not available for session cleanup');
             }
 
             if (this.historyManager) {
-                this.historyManager.logShutdown('window-close');
+                try {
+                    this.historyManager.logShutdown('window-close');
+                } catch (error) {
+                    console.error('❌ WindowManager: Error logging shutdown:', error);
+                }
             }
         });
 

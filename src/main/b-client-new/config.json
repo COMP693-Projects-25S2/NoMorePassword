@@ -1,0 +1,52 @@
+{
+  "network": {
+    "use_public_ip": false,
+    "public_ip": "121.74.37.6",
+    "local_ip": "127.0.0.1"
+  },
+  "api": {
+    "nsn_port": 5000,
+    "c_client_port_range": {
+      "min": 3001,
+      "max": 6000
+    }
+  },
+  "targetWebsites": {
+    "localhost:5000": {
+      "name": "Local Development",
+      "homeUrl": "http://localhost:5000",
+      "realTitle": "NSN Local Development",
+      "images": {
+        "favicon": "/static/favicon.ico",
+        "logo": "/static/logo.png"
+      }
+    },
+    "comp639nsn.pythonanywhere.com": {
+      "name": "NSN Production",
+      "homeUrl": "https://comp639nsn.pythonanywhere.com",
+      "realTitle": "NSN Production Server",
+      "images": {
+        "favicon": "/static/favicon.ico",
+        "logo": "/static/logo.png"
+      }
+    }
+  },
+  "c_client_websocket": {
+    "enabled": true,
+    "server_host": "127.0.0.1",
+    "server_port": 8766,
+    "auto_reconnect": true,
+    "reconnect_interval": 30
+  },
+  "default": {
+    "autoRefreshIntervalMinutes": 30
+  },
+  "description": {
+    "use_public_ip": "Set to true to use public IP for testing, false for local testing",
+    "public_ip": "Your public IP address",
+    "local_ip": "Local IP address for testing",
+    "nsn_port": "NSN server port",
+    "c_client_port_range": "Range of ports for C-Client API servers"
+  },
+  "current_environment": "local"
+}

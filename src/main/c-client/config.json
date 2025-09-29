@@ -1,0 +1,24 @@
+{
+  "b_client_websocket": {
+    "enabled": true,
+    "host": "localhost",
+    "port": 8766,
+    "auto_reconnect": false,
+    "reconnect_interval": 60
+  },
+  "b_client_environment": {
+    "current": "local",
+    "local": {
+      "name": "Local B-Client",
+      "host": "localhost",
+      "port": 8766,
+      "description": "Connect to local B-Client for development"
+    },
+    "production": {
+      "name": "Custom Production B-Client",
+      "host": "custom-b-client.example.com",
+      "port": 9000,
+      "description": "Custom production server"
+    }
+  }
+}

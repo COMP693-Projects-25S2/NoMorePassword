@@ -58,25 +58,25 @@ class ClientSwitchManager {
                 }
 
                 // Update apiConfig with current environment
-                const apiConfig = require('../b-client/config/apiConfig');
+                const apiConfig = require('../discard-b/config/apiConfig');
                 apiConfig.setCurrentEnvironment(process.env.B_CLIENT_ENVIRONMENT);
                 console.log(`🔄 ClientSwitchManager: Updated apiConfig environment to: ${apiConfig.currentEnvironment}`);
 
                 // Start B-Client API server if not already running
                 if (!this.bClientApiServer) {
-                    const ApiServer = require('../b-client/api/apiServer');
+                    const ApiServer = require('../discard-b/api/apiServer');
                     this.bClientApiServer = new ApiServer(3000);
                     await this.bClientApiServer.start();
                     console.log('B-Client API server started for client switch');
                 }
 
                 // Create B-Client's own user manager
-                const BClientUserManager = require('../b-client/userManagement/bClientUserManager');
+                const BClientUserManager = require('../discard-b/userManagement/bClientUserManager');
                 const bClientUserManager = new BClientUserManager();
                 await bClientUserManager.initialize();
 
                 // Create B-Client's own window manager
-                const BClientWindowManager = require('../b-client/window/bClientWindowManager');
+                const BClientWindowManager = require('../discard-b/window/bClientWindowManager');
                 const bClientWindowManager = new BClientWindowManager(bClientUserManager, clientManager);
                 bClientWindowManager.mainWindow = mainWindow; // Set the main window reference
                 bClientWindowManager.sendToWindow = (channel, data) => {
@@ -86,16 +86,16 @@ class ClientSwitchManager {
                 };
 
                 // Create B-Client's own view manager with correct window manager
-                const BClientViewManager = require('../b-client/window/bClientViewManager');
+                const BClientViewManager = require('../discard-b/window/bClientViewManager');
                 const bClientViewManager = new BClientViewManager(bClientWindowManager, bClientUserManager);
 
-                const BClientIpcHandlers = require('../b-client/ipc/bClientIpcHandlers');
+                const BClientIpcHandlers = require('../discard-b/ipc/bClientIpcHandlers');
                 const newIpcHandlers = new BClientIpcHandlers(bClientViewManager, bClientUserManager, mainWindow, clientManager, context.mainApp);
                 console.log('🔄 ClientSwitchManager: B-Client IPC handlers initialized');
 
                 // Load B-Client interface
                 if (mainWindow && !mainWindow.isDestroyed()) {
-                    const dashboardPath = path.join(__dirname, '../b-client/pages/dashboard.html');
+                    const dashboardPath = path.join(__dirname, '../discard-b/pages/dashboard.html');
                     mainWindow.loadFile(dashboardPath);
                     console.log('🔄 ClientSwitchManager: B-Client interface loaded');
                 }
@@ -145,9 +145,8 @@ class ClientSwitchManager {
                 const cClientViewManager = new CClientViewManager(cClientWindowManager, cClientHistoryManager);
 
                 const CClientIpcHandlers = require('../c-client/ipc/ipcHandlers');
-                // Get distributed node manager from main app context
-                const distributedNodeManager = context.mainApp?.distributedNodeManager || null;
-                const newIpcHandlers = new CClientIpcHandlers(cClientViewManager, cClientHistoryManager, mainWindow, clientManager, distributedNodeManager);
+                // Node management functionality removed
+                const newIpcHandlers = new CClientIpcHandlers(cClientViewManager, cClientHistoryManager, mainWindow, clientManager, null);
                 console.log('🔄 ClientSwitchManager: C-Client IPC handlers initialized');
 
                 // Load C-Client interface using WindowManager
@@ -180,7 +179,7 @@ class ClientSwitchManager {
                                 const currentUser = db.prepare('SELECT username FROM local_users WHERE is_current = 1').get();
 
                                 if (currentUser && currentUser.username) {
-                                    const UserRegistrationDialog = require('../c-client/nodeManager/userRegistrationDialog');
+                                    const UserRegistrationDialog = require('../c-client/userManager/userRegistrationDialog');
                                     const userRegistrationDialog = new UserRegistrationDialog();
 
                                     if (mainWindow && !mainWindow.isDestroyed()) {

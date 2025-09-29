@@ -3,23 +3,28 @@ import os
 from flask import Flask, request, make_response
 from webapp import app
 
-# Load B-Client URL from environment variable
-def load_bclient_url():
-    """Load B-Client URL from environment variable"""
+# Load environment configuration
+def load_environment_config():
+    """Load environment configuration from config.env file"""
     env_file = os.path.join(os.path.dirname(__file__), 'config.env')
     if os.path.exists(env_file):
-        print(f"Loading B-Client URL from {env_file}")
+        print(f"Loading environment configuration from {env_file}")
         with open(env_file, 'r') as f:
             for line in f:
                 line = line.strip()
-                if line and not line.startswith('#') and line.startswith('B_CLIENT_API_URL='):
-                    url = line.split('=', 1)[1]
-                    os.environ['B_CLIENT_API_URL'] = url
-                    print(f"B-Client URL set to: {url}")
-                    break
+                if line and not line.startswith('#'):
+                    if '=' in line:
+                        key, value = line.split('=', 1)
+                        os.environ[key] = value
+                        if key == 'B_CLIENT_API_URL':
+                            print(f"B-Client URL set to: {value}")
+                        elif key == 'NSN_ENVIRONMENT':
+                            print(f"NSN Environment set to: {value}")
+    else:
+        print("No config.env file found, using default configuration")
 
-# Load B-Client URL
-load_bclient_url()
+# Load environment configuration
+load_environment_config()
 
 def find_free_port():
    """Find an available port automatically"""

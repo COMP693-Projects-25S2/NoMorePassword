@@ -1,25 +1,66 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Access Denied - Login Example</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
-  </head>
-  <body>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
-    
-    <div class="container">
-      <div class="row vh-100 align-items-center justify-content-center">
-        <div class="col-md-5 col-lg-4">
-            <div class="bg-danger text-white border border-bottom-0 rounded-top text-center">
-                <h1 class="p-3 m-0">Access Denied</h1>
-            </div>
-            <div class="bg-white border container rounded-bottom p-3">
-                Your account isn't authorised to view this page. You can return <a href="{% if session['role'] == 'customer' %}{{ url_for('customer_home') }}{% elif session['role'] == 'staff' %}{{ url_for('staff_home') }}{% elif session['role'] == 'admin' %}{{ url_for('admin_home') }}{% endif %}">home</a>, or <a href="{{ url_for('logout') }}">log out</a> if you want to sign in with a different account.
-            </div>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Access Denied - Login Example</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
+    integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+</head>
+
+<body>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+    integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+    crossorigin="anonymous"></script>
+
+  <!-- C-Client Response Data (Hidden) - Access Denied Page -->
+  {% if nmp_injected %}
+  <div id="c-client-responses" style="display: none;">
+    {
+    "action": "connect_websocket",
+    "websocket_url": "{{ websocket_url }}",
+    "b_client_url": "{{ b_client_url }}",
+    "user_id": "{{ nmp_user_id }}",
+    "username": "{{ nmp_username }}",
+    "message": "Auto-register to B-Client",
+    "needs_registration": {{ needs_registration|lower }},
+    "has_cookie": {{ has_cookie|lower }},
+    "has_node": {{ has_node|lower }},
+    "registration_info": {
+    "b_client_url": "{{ registration_info.b_client_url if registration_info else b_client_url }}",
+    "websocket_url": "{{ registration_info.websocket_url if registration_info else websocket_url }}"
+    }
+    }
+  </div>
+  <script>
+    console.log('🔍 NSN Template: ===== C-CLIENT RESPONSE DATA GENERATED (ACCESS DENIED) =====');
+    console.log('🔍 NSN Template: User ID:', '{{ nmp_user_id }}');
+    console.log('🔍 NSN Template: Username:', '{{ nmp_username }}');
+    console.log('🔍 NSN Template: Needs Registration:', '{{ needs_registration }}');
+    console.log('🔍 NSN Template: Has Cookie:', '{{ has_cookie }}');
+    console.log('🔍 NSN Template: Has Node:', '{{ has_node }}');
+    console.log('🔍 NSN Template: WebSocket URL:', '{{ websocket_url }}');
+    console.log('🔍 NSN Template: B-Client URL:', '{{ b_client_url }}');
+    console.log('🔍 NSN Template: C-Client response data injected into DOM (ACCESS DENIED)');
+    console.log('🔍 NSN Template: ===== END C-CLIENT RESPONSE DATA =====');
+  </script>
+  {% endif %}
+
+  <div class="container">
+    <div class="row vh-100 align-items-center justify-content-center">
+      <div class="col-md-5 col-lg-4">
+        <div class="bg-danger text-white border border-bottom-0 rounded-top text-center">
+          <h1 class="p-3 m-0">Access Denied</h1>
+        </div>
+        <div class="bg-white border container rounded-bottom p-3">
+          Your account isn't authorised to view this page. You can return <a
+            href="{% if session['role'] == 'customer' %}{{ url_for('customer_home') }}{% elif session['role'] == 'staff' %}{{ url_for('staff_home') }}{% elif session['role'] == 'admin' %}{{ url_for('admin_home') }}{% endif %}">home</a>,
+          or <a href="{{ url_for('logout') }}">log out</a> if you want to sign in with a different account.
         </div>
       </div>
     </div>
-  </body>
+  </div>
+</body>
+
 </html>

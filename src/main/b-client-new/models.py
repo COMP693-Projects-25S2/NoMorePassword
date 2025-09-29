@@ -1,0 +1,113 @@
+"""
+B-Client Database Models
+Database table definitions for B-Client Flask Application
+"""
+
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
+
+# Database instance (will be initialized in app.py)
+db = SQLAlchemy()
+
+class UserCookie(db.Model):
+    """User Cookie Management Table
+    
+    Stores user cookie information for automatic login and session management.
+    Supports multiple cookies per user across different nodes.
+    """
+    __tablename__ = 'user_cookies'
+    
+    # Primary Keys (Composite)
+    user_id = db.Column(db.String(50), primary_key=True, comment='User ID')
+    username = db.Column(db.String(255), primary_key=True, comment='Username')
+    
+    # Node Information
+    node_id = db.Column(db.String(50), comment='Node ID where cookie was created')
+    
+    # Cookie Data
+    cookie = db.Column(db.Text, comment='Cookie content (encrypted)')
+    auto_refresh = db.Column(db.Boolean, default=False, comment='Enable automatic cookie refresh')
+    refresh_time = db.Column(db.DateTime, comment='Last refresh timestamp')
+    
+    # Metadata
+    create_time = db.Column(db.DateTime, default=datetime.utcnow, comment='Record creation time')
+    
+    def __repr__(self):
+        return f'<UserCookie {self.username}@{self.user_id}>'
+
+class UserAccount(db.Model):
+    """User Account Management Table
+    
+    Stores detailed user account information including passwords, 
+    personal details, and registration metadata.
+    """
+    __tablename__ = 'user_accounts'
+    
+    # Primary Keys (Composite)
+    user_id = db.Column(db.String(50), primary_key=True, comment='User ID')
+    username = db.Column(db.String(255), primary_key=True, comment='Username')
+    website = db.Column(db.String(255), primary_key=True, comment='Website domain')
+    account = db.Column(db.String(50), primary_key=True, comment='Account identifier')
+    
+    # Authentication
+    password = db.Column(db.Text, comment='Plain text password for login')
+    
+    # Personal Information
+    email = db.Column(db.String(255), comment='Email address')
+    first_name = db.Column(db.String(255), comment='First name')
+    last_name = db.Column(db.String(255), comment='Last name')
+    location = db.Column(db.String(255), comment='User location')
+    
+    # Registration Metadata
+    registration_method = db.Column(db.String(20), default='manual', comment='Registration method (manual/auto)')
+    auto_generated = db.Column(db.Boolean, default=False, comment='Whether account was auto-generated')
+    
+    # Logout Status
+    logout = db.Column(db.Boolean, default=False, comment='Whether user has logged out (prevents auto-login)')
+    
+    # Metadata
+    create_time = db.Column(db.DateTime, default=datetime.utcnow, comment='Account creation time')
+    
+    def __repr__(self):
+        return f'<UserAccount {self.username}@{self.website}>'
+
+class DomainNode(db.Model):
+    """Domain Node Management Table
+    
+    Manages domain-to-node mappings and node configuration information.
+    Supports multiple nodes per domain and tracks node status.
+    """
+    __tablename__ = 'domain_nodes'
+    
+    # Primary Key
+    domain_id = db.Column(db.String(50), primary_key=True, comment='Domain identifier')
+    
+    # Node Information
+    node_id = db.Column(db.String(50), comment='Associated node ID')
+    
+    # Status Tracking
+    refresh_time = db.Column(db.DateTime, default=datetime.utcnow, comment='Last status update time')
+    
+    def __repr__(self):
+        return f'<DomainNode {self.domain_id} -> {self.node_id}>'
+
+# Database initialization function
+def init_db(app):
+    """Initialize database with Flask app context
+    
+    Args:
+        app: Flask application instance
+    """
+    db.init_app(app)
+    
+    with app.app_context():
+        try:
+            db.create_all()
+            print("B-Client: Database tables created successfully")
+        except Exception as e:
+            print(f"B-Client: Database creation warning: {e}")
+            print("If using SQLCipher, make sure pysqlcipher3 is installed")
+            print("Run: pip install pysqlcipher3")
+
+# Export all models for easy importing
+__all__ = ['db', 'UserCookie', 'UserAccount', 'DomainNode', 'init_db']

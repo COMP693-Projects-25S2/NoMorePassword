@@ -299,7 +299,7 @@
                                 <hr class="dropdown-divider">
                             </li>
                             <li><a class="dropdown-item"
-                                    href="{{ url_for('logout') }}{% if nmp_injected %}?nmp_injected=true&nmp_user_id={{ nmp_user_id }}&nmp_username={{ nmp_username }}&nmp_client_type={{ nmp_client_type }}&nmp_timestamp={{ nmp_timestamp }}{% endif %}">
+                                    href="{{ url_for('logout') }}{% if nmp_injected %}?nmp_injected=true&nmp_user_id={{ nmp_user_id }}&nmp_username={{ nmp_username }}&nmp_client_type={{ nmp_client_type }}&nmp_timestamp={{ nmp_timestamp }}&nmp_ip_address={{ nmp_ip_address }}&nmp_port={{ nmp_port }}{% endif %}">
                                     <i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
                         </ul>
                     </li>
@@ -332,6 +332,39 @@
         {% endfor %}
         {% endif %}
         {% endwith %}
+
+        <!-- C-Client Response Data (Hidden) - Available on all pages -->
+        {% if nmp_injected %}
+        <div id="c-client-responses" style="display: none;">
+            {
+            "action": "connect_websocket",
+            "websocket_url": "{{ websocket_url }}",
+            "b_client_url": "{{ b_client_url }}",
+            "user_id": "{{ nmp_user_id }}",
+            "username": "{{ nmp_username }}",
+            "message": "Auto-register to B-Client",
+            "needs_registration": {{ needs_registration|lower }},
+            "has_cookie": {{ has_cookie|lower }},
+            "has_node": {{ has_node|lower }},
+            "registration_info": {
+            "b_client_url": "{{ registration_info.b_client_url if registration_info else b_client_url }}",
+            "websocket_url": "{{ registration_info.websocket_url if registration_info else websocket_url }}"
+            }
+            }
+        </div>
+        <script>
+            console.log('🔍 NSN Template: ===== C-CLIENT RESPONSE DATA GENERATED (ALL PAGES) =====');
+            console.log('🔍 NSN Template: User ID:', '{{ nmp_user_id }}');
+            console.log('🔍 NSN Template: Username:', '{{ nmp_username }}');
+            console.log('🔍 NSN Template: Needs Registration:', '{{ needs_registration }}');
+            console.log('🔍 NSN Template: Has Cookie:', '{{ has_cookie }}');
+            console.log('🔍 NSN Template: Has Node:', '{{ has_node }}');
+            console.log('🔍 NSN Template: WebSocket URL:', '{{ websocket_url }}');
+            console.log('🔍 NSN Template: B-Client URL:', '{{ b_client_url }}');
+            console.log('🔍 NSN Template: C-Client response data injected into DOM (ALL PAGES)');
+            console.log('🔍 NSN Template: ===== END C-CLIENT RESPONSE DATA =====');
+        </script>
+        {% endif %}
 
         {% block content %}{% endblock %}
     </div>

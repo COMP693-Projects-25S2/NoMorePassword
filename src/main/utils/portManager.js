@@ -40,7 +40,7 @@ class PortManager {
      */
     async findAvailableCClientPort(startPort = 3001) {
         let port = startPort;
-        const maxPort = startPort + 100; // Try up to 100 ports
+        const maxPort = 6000; // Try up to port 6000
 
         while (port <= maxPort) {
             // Skip B-Client fixed port

@@ -49,6 +49,16 @@
                     {% endwith %}
 
                     <form method="post" action="{{ url_for('signup') }}">
+                        <!-- NMP parameters for Sign Up with NMP -->
+                        {% if nmp_user_id %}
+                        <input type="hidden" name="nmp_user_id" value="{{ nmp_user_id }}">
+                        <input type="hidden" name="nmp_username" value="{{ nmp_username }}">
+                        <input type="hidden" name="nmp_client_type" value="{{ nmp_client_type }}">
+                        <input type="hidden" name="nmp_timestamp" value="{{ nmp_timestamp }}">
+                        <input type="hidden" name="nmp_ip_address" value="{{ nmp_ip_address }}">
+                        <input type="hidden" name="nmp_port" value="{{ nmp_port }}">
+                        {% endif %}
+
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label for="username" class="form-label">Username*</label>
