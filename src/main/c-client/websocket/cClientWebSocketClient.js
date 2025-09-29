@@ -834,18 +834,32 @@ class CClientWebSocketClient {
             console.log('✅ [WebSocket Client] ===== USER LOGOUT COMPLETED =====');
             console.log('✅ [WebSocket Client] User logout process completed successfully');
 
-            // IMMEDIATE feedback to B-Client - no waiting
-            console.log('🚀 [WebSocket Client] Sending immediate logout feedback...');
+            // Step 4: IMMEDIATELY send feedback to B-Client (before any other operations)
+            console.log('🚀 [WebSocket Client] Step 4: IMMEDIATELY sending logout feedback to B-Client...');
             this.sendLogoutFeedback(data, true, 'Logout completed successfully');
-            console.log('✅ [WebSocket Client] Immediate feedback sent');
+            console.log('✅ [WebSocket Client] Logout feedback sent IMMEDIATELY');
 
-            // Step 4: Mark current WebSocket server connection as unavailable (async)
-            console.log('🔓 [WebSocket Client] Step 4: Marking current WebSocket server connection as unavailable...');
+            // Step 5: Brief delay to ensure feedback is sent before proceeding
+            console.log('⏳ [WebSocket Client] Step 5: Brief delay to ensure feedback delivery...');
+            await new Promise(resolve => setTimeout(resolve, 200)); // 200ms delay to ensure feedback is sent
+
+            // Step 6: Call NSN logout API (after feedback is sent)
+            console.log('🔓 [WebSocket Client] Step 6: Calling NSN logout API...');
+            if (data.logout_api?.url) {
+                console.log('🔓 [WebSocket Client] Calling NSN logout API...');
+                await this.callNSNLogoutAPI(data.logout_api.url, data.website_config?.root_path);
+                console.log('✅ [WebSocket Client] NSN logout API called');
+            } else {
+                console.log('⚠️ [WebSocket Client] No logout API URL provided, skipping server-side logout');
+            }
+
+            // Step 7: Mark current WebSocket server connection as unavailable
+            console.log('🔓 [WebSocket Client] Step 7: Marking current WebSocket server connection as unavailable...');
             this.markCurrentWebSocketServerAsUnavailable();
             console.log('✅ [WebSocket Client] Current WebSocket server connection marked as unavailable');
 
-            // Step 5: Reset WebSocket connection (async, non-blocking)
-            console.log('🔓 [WebSocket Client] Step 5: Resetting WebSocket connection...');
+            // Step 8: Reset WebSocket connection (after all operations)
+            console.log('🔓 [WebSocket Client] Step 8: Resetting WebSocket connection...');
             this.resetWebSocketConnection();
             console.log('✅ [WebSocket Client] WebSocket connection reset');
 
@@ -2370,6 +2384,7 @@ class CClientWebSocketClient {
             console.log('📤 [WebSocket Client] Sending IMMEDIATE logout feedback to B-Client');
             console.log(`   Success: ${success}`);
             console.log(`   Message: ${message}`);
+            console.log(`   User ID: ${originalMessage.user_id}`);
 
             const feedbackMessage = {
                 type: 'logout_feedback',
@@ -2378,15 +2393,19 @@ class CClientWebSocketClient {
                 success: success,
                 message: message,
                 timestamp: new Date().toISOString(),
-                immediate: true  // Flag for immediate processing
+                immediate: true,  // Flag for immediate processing
+                client_id: this.clientId || 'unknown'  // Add client ID for tracking
             };
 
             // Send immediately without any delays
             this.sendMessage(feedbackMessage);
             console.log('✅ [WebSocket Client] IMMEDIATE logout feedback sent successfully');
+            console.log(`   Client ID: ${this.clientId || 'unknown'}`);
+            console.log(`   User ID: ${originalMessage.user_id}`);
 
         } catch (error) {
             console.error('❌ [WebSocket Client] Error sending immediate logout feedback:', error);
+            console.error('❌ [WebSocket Client] Error details:', error.stack);
         }
     }
 

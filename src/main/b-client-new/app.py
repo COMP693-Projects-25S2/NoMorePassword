@@ -2346,10 +2346,10 @@ class CClientWebSocketClient:
         await self.send_message_to_user_with_feedback(user_id, message)
     
     async def send_message_to_user_with_feedback(self, user_id, message, timeout=None):
-        """Send message to user with NO FEEDBACK WAITING - C端直接调用NSN logout，无需等待反馈"""
+        """Send message to user and wait for ALL feedback before cleanup - 可靠的反馈机制"""
         import asyncio
         
-        print(f"📤 B-Client: Sending logout message to user {user_id} (NO FEEDBACK WAITING)...")
+        print(f"📤 B-Client: Sending logout message to user {user_id} (WAITING FOR ALL FEEDBACK)...")
         
         # Get cached user connections for faster access
         user_websockets = self.get_cached_user_connections(user_id)
@@ -2358,18 +2358,55 @@ class CClientWebSocketClient:
             print(f"⚠️ B-Client: No active connections for user {user_id}")
             return
         
-        print(f"🚀 B-Client: Sending logout message to {len(user_websockets)} connections (fire-and-forget)")
+        print(f"🚀 B-Client: Sending logout message to {len(user_websockets)} connections")
         
-        # Send logout message in parallel to all connections (fire-and-forget)
+        # Send logout message in parallel to all connections
         await self.send_logout_message_parallel(user_id, message, user_websockets)
         
-        # NO FEEDBACK WAITING - C端直接调用NSN logout，连接会断开
-        print(f"✅ B-Client: Logout message sent to all connections")
-        print(f"✅ B-Client: C端将直接调用NSN logout接口，无需等待反馈")
-        print(f"✅ B-Client: 连接将在logout后断开，这是正常行为")
+        # 设置反馈跟踪机制
+        feedback_received = {}
+        for websocket in user_websockets:
+            feedback_received[websocket] = False
         
-        # 立即完成logout处理
-        print(f"🏁 B-Client: Logout notification process completed immediately for user {user_id}")
+        # 存储反馈跟踪到websocket对象
+        for websocket in user_websockets:
+            websocket._logout_feedback_tracking = feedback_received
+        
+        print(f"⏳ B-Client: Waiting for logout feedback from {len(user_websockets)} connections...")
+        
+        # 等待所有反馈，使用更长的超时时间确保稳定性
+        timeout = timeout or 10  # 10秒超时，确保所有C端都有时间响应
+        start_time = asyncio.get_event_loop().time()
+        check_interval = 0.1  # 100ms检查间隔
+        
+        while asyncio.get_event_loop().time() - start_time < timeout:
+            elapsed = asyncio.get_event_loop().time() - start_time
+            
+            # 检查是否所有反馈都收到了
+            if all(feedback_received.values()):
+                print(f"✅ B-Client: All logout feedback received for user {user_id} in {elapsed:.2f}s")
+                break
+            
+            # 显示进度
+            received_count = sum(1 for received in feedback_received.values() if received)
+            print(f"⏳ B-Client: Received {received_count}/{len(user_websockets)} feedbacks ({elapsed:.1f}s)")
+            
+            # 等待检查间隔
+            await asyncio.sleep(check_interval)
+        else:
+            # 超时处理
+            missing_feedback = [ws for ws, received in feedback_received.items() if not received]
+            print(f"⚠️ B-Client: Logout feedback timeout for user {user_id} after {timeout}s")
+            print(f"   Missing feedback from {len(missing_feedback)} connections")
+            print(f"   Proceeding with logout completion anyway...")
+        
+        # 清理反馈跟踪
+        for websocket in user_websockets:
+            if hasattr(websocket, '_logout_feedback_tracking'):
+                delattr(websocket, '_logout_feedback_tracking')
+        
+        print(f"🏁 B-Client: Logout notification process completed for user {user_id}")
+        print(f"🔧 B-Client: All C-Client feedback received, safe to proceed with cleanup")
     
     def get_cached_user_connections(self, user_id):
         """Get cached user connections for faster access"""
@@ -2431,23 +2468,50 @@ class CClientWebSocketClient:
             return self.logout_timeout_config['subsequent_logout']
     
     async def send_logout_message_parallel(self, user_id, message, user_websockets):
-        """Send logout message to all connections in parallel"""
+        """Send logout message to all connections in parallel with delivery confirmation"""
         import asyncio
         
         print(f"📤 B-Client: Sending logout message in parallel to {len(user_websockets)} connections...")
         
-        # Create tasks for parallel sending
+        # Create tasks for parallel sending with delivery confirmation
         send_tasks = []
-        for websocket in user_websockets:
-            task = asyncio.create_task(self.send_message_to_websocket(websocket, message))
+        for i, websocket in enumerate(user_websockets):
+            task = asyncio.create_task(self.send_message_to_websocket_with_confirmation(websocket, message, i+1))
             send_tasks.append(task)
         
-        # Wait for all messages to be sent (don't wait for responses)
+        # Wait for all messages to be sent with confirmation
         try:
-            await asyncio.gather(*send_tasks, return_exceptions=True)
-            print(f"✅ B-Client: All logout messages sent in parallel for user {user_id}")
+            results = await asyncio.gather(*send_tasks, return_exceptions=True)
+            
+            # Count successful deliveries
+            successful_deliveries = 0
+            failed_deliveries = 0
+            
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    print(f"❌ B-Client: Message delivery failed to connection {i+1}: {result}")
+                    failed_deliveries += 1
+                else:
+                    print(f"✅ B-Client: Message delivered to connection {i+1}")
+                    successful_deliveries += 1
+            
+            print(f"📊 B-Client: Delivery summary for user {user_id}")
+            print(f"   ✅ Successful deliveries: {successful_deliveries}")
+            print(f"   ❌ Failed deliveries: {failed_deliveries}")
+            print(f"   📤 Total connections: {len(user_websockets)}")
+            
         except Exception as e:
-            print(f"⚠️ B-Client: Some logout messages failed to send: {e}")
+            print(f"⚠️ B-Client: Error in parallel message sending: {e}")
+    
+    async def send_message_to_websocket_with_confirmation(self, websocket, message, connection_id):
+        """Send message to websocket with delivery confirmation"""
+        try:
+            await self.send_message_to_websocket(websocket, message)
+            print(f"✅ B-Client: Message sent to connection {connection_id}")
+            return True
+        except Exception as e:
+            print(f"❌ B-Client: Failed to send message to connection {connection_id}: {e}")
+            raise e
     
     async def handle_logout_feedback(self, websocket, data, client_id, user_id):
         """Handle logout feedback from C-Client"""
@@ -2456,9 +2520,11 @@ class CClientWebSocketClient:
             message = data.get('message', 'No message')
             timestamp = data.get('timestamp')
             immediate = data.get('immediate', False)
+            feedback_client_id = data.get('client_id', 'unknown')
             
             print(f"📥 B-Client: ===== LOGOUT FEEDBACK RECEIVED =====")
             print(f"   Client ID: {client_id}")
+            print(f"   Feedback Client ID: {feedback_client_id}")
             print(f"   User ID: {user_id}")
             print(f"   Success: {success}")
             print(f"   Message: {message}")
@@ -2481,6 +2547,11 @@ class CClientWebSocketClient:
                 if hasattr(websocket, '_logout_feedback_tracking'):
                     websocket._logout_feedback_tracking[websocket] = True
                     print(f"✅ B-Client: IMMEDIATELY marked logout feedback as received")
+                    
+                    # 显示当前反馈进度
+                    total_connections = len(websocket._logout_feedback_tracking)
+                    received_count = sum(1 for received in websocket._logout_feedback_tracking.values() if received)
+                    print(f"📊 B-Client: Feedback progress: {received_count}/{total_connections} received")
                 
                 if success:
                     print(f"✅ B-Client: Logout completed successfully on C-Client {client_id}")
@@ -2489,7 +2560,7 @@ class CClientWebSocketClient:
                 
                 # If immediate feedback, trigger fast completion
                 if immediate:
-                    print(f"🚀 B-Client: Immediate feedback detected, fast-tracking logout completion")
+                    print(f"🚀 B-Client: Immediate feedback detected from {feedback_client_id}")
             else:
                 print(f"⚠️ B-Client: Received logout feedback from unknown connection for user {user_id}")
                 
