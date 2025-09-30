@@ -1,4 +1,6 @@
 
+console.log('🎯 Renderer: Script loaded');
+
 let tabs = {};
 let currentTabId = null;
 let pendingTitles = {};
@@ -32,75 +34,78 @@ window.electronAPI.onCloseAllTabs(() => {
 
 
 
-function createTab(url = 'https://www.google.com') {
-    window.electronAPI.createTab(url).then(({ id, title }) => {
-        const tabEl = document.createElement('div');
-        tabEl.className = 'tab';
-        tabEl.dataset.id = id;
-
-        const titleNode = document.createElement('span');
-        titleNode.className = 'title';
-        titleNode.textContent = title;
-
-        const closeBtn = document.createElement('span');
-        closeBtn.className = 'close';
-        closeBtn.textContent = '×';
-        closeBtn.onclick = (e) => {
-            e.stopPropagation();
-            closeTab(id);
-        };
-
-        tabEl.appendChild(titleNode);
-        tabEl.appendChild(closeBtn);
-        tabsContainer.appendChild(tabEl);
-
-        tabEl.onclick = () => switchToTab(id);
-
-        tabs[id] = { el: tabEl, title, titleNode, closeBtn };
-
-        if (pendingTitles[id]) {
-            titleNode.textContent = pendingTitles[id];
-            delete pendingTitles[id];
+function createTab(url = 'about:blank') {
+    // Just call the IPC, let TabManager handle UI creation through tab-created event
+    window.electronAPI.createTab(url).then((result) => {
+        if (result && result.success && result.id) {
+            console.log(`✅ Tab creation request sent for tab ${result.id}`);
+            // Tab UI will be created by the onTabCreated listener
+        } else {
+            console.error('Failed to create tab:', result?.error || 'Unknown error');
         }
-
-        currentTabId = id;
-        activateTab(id);
-        updateAddressFromTab(id);
+    }).catch((error) => {
+        console.error('Error creating tab:', error);
     });
 }
 
 // 新增：创建历史记录标签页
 function createHistoryTab() {
-    window.electronAPI.createHistoryTab().then(({ id, title }) => {
-        const tabEl = document.createElement('div');
-        tabEl.className = 'tab history-tab'; // 添加特殊样式类
-        tabEl.dataset.id = id;
+    window.electronAPI.createHistoryTab().then((result) => {
+        if (result && result.success) {
+            const { id, title } = result;
+            const tabEl = document.createElement('div');
+            tabEl.className = 'tab history-tab'; // 添加特殊样式类
+            tabEl.dataset.id = id;
 
-        const titleNode = document.createElement('span');
-        titleNode.className = 'title';
-        titleNode.textContent = title;
+            const titleNode = document.createElement('span');
+            titleNode.className = 'title';
+            titleNode.textContent = title || 'History'; // Fallback to 'History' if title is missing
 
-        const closeBtn = document.createElement('span');
-        closeBtn.className = 'close';
-        closeBtn.textContent = '×';
-        closeBtn.onclick = (e) => {
-            e.stopPropagation();
-            closeTab(id);
-        };
+            const closeBtn = document.createElement('span');
+            closeBtn.className = 'close';
+            closeBtn.textContent = '×';
+            closeBtn.onclick = (e) => {
+                e.stopPropagation();
+                closeTab(id);
+            };
 
-        tabEl.appendChild(titleNode);
-        tabEl.appendChild(closeBtn);
-        tabsContainer.appendChild(tabEl);
+            tabEl.appendChild(titleNode);
+            tabEl.appendChild(closeBtn);
+            tabsContainer.appendChild(tabEl);
 
-        tabEl.onclick = () => switchToTab(id);
+            tabEl.onclick = () => switchToTab(id);
 
-        tabs[id] = { el: tabEl, title, titleNode, closeBtn, isHistory: true };
+            tabs[id] = { el: tabEl, title: title || 'History', titleNode, closeBtn, isHistory: true };
 
-        currentTabId = id;
-        activateTab(id);
+            currentTabId = id;
+            activateTab(id);
 
-        // 历史标签页不需要地址栏更新
-        addressBar.value = 'browser://history';
+            // 历史标签页不需要地址栏更新
+            addressBar.value = 'browser://history';
+            console.log('✅ 历史标签页已创建并激活:', id);
+        } else {
+            console.error('❌ 创建历史标签页失败:', result?.error || 'Unknown error');
+            alert('Failed to create history tab: ' + (result?.error || 'Unknown error'));
+        }
+    }).catch((error) => {
+        console.error('❌ 创建历史标签页时发生错误:', error);
+        alert('Failed to create history tab: ' + error.message);
+    });
+}
+
+function navigateToUrl(url) {
+    window.electronAPI.navigateTo(url).then((result) => {
+        if (result && result.success) {
+            console.log('✅ Navigation successful:', url);
+            // Don't update address bar here - let updateAddressFromTab handle it
+            // This ensures the address bar shows the full URL with NMP parameters
+        } else {
+            console.error('❌ Navigation failed:', result?.error || 'Unknown error');
+            alert('Failed to navigate: ' + (result?.error || 'Unknown error'));
+        }
+    }).catch((error) => {
+        console.error('❌ Navigation error:', error);
+        alert('Navigation error: ' + error.message);
     });
 }
 
@@ -109,8 +114,8 @@ function switchToTab(tabId) {
     if (currentTabId === tabId) return;
 
     // Call main process to switch tab
-    window.electronAPI.switchTab(tabId).then((success) => {
-        if (success) {
+    window.electronAPI.switchTab(tabId).then((result) => {
+        if (result && result.success) {
             // Update tab states in renderer
             if (currentTabId && tabs[currentTabId]) {
                 tabs[currentTabId].el.classList.remove('active');
@@ -123,7 +128,7 @@ function switchToTab(tabId) {
             updateAddressFromTab(tabId);
             console.log(`✅ Switched to tab ${tabId}`);
         } else {
-            console.error(`Failed to switch to tab ${tabId}`);
+            console.error(`Failed to switch to tab ${tabId}:`, result?.error || 'Unknown error');
         }
     }).catch((error) => {
         console.error(`Error switching to tab ${tabId}:`, error);
@@ -137,23 +142,37 @@ function activateTab(id) {
 }
 
 function closeTab(id) {
-    window.electronAPI.closeTab(id).then((newActiveId) => {
-        tabs[id]?.el.remove();
-        delete tabs[id];
-        if (newActiveId) {
-            activateTab(newActiveId);
-            currentTabId = newActiveId;
+    window.electronAPI.closeTab(id).then((result) => {
+        if (result && result.success) {
+            // Remove tab UI
+            tabs[id]?.el.remove();
+            delete tabs[id];
 
-            // 检查新活动标签页的类型
-            if (tabs[newActiveId] && tabs[newActiveId].isHistory) {
-                addressBar.value = 'browser://history';
+            // Check if there's a new active tab
+            const remainingTabs = Object.keys(tabs);
+            if (remainingTabs.length > 0) {
+                // Find the next tab to activate
+                const nextTabId = remainingTabs.find(tabId => parseInt(tabId) > parseInt(id)) || remainingTabs[0];
+                if (nextTabId) {
+                    activateTab(nextTabId);
+                    currentTabId = nextTabId;
+
+                    // 检查新活动标签页的类型
+                    if (tabs[nextTabId] && tabs[nextTabId].isHistory) {
+                        addressBar.value = 'browser://history';
+                    } else {
+                        updateAddressFromTab(nextTabId);
+                    }
+                }
             } else {
-                updateAddressFromTab(newActiveId);
+                currentTabId = null;
+                addressBar.value = '';
             }
         } else {
-            currentTabId = null;
-            addressBar.value = '';
+            console.error('Failed to close tab:', result?.error || 'Unknown error');
         }
+    }).catch((error) => {
+        console.error('Error closing tab:', error);
     });
 }
 
@@ -239,7 +258,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const validUrl = url.startsWith('http') ? url : `https://${url}`;
-            createTab(validUrl);
+
+            // 如果有当前标签页，在当前标签页中导航；否则创建新标签页
+            if (currentTabId && tabs[currentTabId]) {
+                navigateToUrl(validUrl);
+            } else {
+                createTab(validUrl);
+            }
         }
     });
 
@@ -261,16 +286,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-    // Init tab event listener - create initial tab when main process is ready
-    window.electronAPI.onInitTab(() => {
-        console.log('Received init-tab event from main process');
-        console.log('Creating initial tab...');
-        createTab('https://www.google.com');
-    });
+    // Initial tab is now created directly by TabManager in main process
+    // No need to listen for init-tab event anymore
 
-    // 监听自动创建的标签页
-    window.electronAPI.onAutoTabCreated((_, { id, title, url }) => {
-        console.log('检测到自动创建的标签页:', { id, title, url });
+    // 监听TabManager创建的标签页 (统一的通知机制)
+    console.log('🎯 Renderer: Setting up onTabCreated listener');
+    window.electronAPI.onTabCreated((_, { id, url, title, metadata }) => {
+        console.log('🔔 TabManager通知: 标签页已创建:', { id, url, title, metadata });
+
+        // 检查是否已经存在该标签页的UI
+        if (tabs[id]) {
+            console.log(`⚠️ Tab ${id} UI already exists, updating instead of creating`);
+            // 更新现有标签页
+            if (tabs[id].titleNode) {
+                tabs[id].titleNode.textContent = title || 'Loading...';
+            }
+            tabs[id].title = title || 'Loading...';
+            return;
+        }
 
         // 创建标签页元素
         const tabEl = document.createElement('div');
@@ -279,7 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const titleNode = document.createElement('span');
         titleNode.className = 'title';
-        titleNode.textContent = title;
+        titleNode.textContent = title || 'Loading...';
 
         const closeBtn = document.createElement('span');
         closeBtn.className = 'close';
@@ -295,14 +328,66 @@ document.addEventListener('DOMContentLoaded', () => {
 
         tabEl.onclick = () => switchToTab(id);
 
-        tabs[id] = { el: tabEl, title, titleNode, closeBtn };
+        tabs[id] = { el: tabEl, title: title || 'Loading...', titleNode, closeBtn, metadata };
 
-        // 激活新标签页
-        currentTabId = id;
-        activateTab(id);
-        updateAddressFromTab(id);
+        // 不要在这里自动激活tab，让TabManager统一管理激活状态
+        // TabManager会通过tab-switched事件来通知激活状态
 
-        console.log('✅ 自动创建的标签页已添加到界面');
+        console.log('✅ TabManager创建的标签页已添加到界面');
+    });
+
+    // 监听标签页标题更新
+    window.electronAPI.onTabTitleUpdated((_, { id, title }) => {
+        console.log('🔔 TabManager通知: 标签页标题已更新:', { id, title });
+
+        // 更新标签页标题
+        if (tabs[id] && tabs[id].titleNode) {
+            tabs[id].titleNode.textContent = title;
+            tabs[id].title = title;
+            console.log(`✅ 标签页 ${id} 标题已更新为: ${title}`);
+        } else {
+            console.warn(`⚠️ 标签页 ${id} 不存在，无法更新标题`);
+        }
+    });
+
+    // 监听TabManager关闭的标签页
+    window.electronAPI.onTabClosed((_, { id }) => {
+        console.log('🔔 TabManager通知: 标签页已关闭:', { id });
+
+        // 移除标签页UI
+        if (tabs[id]) {
+            tabs[id].el.remove();
+            delete tabs[id];
+
+            // 如果关闭的是当前标签页，切换到下一个可用的标签页
+            if (currentTabId === id) {
+                const remainingTabs = Object.keys(tabs);
+                if (remainingTabs.length > 0) {
+                    const nextTabId = remainingTabs[0];
+                    currentTabId = nextTabId;
+                    activateTab(nextTabId);
+                    updateAddressFromTab(nextTabId);
+                } else {
+                    currentTabId = null;
+                    addressBar.value = '';
+                }
+            }
+        }
+
+        console.log('✅ TabManager关闭的标签页已从界面移除');
+    });
+
+    // 监听TabManager切换的标签页
+    window.electronAPI.onTabSwitched((_, { id }) => {
+        console.log('🔔 TabManager通知: 标签页已切换:', { id });
+
+        // 更新当前标签页ID和聚焦状态
+        if (tabs[id]) {
+            currentTabId = id;
+            activateTab(id);
+            updateAddressFromTab(id);
+            console.log('✅ Switched to tab', id);
+        }
     });
 
     // 启动时创建第一个标签页 - 等待init-tab事件

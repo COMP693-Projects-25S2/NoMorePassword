@@ -51,8 +51,11 @@ contextBridge.exposeInMainWorld(
 
     // Event listeners
     onTabTitleUpdated: (callback) => ipcRenderer.on('tab-title-updated', callback),
+    onTabCreated: (callback) => ipcRenderer.on('tab-created', callback),
+    onTabClosed: (callback) => ipcRenderer.on('tab-closed', callback),
+    onTabSwitched: (callback) => ipcRenderer.on('tab-switched', callback),
     onAutoTabCreated: (callback) => ipcRenderer.on('auto-tab-created', callback),
-    onInitTab: (callback) => ipcRenderer.on('init-tab', callback),
+    // onInitTab removed - initial tab is now created directly by TabManager
     onShowNotification: (callback) => ipcRenderer.on('show-notification', callback),
     onCloseAllTabs: (callback) => ipcRenderer.on('close-all-tabs', callback),
 

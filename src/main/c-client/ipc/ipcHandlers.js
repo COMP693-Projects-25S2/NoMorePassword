@@ -3,7 +3,7 @@ const NetworkConfigManager = require('../config/networkConfigManager');
 
 // IPC handlers
 class IpcHandlers {
-    constructor(viewManager, historyManager, mainWindow = null, clientManager = null, nodeManager = null, startupValidator = null, apiPort = null, webSocketClient = null) {
+    constructor(viewManager, historyManager, mainWindow = null, clientManager = null, nodeManager = null, startupValidator = null, apiPort = null, webSocketClient = null, tabManager = null) {
         this.viewManager = viewManager;
         this.historyManager = historyManager;
         this.mainWindow = mainWindow; // Store reference to main window
@@ -12,6 +12,7 @@ class IpcHandlers {
         this.startupValidator = startupValidator; // Store reference to startup validator
         this.apiPort = apiPort; // Store API port for C-Client API calls
         this.webSocketClient = webSocketClient; // Store reference to WebSocket client
+        this.tabManager = tabManager; // Store reference to unified TabManager
         this.networkConfigManager = new NetworkConfigManager(); // Network configuration manager
         this.registerHandlers();
     }
@@ -75,8 +76,8 @@ class IpcHandlers {
             }
 
             // Find the current NSN tab and reload it with the cookie
-            if (this.viewManager) {
-                const nsnTab = this.viewManager.findNSNTab();
+            if (this.tabManager) {
+                const nsnTab = this.tabManager.findNSNTab();
                 if (nsnTab) {
                     console.log(`🔄 C-Client IPC: Found NSN tab, reloading with cookie for user: ${username}`);
 
@@ -117,17 +118,17 @@ class IpcHandlers {
                     // Use NSN URL from the originating B-Client if available
                     if (nsn_url) {
                         console.log(`🔄 C-Client IPC: Creating new tab with NSN URL from originating B-Client: ${nsn_url}`);
-                        this.viewManager.createViewWithCookie(nsn_url, cookie, username, nsn_url);
+                        this.tabManager.createViewWithCookie(nsn_url, cookie, username, nsn_url);
                     } else {
                         // Fallback to configuration (should be avoided in multi-tenant scenarios)
                         const apiConfig = require('../config/apiConfig');
                         const nsnConfig = apiConfig.getCurrentNsnWebsite();
                         console.warn(`🔄 C-Client IPC: No NSN URL from B-Client, using configuration: ${nsnConfig.url}`);
-                        this.viewManager.createViewWithCookie(nsnConfig.url, cookie, username);
+                        this.tabManager.createViewWithCookie(nsnConfig.url, cookie, username);
                     }
                 }
             } else {
-                console.error(`❌ C-Client IPC: ViewManager not available for reload with cookie`);
+                console.error(`❌ C-Client IPC: TabManager not available for reload with cookie`);
             }
         } catch (error) {
             console.error(`❌ C-Client IPC: Error handling reload with cookie:`, error);
@@ -162,110 +163,122 @@ class IpcHandlers {
      * Register tab-related handlers
      */
     registerTabHandlers() {
-        // Create new tab
-        this.safeRegisterHandler('create-tab', async (_, url) => {
+        // Create new tab - using unified TabManager
+        this.safeRegisterHandler('create-tab', async (_, url, options = {}) => {
             try {
-                console.log(`\n📝 C-Client IPC: Creating new tab with URL: ${url}`);
+                console.log(`\n📝 C-Client IPC: Creating synchronized tab with URL: ${url}`);
 
-                // Get global URL parameter injector instance
-                const { getUrlParameterInjector } = require('../utils/urlParameterInjector');
-                const urlInjector = getUrlParameterInjector(this.apiPort);
-
-                // Process URL and inject parameters if needed
-                console.log('🔧 C-Client IPC: Processing URL for parameter injection...');
-                const processedUrl = await urlInjector.processUrl(url);
-
-                console.log(`🔧 C-Client IPC: URL processing completed:`);
-                console.log(`   Input URL:  ${url}`);
-                console.log(`   Output URL: ${processedUrl}`);
-
-                // Check if viewManager is available
-                console.log(`🔍 C-Client IPC: ViewManager status: ${!!this.viewManager}`);
-                console.log(`🔍 C-Client IPC: ViewManager type: ${typeof this.viewManager}`);
-                if (this.viewManager) {
-                    console.log(`🔍 C-Client IPC: ViewManager methods: ${Object.getOwnPropertyNames(Object.getPrototypeOf(this.viewManager))}`);
+                if (!this.tabManager) {
+                    console.error('❌ C-Client IPC: TabManager not available for creating tab');
+                    return { success: false, error: 'TabManager not available' };
                 }
 
-                if (!this.viewManager) {
-                    console.error('❌ C-Client IPC: ViewManager not available for creating browser view');
-                    return { success: false, error: 'ViewManager not available' };
-                }
-
-                const view = await this.viewManager.createBrowserView(processedUrl);
-                if (view && url && this.historyManager) {
+                // Create synchronized tab
+                const result = await this.tabManager.createTab(url, options);
+                if (result && result.id && this.historyManager) {
                     // Record visit start (use original URL for history)
-                    const viewId = view.id || Date.now(); // Ensure viewId exists
-                    const record = await this.historyManager.recordVisit(url, viewId);
+                    const record = await this.historyManager.recordVisit(url, result.id);
                     if (record) {
-                        console.log(`📊 C-Client IPC: Visit recorded for view ${viewId}`);
+                        console.log(`📊 C-Client IPC: Visit recorded for tab ${result.id}`);
                     }
                 }
 
-                console.log(`✅ C-Client IPC: Tab created successfully with view ID: ${view?.id}`);
-                return view;
+                console.log(`✅ C-Client IPC: Synchronized tab created successfully with ID: ${result?.id}`);
+                return {
+                    success: true,
+                    id: result?.id,
+                    title: result?.title,
+                    url: result?.url,
+                    tabUI: result?.tabUI
+                };
             } catch (error) {
-                console.error('❌ C-Client IPC: Failed to create tab:', error);
-                return null;
+                console.error('❌ C-Client IPC: Failed to create synchronized tab:', error);
+                return { success: false, error: error.message };
             }
         });
 
 
 
-        // Create history tab
+        // Create history tab - using unified TabManager
         this.safeRegisterHandler('create-history-tab', async () => {
             try {
-                return await this.viewManager.createHistoryView();
+                if (!this.tabManager) {
+                    console.error('❌ C-Client IPC: TabManager not available for creating history tab');
+                    return { success: false, error: 'TabManager not available' };
+                }
+
+                const result = await this.tabManager.createTab('browser://history', { isHistory: true });
+                console.log(`✅ C-Client IPC: History tab created successfully with ID: ${result?.id}`);
+                return {
+                    success: true,
+                    id: result?.id,
+                    title: result?.title || 'History',
+                    url: result?.url,
+                    tabUI: result?.tabUI
+                };
             } catch (error) {
                 console.error('Failed to create history tab:', error);
-                return null;
+                return { success: false, error: error.message };
             }
         });
 
 
 
-        // Switch tab
-        this.safeRegisterHandler('switch-tab', (_, id) => {
+        // Switch tab - using unified TabManager
+        this.safeRegisterHandler('switch-tab', async (_, id) => {
             try {
-                const result = this.viewManager.switchTab(id);
+                if (!this.tabManager) {
+                    console.error('❌ C-Client IPC: TabManager not available for switching tab');
+                    return { success: false, error: 'TabManager not available' };
+                }
+
+                const result = await this.tabManager.switchTab(id);
 
                 // When switching tabs, end previous tab's active records
                 if (result && this.historyManager) {
                     const now = Date.now();
-                    // Get all views, end active records except current view
-                    const allViews = this.viewManager.getAllViews();
-                    Object.keys(allViews).forEach(viewId => {
-                        if (parseInt(viewId) !== parseInt(id)) {
-                            this.historyManager.finishActiveRecords(parseInt(viewId), now);
+                    // Get all tabs, end active records except current tab
+                    const allTabs = this.tabManager.getAllTabs();
+                    allTabs.forEach(tab => {
+                        if (tab.id !== parseInt(id)) {
+                            this.historyManager.finishActiveRecords(tab.id, now);
                         }
                     });
                 }
 
-                return result;
+                return { success: result };
             } catch (error) {
                 console.error('Failed to switch tab:', error);
-                return false;
+                return { success: false, error: error.message };
             }
         });
 
-        // Close tab
-        this.safeRegisterHandler('close-tab', (_, id) => {
+        // Close tab - using unified TabManager
+        this.safeRegisterHandler('close-tab', async (_, id) => {
             try {
-                // End this tab's active records
-                if (this.historyManager) {
-                    this.historyManager.finishActiveRecords(id, Date.now());
+                if (!this.tabManager) {
+                    console.error('❌ C-Client IPC: TabManager not available for closing tab');
+                    return { success: false, error: 'TabManager not available' };
                 }
 
-                return this.viewManager.closeTab(id);
+                const result = await this.tabManager.closeTab(id);
+
+                // Finish active records for closed tab
+                if (result && this.historyManager) {
+                    this.historyManager.finishActiveRecords(parseInt(id), Date.now());
+                }
+
+                return { success: result };
             } catch (error) {
                 console.error('Failed to close tab:', error);
-                return null;
+                return { success: false, error: error.message };
             }
         });
 
         // Get tab info
         this.safeRegisterHandler('get-tab-info', (_, id) => {
             try {
-                return this.viewManager.getTabInfo(id);
+                return this.tabManager.getTabInfo(id);
             } catch (error) {
                 console.error('Failed to get tab info:', error);
                 return null;
@@ -479,26 +492,39 @@ class IpcHandlers {
                 console.log(`   Input URL:  ${url}`);
                 console.log(`   Output URL: ${processedUrl}`);
 
-                await this.viewManager.navigateTo(processedUrl);
+                await this.tabManager.navigateTo(processedUrl);
 
                 // Record new visit (use original URL for history)
                 if (url && this.historyManager) {
-                    const currentView = this.viewManager.getCurrentView();
-                    if (currentView) {
-                        const viewId = currentView.id || Date.now();
-                        const record = await this.historyManager.recordVisit(url, viewId);
-                        console.log(`📊 C-Client IPC: Navigation visit recorded for view ${viewId}`);
+                    if (this.tabManager) {
+                        // Use TabManager to get current tab
+                        const currentTab = this.tabManager.getCurrentTab();
+                        if (currentTab) {
+                            const record = await this.historyManager.recordVisit(url, currentTab.id);
+                            console.log(`📊 C-Client IPC: Navigation visit recorded for tab ${currentTab.id}`);
 
-                        // Record navigation activity
-                        this.historyManager.recordNavigationActivity(url, 'Loading...', 'navigate');
+                            // Record navigation activity
+                            this.historyManager.recordNavigationActivity(url, 'Loading...', 'navigate');
+                        }
+                    } else {
+                        // Fallback to ViewManager
+                        const currentView = this.tabManager.getCurrentView();
+                        if (currentView) {
+                            const viewId = currentView.id || Date.now();
+                            const record = await this.historyManager.recordVisit(url, viewId);
+                            console.log(`📊 C-Client IPC: Navigation visit recorded for view ${viewId}`);
+
+                            // Record navigation activity
+                            this.historyManager.recordNavigationActivity(url, 'Loading...', 'navigate');
+                        }
                     }
                 }
 
                 console.log(`✅ C-Client IPC: Navigation completed successfully`);
-                return true;
+                return { success: true };
             } catch (error) {
                 console.error('❌ C-Client IPC: Failed to navigate to URL:', error);
-                return false;
+                return { success: false, error: error.message };
             }
         });
 
@@ -518,104 +544,159 @@ class IpcHandlers {
                 }
 
                 // Navigate to the NSN URL with NMP parameters
-                await this.viewManager.navigateTo(navigationData.url);
+                await this.tabManager.navigateTo(navigationData.url);
 
                 // Record new visit
                 if (navigationData.url && this.historyManager) {
-                    const currentView = this.viewManager.getCurrentView();
-                    if (currentView) {
-                        const viewId = currentView.id || Date.now();
-                        const record = await this.historyManager.recordVisit(navigationData.url, viewId);
-                        console.log(`📊 C-Client IPC: NSN navigation visit recorded for view ${viewId}`);
+                    if (this.tabManager) {
+                        // Use TabManager to get current tab
+                        const currentTab = this.tabManager.getCurrentTab();
+                        if (currentTab) {
+                            const record = await this.historyManager.recordVisit(navigationData.url, currentTab.id);
+                            console.log(`📊 C-Client IPC: NSN navigation visit recorded for tab ${currentTab.id}`);
+                        }
+                    } else {
+                        // Fallback to ViewManager
+                        const currentView = this.tabManager.getCurrentView();
+                        if (currentView) {
+                            const viewId = currentView.id || Date.now();
+                            const record = await this.historyManager.recordVisit(navigationData.url, viewId);
+                            console.log(`📊 C-Client IPC: NSN navigation visit recorded for view ${viewId}`);
+                        }
                     }
                 }
 
                 console.log(`✅ C-Client IPC: NSN navigation completed successfully`);
-                return true;
+                return { success: true };
             } catch (error) {
                 console.error('❌ C-Client IPC: Failed to navigate to NSN:', error);
-                return false;
+                return { success: false, error: error.message };
             }
         });
 
         // Go back
         this.safeRegisterHandler('go-back', async () => {
             try {
-                const result = this.viewManager.goBack();
+                const result = this.tabManager.goBack();
 
                 // Record back navigation
                 if (result && this.historyManager) {
-                    const currentView = this.viewManager.getCurrentView();
-                    if (currentView && currentView.webContents) {
-                        const url = currentView.webContents.getURL();
-                        const viewId = currentView.id || Date.now();
-                        if (url) {
-                            await this.historyManager.recordVisit(url, viewId);
+                    if (this.tabManager) {
+                        // Use TabManager to get current tab
+                        const currentTab = this.tabManager.getCurrentTab();
+                        if (currentTab && currentTab.browserView && currentTab.browserView.webContents) {
+                            const url = currentTab.browserView.webContents.getURL();
+                            if (url) {
+                                await this.historyManager.recordVisit(url, currentTab.id);
 
-                            // Record navigation activity
-                            this.historyManager.recordNavigationActivity(url, 'Loading...', 'back');
+                                // Record navigation activity
+                                this.historyManager.recordNavigationActivity(url, 'Loading...', 'back');
+                            }
+                        }
+                    } else {
+                        // Fallback to ViewManager
+                        const currentView = this.tabManager.getCurrentView();
+                        if (currentView && currentView.webContents) {
+                            const url = currentView.webContents.getURL();
+                            const viewId = currentView.id || Date.now();
+                            if (url) {
+                                await this.historyManager.recordVisit(url, viewId);
+
+                                // Record navigation activity
+                                this.historyManager.recordNavigationActivity(url, 'Loading...', 'back');
+                            }
                         }
                     }
                 }
 
-                return result;
+                return { success: result };
             } catch (error) {
                 console.error('Failed to go back:', error);
-                return false;
+                return { success: false, error: error.message };
             }
         });
 
         // Go forward
         this.safeRegisterHandler('go-forward', async () => {
             try {
-                const result = this.viewManager.goForward();
+                const result = this.tabManager.goForward();
 
                 // Record forward navigation
                 if (result && this.historyManager) {
-                    const currentView = this.viewManager.getCurrentView();
-                    if (currentView && currentView.webContents) {
-                        const url = currentView.webContents.getURL();
-                        const viewId = currentView.id || Date.now();
-                        if (url) {
-                            await this.historyManager.recordVisit(url, viewId);
+                    if (this.tabManager) {
+                        // Use TabManager to get current tab
+                        const currentTab = this.tabManager.getCurrentTab();
+                        if (currentTab && currentTab.browserView && currentTab.browserView.webContents) {
+                            const url = currentTab.browserView.webContents.getURL();
+                            if (url) {
+                                await this.historyManager.recordVisit(url, currentTab.id);
 
-                            // Record navigation activity
-                            this.historyManager.recordNavigationActivity(url, 'Loading...', 'forward');
+                                // Record navigation activity
+                                this.historyManager.recordNavigationActivity(url, 'Loading...', 'forward');
+                            }
+                        }
+                    } else {
+                        // Fallback to ViewManager
+                        const currentView = this.tabManager.getCurrentView();
+                        if (currentView && currentView.webContents) {
+                            const url = currentView.webContents.getURL();
+                            const viewId = currentView.id || Date.now();
+                            if (url) {
+                                await this.historyManager.recordVisit(url, viewId);
+
+                                // Record navigation activity
+                                this.historyManager.recordNavigationActivity(url, 'Loading...', 'forward');
+                            }
                         }
                     }
                 }
 
-                return result;
+                return { success: result };
             } catch (error) {
                 console.error('Failed to go forward:', error);
-                return false;
+                return { success: false, error: error.message };
             }
         });
 
         // Refresh page
         this.safeRegisterHandler('refresh', async () => {
             try {
-                const result = this.viewManager.refresh();
+                const result = this.tabManager.refresh();
 
                 // Record page refresh
                 if (result && this.historyManager) {
-                    const currentView = this.viewManager.getCurrentView();
-                    if (currentView && currentView.webContents) {
-                        const url = currentView.webContents.getURL();
-                        const viewId = currentView.id || Date.now();
-                        if (url) {
-                            await this.historyManager.recordVisit(url, viewId);
+                    if (this.tabManager) {
+                        // Use TabManager to get current tab
+                        const currentTab = this.tabManager.getCurrentTab();
+                        if (currentTab && currentTab.browserView && currentTab.browserView.webContents) {
+                            const url = currentTab.browserView.webContents.getURL();
+                            if (url) {
+                                await this.historyManager.recordVisit(url, currentTab.id);
 
-                            // Record navigation activity
-                            this.historyManager.recordNavigationActivity(url, 'Loading...', 'refresh');
+                                // Record navigation activity
+                                this.historyManager.recordNavigationActivity(url, 'Loading...', 'refresh');
+                            }
+                        }
+                    } else {
+                        // Fallback to ViewManager
+                        const currentView = this.tabManager.getCurrentView();
+                        if (currentView && currentView.webContents) {
+                            const url = currentView.webContents.getURL();
+                            const viewId = currentView.id || Date.now();
+                            if (url) {
+                                await this.historyManager.recordVisit(url, viewId);
+
+                                // Record navigation activity
+                                this.historyManager.recordNavigationActivity(url, 'Loading...', 'refresh');
+                            }
                         }
                     }
                 }
 
-                return result;
+                return { success: result };
             } catch (error) {
                 console.error('Failed to refresh page:', error);
-                return false;
+                return { success: false, error: error.message };
             }
         });
     }
@@ -627,7 +708,7 @@ class IpcHandlers {
         // Hide current BrowserView
         this.safeRegisterHandler('hide-browser-view', () => {
             try {
-                return this.viewManager.hideBrowserView();
+                return this.tabManager.hideAllViews();
             } catch (error) {
                 console.error('Failed to hide browser view:', error);
                 return false;
@@ -637,25 +718,40 @@ class IpcHandlers {
         // Show current BrowserView
         this.safeRegisterHandler('show-browser-view', () => {
             try {
-                return this.viewManager.showBrowserView();
+                return this.tabManager.showAllViews();
             } catch (error) {
                 console.error('Failed to show browser view:', error);
                 return false;
             }
         });
 
-        // Get current view information
+        // Get current view information - using unified TabManager
         this.safeRegisterHandler('get-current-view-info', () => {
             try {
-                const currentView = this.viewManager.getCurrentView();
-                if (currentView && currentView.webContents) {
-                    return {
-                        id: currentView.id,
-                        url: currentView.webContents.getURL(),
-                        title: currentView.webContents.getTitle(),
-                        canGoBack: currentView.webContents.canGoBack(),
-                        canGoForward: currentView.webContents.canGoForward()
-                    };
+                if (this.tabManager) {
+                    // Use TabManager to get current tab info
+                    const currentTab = this.tabManager.getCurrentTab();
+                    if (currentTab && currentTab.browserView && currentTab.browserView.webContents) {
+                        return {
+                            id: currentTab.id,
+                            url: currentTab.browserView.webContents.getURL(),
+                            title: currentTab.title || currentTab.browserView.webContents.getTitle(),
+                            canGoBack: currentTab.browserView.webContents.canGoBack(),
+                            canGoForward: currentTab.browserView.webContents.canGoForward()
+                        };
+                    }
+                } else {
+                    // Fallback to ViewManager
+                    const currentView = this.viewManager.getCurrentView();
+                    if (currentView && currentView.webContents) {
+                        return {
+                            id: currentView.id,
+                            url: currentView.webContents.getURL(),
+                            title: currentView.webContents.getTitle(),
+                            canGoBack: currentView.webContents.canGoBack(),
+                            canGoForward: currentView.webContents.canGoForward()
+                        };
+                    }
                 }
                 return null;
             } catch (error) {
@@ -664,25 +760,28 @@ class IpcHandlers {
             }
         });
 
-        // Get all views information
+        // Get all views information - using unified TabManager
         this.safeRegisterHandler('get-all-views-info', () => {
             try {
-                const allViews = this.viewManager.getAllViews();
-                const viewsInfo = {};
+                if (this.tabManager) {
+                    // Use TabManager to get all tabs info
+                    const allTabs = this.tabManager.getAllTabs();
+                    const viewsInfo = {};
 
-                Object.entries(allViews).forEach(([viewId, view]) => {
-                    if (view && view.webContents) {
-                        viewsInfo[viewId] = {
-                            id: viewId,
-                            url: view.webContents.getURL(),
-                            title: view.webContents.getTitle(),
-                            canGoBack: view.webContents.canGoBack(),
-                            canGoForward: view.webContents.canGoForward()
-                        };
-                    }
-                });
+                    allTabs.forEach(tab => {
+                        if (tab && tab.browserView && tab.browserView.webContents) {
+                            viewsInfo[tab.id] = {
+                                id: tab.id,
+                                url: tab.browserView.webContents.getURL(),
+                                title: tab.title || tab.browserView.webContents.getTitle(),
+                                canGoBack: tab.browserView.webContents.canGoBack(),
+                                canGoForward: tab.browserView.webContents.canGoForward()
+                            };
+                        }
+                    });
 
-                return viewsInfo;
+                    return viewsInfo;
+                }
             } catch (error) {
                 console.error('Failed to get all views info:', error);
                 return {};
@@ -946,21 +1045,28 @@ class IpcHandlers {
                     }
 
                     // Clear all sessions and close all existing tabs before creating new default page (same as user switch)
-                    if (this.viewManager) {
+                    if (this.tabManager) {
                         try {
                             console.log('🔄 C-Client IPC: Clearing all sessions and closing all tabs after user registration...');
-                            console.log('🔍 C-Client IPC: ViewManager available:', !!this.viewManager);
-                            console.log('🔍 C-Client IPC: clearAllSessions method available:', typeof this.viewManager.clearAllSessions);
-                            console.log('🔍 C-Client IPC: closeAllTabsAndCreateDefault method available:', typeof this.viewManager.closeAllTabsAndCreateDefault);
+                            console.log('🔍 C-Client IPC: TabManager available:', !!this.tabManager);
+                            console.log('🔍 C-Client IPC: clearAllSessions method available:', typeof this.tabManager.clearAllSessions);
+                            console.log('🔍 C-Client IPC: closeAllTabsAndCreateDefault method available:', typeof this.tabManager.closeAllTabsAndCreateDefault);
 
                             // First, clear all sessions (including persistent partitions) - same as user switch
                             console.log('🧹 C-Client IPC: Clearing all sessions including persistent partitions...');
-                            await this.viewManager.clearAllSessions();
+                            await this.tabManager.clearAllSessions();
                             console.log('✅ C-Client IPC: All sessions cleared after user registration');
 
                             // Then close all tabs and create new default page
-                            await this.viewManager.closeAllTabsAndCreateDefault();
-                            console.log('✅ C-Client IPC: All tabs closed and new default page created after registration');
+                            if (this.tabManager) {
+                                await this.tabManager.closeAllTabs();
+                                // Create a new default tab
+                                await this.tabManager.createTab();
+                                console.log('✅ C-Client IPC: All tabs closed and new default tab created after registration (using TabManager)');
+                            } else {
+                                await this.tabManager.closeAllTabsAndCreateDefault();
+                                console.log('✅ C-Client IPC: All tabs closed and new default page created after registration (using ViewManager)');
+                            }
                         } catch (viewError) {
                             console.error('❌ C-Client IPC: Error managing views after user registration:', viewError);
                             console.error('❌ C-Client IPC: ViewError details:', {
@@ -1215,21 +1321,28 @@ class IpcHandlers {
                 }
 
                 // Clear all sessions and close all existing tabs before creating new default page
-                if (this.viewManager) {
+                if (this.tabManager) {
                     try {
                         console.log('🔄 C-Client IPC: Clearing all sessions and closing all tabs...');
-                        console.log('🔍 C-Client IPC: ViewManager available:', !!this.viewManager);
-                        console.log('🔍 C-Client IPC: clearAllSessions method available:', typeof this.viewManager.clearAllSessions);
-                        console.log('🔍 C-Client IPC: closeAllTabsAndCreateDefault method available:', typeof this.viewManager.closeAllTabsAndCreateDefault);
+                        console.log('🔍 C-Client IPC: TabManager available:', !!this.tabManager);
+                        console.log('🔍 C-Client IPC: clearAllSessions method available:', typeof this.tabManager.clearAllSessions);
+                        console.log('🔍 C-Client IPC: closeAllTabsAndCreateDefault method available:', typeof this.tabManager.closeAllTabsAndCreateDefault);
 
                         // First, clear all sessions (including persistent partitions)
                         console.log('🧹 C-Client IPC: Clearing all sessions including persistent partitions...');
-                        await this.viewManager.clearAllSessions();
+                        await this.tabManager.clearAllSessions();
                         console.log('✅ C-Client IPC: All sessions cleared');
 
                         // Then close all tabs and create new default page
-                        await this.viewManager.closeAllTabsAndCreateDefault();
-                        console.log('✅ C-Client IPC: All tabs closed and new default page created');
+                        if (this.tabManager) {
+                            await this.tabManager.closeAllTabs();
+                            // Create a new default tab
+                            await this.tabManager.createTab();
+                            console.log('✅ C-Client IPC: All tabs closed and new default tab created (using TabManager)');
+                        } else {
+                            await this.tabManager.closeAllTabsAndCreateDefault();
+                            console.log('✅ C-Client IPC: All tabs closed and new default page created (using ViewManager)');
+                        }
                     } catch (viewError) {
                         console.error('❌ C-Client IPC: Error managing views during user switch:', viewError);
                         console.error('❌ C-Client IPC: ViewError details:', {
@@ -1429,8 +1542,8 @@ class IpcHandlers {
                 }
 
                 // Hide browser views when switching away from C-Client
-                if (targetClient !== 'c-client' && this.viewManager) {
-                    this.viewManager.hideAllViews();
+                if (targetClient !== 'c-client' && this.tabManager) {
+                    this.tabManager.hideAllViews();
                     console.log('🔄 C-Client IPC: Hidden all browser views for client switch');
                 }
 
@@ -1472,8 +1585,15 @@ class IpcHandlers {
                 if (targetClient === 'c-client' && this.viewManager) {
                     try {
                         console.log('🔄 C-Client IPC: Switching back to C-Client, creating default page...');
-                        await this.viewManager.closeAllTabsAndCreateDefault();
-                        console.log('✅ C-Client IPC: Default page created with URL parameter injection');
+                        if (this.tabManager) {
+                            await this.tabManager.closeAllTabs();
+                            // Create a new default tab
+                            await this.tabManager.createTab();
+                            console.log('✅ C-Client IPC: Default tab created with URL parameter injection (using TabManager)');
+                        } else {
+                            await this.tabManager.closeAllTabsAndCreateDefault();
+                            console.log('✅ C-Client IPC: Default page created with URL parameter injection (using ViewManager)');
+                        }
                     } catch (viewError) {
                         console.error('❌ C-Client IPC: Error creating default page after client switch:', viewError);
                         // Don't fail the client switch if view management fails
@@ -1661,6 +1781,51 @@ class IpcHandlers {
                 return { success: false, error: error.message };
             }
         });
+    }
+
+    /**
+     * Process NSN response (public method for direct calls)
+     * @param {Object} response - NSN response data
+     * @returns {Object} Result object
+     */
+    async processNSNResponse(response) {
+        try {
+            console.log('🔍 C-Client IPC: Processing NSN response (direct call):', response);
+
+            if (response.action === 'connect_websocket') {
+                console.log('🔌 C-Client IPC: Received WebSocket connection request from NSN');
+                console.log(`   WebSocket URL: ${response.websocket_url}`);
+                console.log(`   User ID: ${response.user_id}`);
+                console.log(`   Message: ${response.message}`);
+
+                if (this.webSocketClient && response.websocket_url) {
+                    // Connect to NSN-provided WebSocket server
+                    const success = await this.webSocketClient.connectToNSNProvidedWebSocket(response.websocket_url);
+                    if (success) {
+                        console.log('✅ C-Client IPC: Successfully connected to NSN-provided WebSocket');
+                        return { success: true, message: 'WebSocket connected successfully' };
+                    } else {
+                        console.error('❌ C-Client IPC: Failed to connect to NSN-provided WebSocket');
+                        return { success: false, error: 'Failed to connect to WebSocket' };
+                    }
+                } else {
+                    console.error('❌ C-Client IPC: Missing WebSocket client or URL');
+                    return { success: false, error: 'Missing WebSocket client or URL' };
+                }
+            } else if (response.action === 'auto_login') {
+                console.log('🔐 C-Client IPC: Received auto-login request from NSN');
+                console.log(`   User ID: ${response.user_id}`);
+                console.log(`   Username: ${response.username}`);
+                // Auto-login logic would go here
+                return { success: true, message: 'Auto-login processed' };
+            } else {
+                console.log(`🔍 C-Client IPC: Unknown NSN response action: ${response.action}`);
+                return { success: false, error: `Unknown action: ${response.action}` };
+            }
+        } catch (error) {
+            console.error('❌ C-Client IPC: Error processing NSN response (direct call):', error);
+            return { success: false, error: error.message };
+        }
     }
 }
 

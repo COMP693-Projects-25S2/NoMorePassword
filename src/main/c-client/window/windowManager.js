@@ -31,6 +31,23 @@ class WindowManager {
             }
         });
 
+        // Add debugging for renderer process
+        this.mainWindow.webContents.on('did-finish-load', () => {
+            console.log('🎯 WindowManager: Main window finished loading');
+        });
+
+        this.mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+            console.error('❌ WindowManager: Main window failed to load:', errorCode, errorDescription);
+        });
+
+        this.mainWindow.webContents.on('dom-ready', () => {
+            console.log('🎯 WindowManager: DOM ready');
+        });
+
+        this.mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+            console.log(`🎯 Renderer Console [${level}]: ${message}`);
+        });
+
         // Load client-specific interface
         this.loadClientInterface();
 

@@ -2609,6 +2609,21 @@ class CClientWebSocketClient:
         else:
             return 'https://comp639nsn.pythonanywhere.com/logout'
     
+    def get_nsn_root_url(self):
+        """Get NSN root URL based on current environment"""
+        config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            environment = config.get('current_environment', 'local')
+        else:
+            environment = 'local'
+        
+        if environment == 'local':
+            return 'http://localhost:5000/'
+        else:
+            return 'https://comp639nsn.pythonanywhere.com/'
+    
     async def sync_session(self, user_id, session_data):
         """Sync session data with C-Client"""
         message = {
@@ -3223,7 +3238,7 @@ def bind():
                             print(f"   Connection {i+1}: closed = {getattr(ws, 'closed', 'N/A')}")
                             print(f"   Connection {i+1}: state = {getattr(ws, 'state', 'N/A')}")
                         
-                        # Mark connections as closed by logout to prevent future message sending
+                        # FIXED: Mark connections as closed by logout AFTER logout notification is sent
                         print(f"🔓 B-Client: Marking WebSocket connections as closed by logout for user {nmp_user_id}...")
                         for i, ws in enumerate(user_connections):
                             try:
@@ -3232,19 +3247,32 @@ def bind():
                                 
                                 # Mark the connection as closed by logout
                                 ws._closed_by_logout = True
+                                
+                                # FIXED: Clear connection cache to prevent stale connections
+                                websocket_id = id(ws)
+                                if hasattr(c_client_ws, 'connection_validity_cache') and websocket_id in c_client_ws.connection_validity_cache:
+                                    del c_client_ws.connection_validity_cache[websocket_id]
+                                    print(f"🧹 B-Client: Cleared connection validity cache for connection {i+1}")
+                                
                                 print(f"✅ B-Client: Connection {i+1} marked as closed by logout")
                                 
                             except Exception as e:
                                 print(f"❌ B-Client: Error marking connection {i+1}: {e}")
                         
-                        # Clean up invalid connections before removing user_connections
-                        print(f"🧹 B-Client: Cleaning up invalid connections before removing user_connections...")
-                        c_client_ws.cleanup_invalid_connections()
-                        print(f"✅ B-Client: Invalid connections cleanup completed before removing user_connections")
+                        # FIXED: Remove user from connection pools BEFORE cleanup to prevent stale connections
+                        if nmp_user_id in c_client_ws.user_connections:
+                            del c_client_ws.user_connections[nmp_user_id]
+                            print(f"🔓 B-Client: Immediately removed user {nmp_user_id} from user_connections pool")
                         
-                        # Remove user from connection pools immediately
-                        del c_client_ws.user_connections[nmp_user_id]
-                        print(f"🔓 B-Client: Immediately removed user {nmp_user_id} from user_connections pool")
+                        # FIXED: Clear user connection cache to prevent stale connections
+                        if hasattr(c_client_ws, 'connection_cache') and nmp_user_id in c_client_ws.connection_cache:
+                            del c_client_ws.connection_cache[nmp_user_id]
+                            print(f"🧹 B-Client: Cleared user connection cache for user {nmp_user_id}")
+                        
+                        # Clean up invalid connections after removing from pools
+                        print(f"🧹 B-Client: Cleaning up invalid connections after removing user from pools...")
+                        c_client_ws.cleanup_invalid_connections()
+                        print(f"✅ B-Client: Invalid connections cleanup completed after removing user from pools")
                         
                         # Wait a moment for the close to propagate
                         print(f"🔓 B-Client: Waiting for WebSocket close to propagate...")
@@ -4337,7 +4365,8 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                         website_config = {
                             'root_path': website_root_path or 'http://localhost:5000',
                             'name': website_name or 'NSN',
-                            'session_partition': session_partition or 'persist:nsn'
+                            'session_partition': session_partition or 'persist:nsn',
+                            'root_url': c_client_ws.get_nsn_root_url()  # 添加NSN root URL
                         }
                         
                         message = {

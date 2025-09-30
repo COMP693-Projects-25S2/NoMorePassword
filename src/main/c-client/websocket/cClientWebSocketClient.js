@@ -781,7 +781,7 @@ class CClientWebSocketClient {
 
             // Step 1: Clear website-specific browser sessions (optimized for repeated logouts)
             console.log('🔓 [WebSocket Client] Step 1: Clearing website-specific browser sessions...');
-            if (this.mainWindow && this.mainWindow.viewManager) {
+            if (this.mainWindow && this.mainWindow.tabManager) {
                 try {
                     if (isRepeatedLogout) {
                         // For repeated logouts, only clear new sessions
@@ -795,12 +795,12 @@ class CClientWebSocketClient {
                     console.error('❌ [WebSocket Client] Error clearing website browser sessions:', error);
                 }
             } else {
-                console.warn('⚠️ [WebSocket Client] ViewManager not available for session clearing');
+                console.warn('⚠️ [WebSocket Client] TabManager not available for session clearing');
             }
 
             // Step 2: Close website-specific tabs (optimized for repeated logouts)
             console.log('🔓 [WebSocket Client] Step 2: Closing website-specific tabs...');
-            if (this.mainWindow && this.mainWindow.viewManager) {
+            if (this.mainWindow && this.mainWindow.tabManager) {
                 try {
                     if (isRepeatedLogout) {
                         // For repeated logouts, only close new tabs
@@ -814,7 +814,7 @@ class CClientWebSocketClient {
                     console.error('❌ [WebSocket Client] Error managing website tabs:', error);
                 }
             } else {
-                console.warn('⚠️ [WebSocket Client] ViewManager not available for tab management');
+                console.warn('⚠️ [WebSocket Client] TabManager not available for tab management');
             }
 
             // Step 3: Clear local user session data (optimized)
@@ -903,13 +903,13 @@ class CClientWebSocketClient {
         try {
             console.log('🔓 [WebSocket Client] Clearing incremental website sessions...');
 
-            if (!this.mainWindow || !this.mainWindow.viewManager) {
-                console.warn('⚠️ [WebSocket Client] ViewManager not available for incremental session clearing');
+            if (!this.mainWindow || !this.mainWindow.tabManager) {
+                console.warn('⚠️ [WebSocket Client] TabManager not available for incremental session clearing');
                 return;
             }
 
-            const viewManager = this.mainWindow.viewManager;
-            const views = viewManager.views;
+            const tabManager = this.mainWindow.tabManager;
+            const views = tabManager.getAllViews();
             let newSessionsCleared = 0;
 
             // Only clear sessions that were created after the last logout
@@ -950,13 +950,13 @@ class CClientWebSocketClient {
         try {
             console.log(`🔓 [WebSocket Client] Closing incremental ${websiteConfig?.name || 'website'} tabs...`);
 
-            if (!this.mainWindow || !this.mainWindow.viewManager) {
-                console.warn('⚠️ [WebSocket Client] ViewManager not available for incremental tab closing');
+            if (!this.mainWindow || !this.mainWindow.tabManager) {
+                console.warn('⚠️ [WebSocket Client] TabManager not available for incremental tab closing');
                 return;
             }
 
-            const viewManager = this.mainWindow.viewManager;
-            const views = viewManager.views;
+            const tabManager = this.mainWindow.tabManager;
+            const views = tabManager.getAllViews();
             const websiteViewsToClose = [];
             const lastLogoutTime = this.logoutHistory[websiteConfig?.name] || 0;
 
@@ -985,7 +985,8 @@ class CClientWebSocketClient {
             for (const viewId of websiteViewsToClose) {
                 try {
                     console.log(`🔓 [WebSocket Client] Closing new ${websiteConfig.name} view ${viewId}...`);
-                    await viewManager.closeTab(viewId);
+                    // Use TabManager if available, otherwise fallback to ViewManager
+                    await tabManager.closeTab(viewId);
                     console.log(`✅ [WebSocket Client] New ${websiteConfig.name} view ${viewId} closed`);
                 } catch (error) {
                     console.error(`❌ [WebSocket Client] Error closing new ${websiteConfig.name} view ${viewId}:`, error);
@@ -1028,19 +1029,19 @@ class CClientWebSocketClient {
         try {
             console.log('🔓 [WebSocket Client] Clearing website-specific sessions...');
 
-            if (!this.mainWindow || !this.mainWindow.viewManager) {
-                console.warn('⚠️ [WebSocket Client] ViewManager not available for clearing website sessions');
+            if (!this.mainWindow || !this.mainWindow.tabManager) {
+                console.warn('⚠️ [WebSocket Client] TabManager not available for clearing website sessions');
                 return;
             }
 
             if (!websiteConfig || !websiteConfig.root_path) {
                 console.warn('⚠️ [WebSocket Client] No website configuration provided, falling back to NSN-specific cleanup');
-                await this.mainWindow.viewManager.clearNSNSessions();
+                await this.mainWindow.tabManager.clearNSNSessions();
                 return;
             }
 
-            const viewManager = this.mainWindow.viewManager;
-            const views = viewManager.views;
+            const tabManager = this.mainWindow.tabManager;
+            const views = tabManager.getAllViews();
             let websiteViewsCleared = 0;
 
             // Clear session data only for website views
@@ -1197,8 +1198,8 @@ class CClientWebSocketClient {
         try {
             console.log(`🔓 [WebSocket Client] Closing ${websiteConfig?.name || 'website'} tabs...`);
 
-            if (!this.mainWindow || !this.mainWindow.viewManager) {
-                console.warn('⚠️ [WebSocket Client] ViewManager not available for closing website tabs');
+            if (!this.mainWindow || !this.mainWindow.tabManager) {
+                console.warn('⚠️ [WebSocket Client] TabManager not available for closing website tabs');
                 return;
             }
 
@@ -1208,8 +1209,8 @@ class CClientWebSocketClient {
                 return;
             }
 
-            const viewManager = this.mainWindow.viewManager;
-            const views = viewManager.views;
+            const tabManager = this.mainWindow.tabManager;
+            const views = tabManager.getAllViews();
             const websiteViewsToClose = [];
 
             // Identify website views to close
@@ -1233,7 +1234,8 @@ class CClientWebSocketClient {
             for (const viewId of websiteViewsToClose) {
                 try {
                     console.log(`🔓 [WebSocket Client] Closing ${websiteConfig.name} view ${viewId}...`);
-                    await viewManager.closeTab(viewId);
+                    // Use TabManager if available, otherwise fallback to ViewManager
+                    await tabManager.closeTab(viewId);
                     console.log(`✅ [WebSocket Client] ${websiteConfig.name} view ${viewId} closed`);
                 } catch (error) {
                     console.error(`❌ [WebSocket Client] Error closing ${websiteConfig.name} view ${viewId}:`, error);
@@ -1241,11 +1243,13 @@ class CClientWebSocketClient {
             }
 
             // If no tabs remain, create a default page
-            const remainingViews = Object.keys(viewManager.views);
+            const remainingViews = Object.keys(tabManager.getAllViews());
             if (remainingViews.length === 0) {
                 console.log('🔓 [WebSocket Client] No tabs remaining, creating default page...');
                 try {
-                    await viewManager.closeAllTabsAndCreateDefault();
+                    // Use TabManager if available, otherwise fallback to ViewManager
+                    await tabManager.closeAllTabs();
+                    await tabManager.createTab();
                     console.log('✅ [WebSocket Client] Default page created');
                 } catch (error) {
                     console.error('❌ [WebSocket Client] Error creating default page:', error);
@@ -1269,13 +1273,13 @@ class CClientWebSocketClient {
         try {
             console.log('🔓 [WebSocket Client] Closing NSN tabs only...');
 
-            if (!this.mainWindow || !this.mainWindow.viewManager) {
-                console.warn('⚠️ [WebSocket Client] ViewManager not available for closing NSN tabs');
+            if (!this.mainWindow || !this.mainWindow.tabManager) {
+                console.warn('⚠️ [WebSocket Client] TabManager not available for closing NSN tabs');
                 return;
             }
 
-            const viewManager = this.mainWindow.viewManager;
-            const views = viewManager.views;
+            const tabManager = this.mainWindow.tabManager;
+            const views = tabManager.getAllViews();
             const nsnViewsToClose = [];
 
             // Identify NSN views to close
@@ -1283,7 +1287,7 @@ class CClientWebSocketClient {
                 if (view && view.webContents && !view.webContents.isDestroyed()) {
                     try {
                         const currentURL = view.webContents.getURL();
-                        if (viewManager.isNSNUrl(currentURL)) {
+                        if (tabManager.isNSNUrl(currentURL)) {
                             console.log(`🔓 [WebSocket Client] Found NSN view ${id} to close: ${currentURL}`);
                             nsnViewsToClose.push(id);
                         } else {
@@ -1299,7 +1303,8 @@ class CClientWebSocketClient {
             for (const viewId of nsnViewsToClose) {
                 try {
                     console.log(`🔓 [WebSocket Client] Closing NSN view ${viewId}...`);
-                    await viewManager.closeTab(viewId);
+                    // Use TabManager if available, otherwise fallback to ViewManager
+                    await tabManager.closeTab(viewId);
                     console.log(`✅ [WebSocket Client] NSN view ${viewId} closed`);
                 } catch (error) {
                     console.error(`❌ [WebSocket Client] Error closing NSN view ${viewId}:`, error);
@@ -1307,11 +1312,13 @@ class CClientWebSocketClient {
             }
 
             // If no tabs remain, create a default page
-            const remainingViews = Object.keys(viewManager.views);
+            const remainingViews = Object.keys(tabManager.getAllViews());
             if (remainingViews.length === 0) {
                 console.log('🔓 [WebSocket Client] No tabs remaining, creating default page...');
                 try {
-                    await viewManager.closeAllTabsAndCreateDefault();
+                    // Use TabManager if available, otherwise fallback to ViewManager
+                    await tabManager.closeAllTabs();
+                    await tabManager.createTab();
                     console.log('✅ [WebSocket Client] Default page created');
                 } catch (error) {
                     console.error('❌ [WebSocket Client] Error creating default page:', error);
@@ -1328,8 +1335,28 @@ class CClientWebSocketClient {
     }
 
     handleSessionSync(data) {
-        console.log('[WebSocket Client] Session sync:', data);
-        // Handle session sync
+        console.log('🔐 [WebSocket Client] ===== SESSION SYNC MESSAGE RECEIVED =====');
+        console.log('🔐 [WebSocket Client] Session sync data:', data);
+
+        try {
+            // Process the session data similar to auto_login
+            if (data && data.session_data) {
+                console.log('🔐 [WebSocket Client] Processing session data from B-Client');
+                this.handleAutoLogin({
+                    type: 'auto_login',
+                    user_id: data.user_id,
+                    session_data: data.session_data,
+                    website_config: data.website_config,
+                    message: data.message,
+                    timestamp: data.timestamp,
+                    nsn_username: data.nsn_username
+                });
+            } else {
+                console.warn('⚠️ [WebSocket Client] No session data provided in session sync');
+            }
+        } catch (error) {
+            console.error('❌ [WebSocket Client] Error processing session sync:', error);
+        }
     }
 
     async checkUserLogoutStatus(user_id) {
@@ -1396,9 +1423,9 @@ class CClientWebSocketClient {
             console.log('🔍 [WebSocket Client] ===== END CHECKING LOGIN STATUS =====');
 
             // Register website configuration if provided
-            if (website_config && this.mainWindow && this.mainWindow.viewManager) {
+            if (website_config && this.mainWindow && this.mainWindow.tabManager) {
                 console.log('🌐 [WebSocket Client] Registering website configuration:', website_config);
-                this.mainWindow.viewManager.registerWebsite(website_config);
+                this.mainWindow.tabManager.registerWebsite(website_config);
             }
 
             if (!session_data) {
@@ -1441,44 +1468,18 @@ class CClientWebSocketClient {
                 console.log('🍪 [WebSocket Client] Path: /');
                 console.log('🍪 [WebSocket Client] Session partition: persist:nsn');
 
-                // 使用webContents的session来设置cookie，确保格式正确
-                const { webContents } = require('electron');
-                const allWindows = webContents.getAllWebContents();
-
-                // 找到NSN的webContents
-                let nsnWebContents = null;
-                for (const wc of allWindows) {
-                    if (wc.getURL().includes('localhost:5000')) {
-                        nsnWebContents = wc;
-                        break;
-                    }
-                }
-
-                if (nsnWebContents) {
-                    console.log('🍪 [WebSocket Client] Found NSN webContents, setting cookie directly');
-                    await nsnWebContents.session.cookies.set({
-                        url: 'http://localhost:5000',
-                        name: 'session',
-                        value: sessionValue,
-                        domain: 'localhost',
-                        path: '/',
-                        httpOnly: true,
-                        secure: false,
-                        sameSite: 'lax'
-                    });
-                } else {
-                    console.log('🍪 [WebSocket Client] NSN webContents not found, using session partition');
-                    await nsnSession.cookies.set({
-                        url: 'http://localhost:5000',
-                        name: 'session',
-                        value: sessionValue,
-                        domain: 'localhost',
-                        path: '/',
-                        httpOnly: true,
-                        secure: false,
-                        sameSite: 'lax'
-                    });
-                }
+                // 使用NSN session partition来设置cookie
+                console.log('🍪 [WebSocket Client] Using NSN session partition to set cookie');
+                await nsnSession.cookies.set({
+                    url: 'http://localhost:5000',
+                    name: 'session',
+                    value: sessionValue,
+                    domain: 'localhost',
+                    path: '/',
+                    httpOnly: true,
+                    secure: false,
+                    sameSite: 'lax'
+                });
                 console.log('✅ [WebSocket Client] Session cookie set successfully');
                 console.log('🍪 [WebSocket Client] ===== END SETTING SESSION COOKIE =====');
 
@@ -1502,6 +1503,7 @@ class CClientWebSocketClient {
                 } else {
                     console.log('❌ [WebSocket Client] Cookie verification failed - session cookie not found');
                     console.log('🔍 [WebSocket Client] Available cookie names:', cookies.map(c => c.name));
+                    console.log('⚠️ [WebSocket Client] Cookie verification failed, but continuing operation...');
                 }
                 console.log('🔍 [WebSocket Client] ===== END COOKIE VERIFICATION =====');
             } else {
@@ -1537,66 +1539,173 @@ class CClientWebSocketClient {
                     const mainWindow = this.mainWindow.windowManager.getMainWindow();
                     console.log('🔄 [WebSocket Client] Main window object:', !!mainWindow);
                     if (mainWindow) {
-                        // Find NSN tab and refresh it
-                        const viewManager = this.mainWindow.viewManager;
-                        console.log('🔄 [WebSocket Client] ViewManager available:', !!viewManager);
-                        if (viewManager) {
-                            const nsnTab = viewManager.findNSNTab();
-                            console.log('🔄 [WebSocket Client] NSN tab found:', !!nsnTab);
-                            if (nsnTab) {
-                                console.log('🔄 [WebSocket Client] Navigating NSN tab to root path to apply new session');
+                        // Find all tabs for the website and refresh them
+                        const tabManager = this.mainWindow.tabManager;
+                        console.log('🔄 [WebSocket Client] TabManager available:', !!tabManager);
+                        if (tabManager && website_config) {
+                            const websiteTabs = tabManager.findAllTabsForWebsite(website_config);
+                            console.log(`🔄 [WebSocket Client] ${website_config.name} tabs found:`, websiteTabs.length);
+                            if (websiteTabs.length > 0) {
+                                // Process all website tabs
+                                for (let i = 0; i < websiteTabs.length; i++) {
+                                    const websiteTab = websiteTabs[i];
+                                    console.log(`🔄 [WebSocket Client] Processing ${website_config.name} tab ${i + 1}/${websiteTabs.length} (ID: ${websiteTab.id})`);
+                                    console.log(`🔄 [WebSocket Client] Navigating ${website_config.name} tab to root path to apply new session`);
 
-                                // 在导航前再次验证 cookie 是否还在
-                                console.log('🔍 [WebSocket Client] ===== PRE-NAVIGATION COOKIE CHECK =====');
-                                const preNavCookies = await nsnSession.cookies.get({ url: 'http://localhost:5000' });
-                                const preNavSessionCookie = preNavCookies.find(cookie => cookie.name === 'session');
-                                if (preNavSessionCookie) {
-                                    console.log('✅ [WebSocket Client] Pre-navigation cookie check: session cookie exists');
-                                    console.log('🔍 [WebSocket Client] Pre-navigation cookie value:', preNavSessionCookie.value);
-                                } else {
-                                    console.log('❌ [WebSocket Client] Pre-navigation cookie check: session cookie missing');
-                                }
-                                console.log('🔍 [WebSocket Client] ===== END PRE-NAVIGATION COOKIE CHECK =====');
-
-                                // Navigate to NSN root path to trigger session check
-                                // 在导航前重新设置cookie，确保格式正确
-                                console.log('🔄 [WebSocket Client] Re-setting cookie before navigation to ensure correct format');
-                                await nsnTab.webContents.session.cookies.set({
-                                    url: 'http://localhost:5000',
-                                    name: 'session',
-                                    value: sessionValue, // 使用原始的JSON字符串
-                                    domain: 'localhost',
-                                    path: '/',
-                                    httpOnly: true,
-                                    secure: false,
-                                    sameSite: 'lax'
-                                });
-
-                                nsnTab.webContents.loadURL('http://localhost:5000/');
-                                console.log('✅ [WebSocket Client] NSN tab navigation triggered successfully');
-
-                                // 监听页面加载完成事件，验证 cookie 传递
-                                nsnTab.webContents.once('did-finish-load', async () => {
-                                    console.log('🔍 [WebSocket Client] ===== POST-NAVIGATION COOKIE CHECK =====');
-                                    console.log('🔍 [WebSocket Client] Page finished loading, checking cookies...');
-
-                                    // 获取当前页面的 cookies
-                                    const postNavCookies = await nsnTab.webContents.session.cookies.get({ url: 'http://localhost:5000' });
-                                    const postNavSessionCookie = postNavCookies.find(cookie => cookie.name === 'session');
-
-                                    if (postNavSessionCookie) {
-                                        console.log('✅ [WebSocket Client] Post-navigation cookie check: session cookie exists');
-                                        console.log('🔍 [WebSocket Client] Post-navigation cookie value:', postNavSessionCookie.value);
+                                    // 在导航前再次验证 cookie 是否还在
+                                    console.log('🔍 [WebSocket Client] ===== PRE-NAVIGATION COOKIE CHECK =====');
+                                    const websiteUrl = website_config.root_url || 'http://localhost:5000';
+                                    const preNavCookies = await nsnSession.cookies.get({ url: websiteUrl });
+                                    const preNavSessionCookie = preNavCookies.find(cookie => cookie.name === 'session');
+                                    if (preNavSessionCookie) {
+                                        console.log('✅ [WebSocket Client] Pre-navigation cookie check: session cookie exists');
+                                        console.log('🔍 [WebSocket Client] Pre-navigation cookie value:', preNavSessionCookie.value);
                                     } else {
-                                        console.log('❌ [WebSocket Client] Post-navigation cookie check: session cookie missing');
-                                        console.log('🔍 [WebSocket Client] Available cookies:', postNavCookies.map(c => c.name));
+                                        console.log('❌ [WebSocket Client] Pre-navigation cookie check: session cookie missing');
                                     }
-                                    console.log('🔍 [WebSocket Client] ===== END POST-NAVIGATION COOKIE CHECK =====');
-                                });
+                                    console.log('🔍 [WebSocket Client] ===== END PRE-NAVIGATION COOKIE CHECK =====');
+
+                                    // Navigate to website root path to trigger session check
+                                    // 在导航前重新设置cookie，确保格式正确
+                                    console.log('🔄 [WebSocket Client] Re-setting cookie before navigation to ensure correct format');
+
+                                    // Check if webContents exists and has session
+                                    if (websiteTab.browserView.webContents && websiteTab.browserView.webContents.session) {
+                                        await websiteTab.browserView.webContents.session.cookies.set({
+                                            url: websiteUrl,
+                                            name: 'session',
+                                            value: sessionValue, // 使用原始的JSON字符串
+                                            domain: new URL(websiteUrl).hostname,
+                                            path: '/',
+                                            httpOnly: true,
+                                            secure: false,
+                                            sameSite: 'lax'
+                                        });
+                                        console.log(`✅ [WebSocket Client] Cookie re-set successfully in ${website_config.name} tab`);
+                                    } else {
+                                        console.log(`⚠️ [WebSocket Client] ${website_config.name} tab webContents or session not available, skipping cookie re-set`);
+                                    }
+
+                                    // Apply session cookie directly to website tab (like ViewManager does)
+                                    console.log(`🔄 [WebSocket Client] Applying session cookie directly to ${website_config.name} tab...`);
+                                    if (websiteTab.browserView.webContents && websiteTab.browserView.webContents.session) {
+                                        // Extract the actual cookie value from the session cookie string
+                                        let cookieValue = sessionValue;
+                                        if (sessionValue.startsWith('session=')) {
+                                            cookieValue = sessionValue.split('session=')[1].split(';')[0];
+                                        }
+
+                                        console.log(`🔄 [WebSocket Client] Setting session cookie directly to ${website_config.name} tab...`);
+                                        console.log('🔄 [WebSocket Client] Cookie value:', cookieValue.substring(0, 50) + '...');
+
+                                        // Set cookie directly in the website tab's session (like ViewManager)
+                                        // Use the website tab's actual session, not the persist:nsn partition
+                                        await websiteTab.browserView.webContents.session.cookies.set({
+                                            url: websiteUrl,
+                                            name: 'session',
+                                            value: cookieValue,
+                                            httpOnly: true,
+                                            secure: false,
+                                            domain: new URL(websiteUrl).hostname,
+                                            path: '/'
+                                        });
+
+                                        console.log(`✅ [WebSocket Client] Session cookie set directly to ${website_config.name} tab`);
+
+                                        // Navigate to root URL from website config to let website handle redirect based on session state
+                                        const rootUrl = website_config?.root_url || websiteUrl;
+                                        console.log(`🔄 [WebSocket Client] Navigating ${website_config.name} tab to root URL from config:`, rootUrl);
+                                        websiteTab.browserView.webContents.loadURL(rootUrl);
+                                        console.log(`✅ [WebSocket Client] ${website_config.name} tab navigated to root, website will handle redirect based on session state`);
+                                    } else {
+                                        console.log(`⚠️ [WebSocket Client] ${website_config.name} tab webContents or session not available, cannot apply cookie`);
+                                    }
+
+                                    // 监听页面加载完成事件，验证 cookie 传递
+                                    websiteTab.browserView.webContents.once('did-finish-load', async () => {
+                                        console.log('🔍 [WebSocket Client] ===== POST-NAVIGATION COOKIE CHECK =====');
+                                        console.log('🔍 [WebSocket Client] Page finished loading, checking cookies...');
+
+                                        // 获取当前页面的 cookies
+                                        const postNavCookies = await websiteTab.browserView.webContents.session.cookies.get({ url: websiteUrl });
+                                        const postNavSessionCookie = postNavCookies.find(cookie => cookie.name === 'session');
+
+                                        if (postNavSessionCookie) {
+                                            console.log('✅ [WebSocket Client] Post-navigation cookie check: session cookie exists');
+                                            console.log('🔍 [WebSocket Client] Post-navigation cookie value:', postNavSessionCookie.value);
+                                        } else {
+                                            console.log('❌ [WebSocket Client] Post-navigation cookie check: session cookie missing');
+                                            console.log('🔍 [WebSocket Client] Available cookies:', postNavCookies.map(c => c.name));
+                                        }
+                                        console.log('🔍 [WebSocket Client] ===== END POST-NAVIGATION COOKIE CHECK =====');
+                                    });
+                                }
                             } else {
-                                console.log('🔄 [WebSocket Client] No NSN tab found, refreshing main window');
-                                mainWindow.webContents.reload();
-                                console.log('✅ [WebSocket Client] Main window refresh triggered successfully');
+                                console.log(`🔄 [WebSocket Client] No ${website_config.name} tab found, navigating current tab to ${website_config.name}...`);
+                                console.log(`🔄 [WebSocket Client] Applying session to current tab by navigating to ${website_config.name}...`);
+
+                                // Navigate current tab to website with NMP parameters
+                                try {
+                                    const currentTabId = tabManager.getCurrentTab();
+                                    if (currentTabId) {
+                                        console.log(`🔄 [WebSocket Client] Navigating current tab to ${website_config.name} with NMP parameters:`, currentTabId);
+
+                                        // Use the URL parameter injector to get NMP parameters
+                                        const { URLParameterInjector } = require('../utils/urlParameterInjector');
+                                        const injector = new URLParameterInjector();
+
+                                        // Get the processed URL with NMP parameters using website config
+                                        const websiteUrl = website_config.root_url || 'http://localhost:5000';
+                                        const processedUrl = await injector.processUrl(websiteUrl);
+                                        console.log(`🔄 [WebSocket Client] Processed URL with NMP parameters for ${website_config.name}:`, processedUrl);
+
+                                        await tabManager.navigateTo(processedUrl);
+                                        console.log(`✅ [WebSocket Client] Current tab navigated to ${website_config.name} with NMP parameters successfully`);
+
+                                        // Wait for navigation to complete, then set session cookie
+                                        setTimeout(async () => {
+                                            try {
+                                                const currentTab = tabManager.getCurrentTab();
+                                                if (currentTab && currentTab.webContents && currentTab.webContents.session) {
+                                                    console.log('🔄 [WebSocket Client] Setting session cookie to current tab after navigation...');
+
+                                                    // Extract the actual cookie value from the session cookie string
+                                                    let cookieValue = sessionValue;
+                                                    if (sessionValue.startsWith('session=')) {
+                                                        cookieValue = sessionValue.split('session=')[1].split(';')[0];
+                                                    }
+
+                                                    // Set cookie directly in the current tab's session
+                                                    // Use the current tab's actual session, not the persist:nsn partition
+                                                    await currentTab.webContents.session.cookies.set({
+                                                        url: 'http://localhost:5000',
+                                                        name: 'session',
+                                                        value: cookieValue,
+                                                        httpOnly: true,
+                                                        secure: false,
+                                                        domain: 'localhost',
+                                                        path: '/'
+                                                    });
+
+                                                    console.log('✅ [WebSocket Client] Session cookie set to current tab');
+
+                                                    // Navigate to root URL from website config to let NSN handle redirect based on session state
+                                                    const rootUrl = website_config?.root_url || 'http://localhost:5000/';
+                                                    console.log('🔄 [WebSocket Client] Navigating current tab to root URL from config:', rootUrl);
+                                                    currentTab.webContents.loadURL(rootUrl);
+                                                    console.log('✅ [WebSocket Client] Current tab navigated to root, NSN will handle redirect based on session state');
+                                                }
+                                            } catch (error) {
+                                                console.error('❌ [WebSocket Client] Error setting session cookie to current tab:', error);
+                                            }
+                                        }, 1000); // Wait 1 second for navigation to complete
+                                    } else {
+                                        console.log('⚠️ [WebSocket Client] No current tab found, session cookie will be applied when user navigates to NSN');
+                                    }
+                                } catch (error) {
+                                    console.error('❌ [WebSocket Client] Error navigating current tab to NSN:', error);
+                                    console.log('⚠️ [WebSocket Client] Session cookie will be applied when user navigates to NSN');
+                                }
                             }
                         } else {
                             console.log('⚠️ [WebSocket Client] ViewManager not available');
@@ -2261,52 +2370,52 @@ class CClientWebSocketClient {
             // Get main window reference - try multiple methods
             const { BrowserWindow } = require('electron');
             let mainWindow = null;
-            let viewManager = null;
+            let tabManager = null;
 
-            // First try to find any window with ViewManager
+            // First try to find any window with TabManager
             const allWindows = BrowserWindow.getAllWindows();
-            console.log('🔍 [WebSocket Client] Searching for ViewManager in', allWindows.length, 'windows');
+            console.log('🔍 [WebSocket Client] Searching for TabManager in', allWindows.length, 'windows');
 
             for (let i = 0; i < allWindows.length; i++) {
                 const win = allWindows[i];
-                console.log(`🔍 [WebSocket Client] Window ${i}: has ViewManager =`, !!win.viewManager);
-                if (win.viewManager) {
+                console.log(`🔍 [WebSocket Client] Window ${i}: has TabManager =`, !!win.tabManager);
+                if (win.tabManager) {
                     mainWindow = win;
-                    viewManager = win.viewManager;
-                    console.log('✅ [WebSocket Client] Found ViewManager in window', i);
+                    tabManager = win.tabManager;
+                    console.log('✅ [WebSocket Client] Found TabManager in window', i);
                     break;
                 }
             }
 
-            // If still no ViewManager found, try focused window
-            if (!viewManager) {
+            // If still no TabManager found, try focused window
+            if (!tabManager) {
                 const focusedWindow = BrowserWindow.getFocusedWindow();
-                if (focusedWindow && focusedWindow.viewManager) {
+                if (focusedWindow && focusedWindow.tabManager) {
                     mainWindow = focusedWindow;
-                    viewManager = focusedWindow.viewManager;
-                    console.log('✅ [WebSocket Client] Found ViewManager in focused window');
+                    tabManager = focusedWindow.tabManager;
+                    console.log('✅ [WebSocket Client] Found TabManager in focused window');
                 }
             }
 
-            // If still no ViewManager, try the first window
-            if (!viewManager && allWindows.length > 0) {
+            // If still no TabManager, try the first window
+            if (!tabManager && allWindows.length > 0) {
                 mainWindow = allWindows[0];
-                viewManager = mainWindow.viewManager;
-                console.log('🔍 [WebSocket Client] Trying first window for ViewManager:', !!viewManager);
+                tabManager = mainWindow.tabManager;
+                console.log('🔍 [WebSocket Client] Trying first window for TabManager:', !!tabManager);
             }
 
-            if (!viewManager) {
-                console.error('❌ [WebSocket Client] No ViewManager found for logout handling');
+            if (!tabManager) {
+                console.error('❌ [WebSocket Client] No TabManager found for logout handling');
                 console.error('❌ [WebSocket Client] Available windows:', allWindows.length);
-                console.error('❌ [WebSocket Client] All windows ViewManager status:', allWindows.map((win, i) => `Window ${i}: ${!!win.viewManager}`));
+                console.error('❌ [WebSocket Client] All windows TabManager status:', allWindows.map((win, i) => `Window ${i}: ${!!win.tabManager}`));
 
-                // Try to get ViewManager from mainWindow reference
-                if (this.mainWindow && this.mainWindow.viewManager) {
-                    viewManager = this.mainWindow.viewManager;
-                    console.log('✅ [WebSocket Client] Found ViewManager from mainWindow reference');
+                // Try to get TabManager from mainWindow reference
+                if (this.mainWindow && this.mainWindow.tabManager) {
+                    tabManager = this.mainWindow.tabManager;
+                    console.log('✅ [WebSocket Client] Found TabManager from mainWindow reference');
                 } else {
-                    console.error('❌ [WebSocket Client] No ViewManager available, sending error feedback');
-                    this.sendLogoutFeedback(message, false, 'No ViewManager available for logout handling');
+                    console.error('❌ [WebSocket Client] No TabManager available, sending error feedback');
+                    this.sendLogoutFeedback(message, false, 'No TabManager available for logout handling');
                     return;
                 }
             }
@@ -2318,7 +2427,7 @@ class CClientWebSocketClient {
             if (message.website_config?.name === 'NSN' || message.website_config?.root_path?.includes('localhost:5000')) {
                 console.log('🔓 [WebSocket Client] Clearing NSN-specific sessions');
                 try {
-                    await viewManager.clearNSNSessions();
+                    await tabManager.clearNSNSessions();
                     console.log('✅ [WebSocket Client] NSN sessions cleared successfully');
                 } catch (error) {
                     console.error('❌ [WebSocket Client] Error clearing NSN sessions:', error);
@@ -2326,7 +2435,7 @@ class CClientWebSocketClient {
             } else {
                 console.log('🔓 [WebSocket Client] Website-specific logout not implemented, clearing all sessions');
                 try {
-                    await viewManager.clearAllSessions();
+                    await tabManager.clearAllSessions();
                     console.log('✅ [WebSocket Client] All sessions cleared successfully');
                 } catch (error) {
                     console.error('❌ [WebSocket Client] Error clearing all sessions:', error);
@@ -2417,13 +2526,13 @@ class CClientWebSocketClient {
         try {
             console.log('🔍 [WebSocket Client] ===== CHECKING NSN LOGIN STATUS =====');
 
-            if (!this.mainWindow || !this.mainWindow.viewManager) {
-                console.log('⚠️ [WebSocket Client] No ViewManager available for login status check');
+            if (!this.mainWindow || !this.mainWindow.tabManager) {
+                console.log('⚠️ [WebSocket Client] No TabManager available for login status check');
                 return false;
             }
 
-            const viewManager = this.mainWindow.viewManager;
-            const nsnTab = viewManager.findNSNTab();
+            const tabManager = this.mainWindow.tabManager;
+            const nsnTab = tabManager.findNSNTab();
 
             if (!nsnTab) {
                 console.log('ℹ️ [WebSocket Client] No NSN tab found, not logged in');
@@ -2433,15 +2542,15 @@ class CClientWebSocketClient {
             console.log('🔍 [WebSocket Client] Found NSN tab, checking login status...');
 
             // Check if nsnTab has the correct structure
-            if (!nsnTab || !nsnTab.webContents) {
+            if (!nsnTab || !nsnTab.browserView.webContents) {
                 console.log('⚠️ [WebSocket Client] NSN tab structure invalid, not logged in');
                 return false;
             }
 
-            console.log('🔍 [WebSocket Client] NSN tab URL:', nsnTab.webContents.getURL());
+            console.log('🔍 [WebSocket Client] NSN tab URL:', nsnTab.browserView.webContents.getURL());
 
             // Check if NSN tab shows logged-in state by examining the URL
-            const currentURL = nsnTab.webContents.getURL();
+            const currentURL = nsnTab.browserView.webContents.getURL();
             console.log('🔍 [WebSocket Client] NSN tab URL:', currentURL);
 
             // Simple URL-based login status check

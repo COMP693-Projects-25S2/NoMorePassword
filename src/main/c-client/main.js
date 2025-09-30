@@ -141,9 +141,25 @@ class ElectronApp {
 
             console.log(`🌐 C-Client: ViewManager created successfully: ${!!this.viewManager}`);
 
+            // Initialize unified TabManager
+            try {
+                console.log(`🌐 C-Client: Attempting to create TabManager...`);
+                const TabManager = require('./window/tabManager');
+                console.log(`🌐 C-Client: TabManager module loaded successfully`);
+                this.tabManager = new TabManager(this);
+                console.log(`🌐 C-Client: TabManager initialized successfully`);
+            } catch (error) {
+                console.error(`❌ C-Client: Failed to create TabManager:`, error);
+                console.error(`❌ C-Client: TabManager error details:`, {
+                    message: error.message,
+                    stack: error.stack
+                });
+                this.tabManager = null;
+            }
+
             // Create IPC handlers with WebSocket client reference (after ViewManager is created)
-            this.ipcHandlers = new IpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager, null, this.startupValidator, apiPort, this.webSocketClient);
-            console.log(`🌐 C-Client: Created IpcHandlers with WebSocket client reference`);
+            this.ipcHandlers = new IpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager, null, this.startupValidator, apiPort, this.webSocketClient, this.tabManager);
+            console.log(`🌐 C-Client: Created IpcHandlers with WebSocket client reference and TabManager`);
 
             // Initialize B-Client configuration modal
             this.bClientConfigModal = new BClientConfigModal(this.mainWindow);
@@ -339,13 +355,22 @@ class ElectronApp {
             // Listen for client switch events
             this.setupClientSwitchListener();
 
-            // After IPC handlers are registered and listeners are set up, send init-tab event
-            // Reduced delay for faster startup
-            setTimeout(() => {
-                if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                    this.mainWindow.webContents.send('init-tab');
+            // Create initial tab directly using TabManager for faster startup
+            setTimeout(async () => {
+                if (this.mainWindow && !this.mainWindow.isDestroyed() && this.tabManager) {
+                    try {
+                        console.log('🚀 C-Client: Creating initial tab using TabManager...');
+                        const result = await this.tabManager.createTab('https://www.google.com');
+                        if (result) {
+                            console.log('✅ C-Client: Initial tab created successfully with ID:', result.id);
+                        } else {
+                            console.error('❌ C-Client: Failed to create initial tab');
+                        }
+                    } catch (error) {
+                        console.error('❌ C-Client: Error creating initial tab:', error);
+                    }
                 }
-            }, 50); // Further reduced delay for faster startup
+            }, 50); // Reduced delay for faster startup
 
             // Check if user registration is needed after main window is ready
             setTimeout(async () => {
@@ -587,13 +612,16 @@ class ElectronApp {
     }
 
     getViewIdFromWebContents(contents) {
-        if (!this.viewManager) return null;
+        if (!this.tabManager) return null;
 
         try {
-            const allViews = this.viewManager.getAllViews();
-            for (const [viewId, view] of Object.entries(allViews)) {
-                if (view.webContents === contents) {
-                    return parseInt(viewId);
+            if (this.tabManager) {
+                // Use TabManager to find the tab
+                const allTabs = this.tabManager.getAllTabs();
+                for (const tab of allTabs) {
+                    if (tab.browserView && tab.browserView.webContents === contents) {
+                        return tab.id;
+                    }
                 }
             }
         } catch (error) {
@@ -660,7 +688,12 @@ class ElectronApp {
     registerShortcuts() {
         try {
             globalShortcut.register('CommandOrControl+Shift+I', () => {
-                const currentView = this.viewManager ? this.viewManager.getCurrentView() : null;
+                // Use TabManager if available, otherwise fallback to ViewManager
+                let currentView = null;
+                if (this.tabManager) {
+                    const currentTab = this.tabManager.getCurrentTab();
+                    currentView = currentTab ? currentTab.browserView : null;
+                }
                 if (currentView && !currentView.webContents.isDestroyed()) {
                     currentView.webContents.openDevTools({ mode: 'detach' });
                 } else {
@@ -672,32 +705,33 @@ class ElectronApp {
             });
 
             globalShortcut.register('CommandOrControl+T', () => {
-                if (this.viewManager) {
-                    this.viewManager.createBrowserView().catch(console.error);
+                if (this.tabManager) {
+                    this.tabManager.createTab().catch(console.error);
                 }
             });
 
             globalShortcut.register('F5', () => {
-                if (this.viewManager) {
-                    this.viewManager.refresh();
+                if (this.tabManager) {
+                    this.tabManager.refresh();
                 }
             });
 
             globalShortcut.register('Alt+Left', () => {
-                if (this.viewManager) {
-                    this.viewManager.goBack();
+                if (this.tabManager) {
+                    this.tabManager.goBack();
                 }
             });
 
             globalShortcut.register('Alt+Right', () => {
-                if (this.viewManager) {
-                    this.viewManager.goForward();
+                if (this.tabManager) {
+                    this.tabManager.goForward();
                 }
             });
 
             globalShortcut.register('CommandOrControl+H', () => {
-                if (this.viewManager) {
-                    this.viewManager.createHistoryView().catch(console.error);
+                if (this.tabManager) {
+                    // Create history tab using TabManager
+                    this.tabManager.createTab('browser://history', { isHistory: true }).catch(console.error);
                 }
             });
 
@@ -826,14 +860,27 @@ class ElectronApp {
     }
 
     setupAppEvents() {
+        // Add global error handlers to prevent crashes
+        process.on('uncaughtException', (error) => {
+            console.error('🚨 C-Client: Uncaught Exception:', error);
+            console.log('⚠️ C-Client: Continuing operation despite error...');
+            // Don't exit the process, just log the error
+        });
+
+        process.on('unhandledRejection', (reason, promise) => {
+            console.error('🚨 C-Client: Unhandled Rejection at:', promise, 'reason:', reason);
+            console.log('⚠️ C-Client: Continuing operation despite rejection...');
+            // Don't exit the process, just log the error
+        });
+
         app.on('window-all-closed', async () => {
             console.log('🚪 C-Client: All windows closed, starting cleanup...');
 
             // Clear all sessions and login states (same as user switch)
-            if (this.viewManager) {
+            if (this.tabManager) {
                 try {
                     console.log('🧹 C-Client: Clearing all sessions including persistent partitions...');
-                    await this.viewManager.clearAllSessions();
+                    await this.tabManager.clearAllSessions();
                     console.log('✅ C-Client: All sessions cleared successfully');
                 } catch (error) {
                     console.error('❌ C-Client: Error clearing sessions:', error);
@@ -879,10 +926,10 @@ class ElectronApp {
             console.log('🚪 C-Client: Application quitting, starting cleanup...');
 
             // Clear all sessions and login states (same as user switch)
-            if (this.viewManager) {
+            if (this.tabManager) {
                 try {
                     console.log('🧹 C-Client: Clearing all sessions including persistent partitions...');
-                    await this.viewManager.clearAllSessions();
+                    await this.tabManager.clearAllSessions();
                     console.log('✅ C-Client: All sessions cleared successfully');
                 } catch (error) {
                     console.error('❌ C-Client: Error clearing sessions:', error);
@@ -934,10 +981,10 @@ class ElectronApp {
 
             try {
                 // Clear all sessions as final cleanup (same as user switch)
-                if (this.viewManager) {
+                if (this.tabManager) {
                     try {
                         console.log('🧹 C-Client: Final session cleanup including persistent partitions...');
-                        await this.viewManager.clearAllSessions();
+                        await this.tabManager.clearAllSessions();
                         console.log('✅ C-Client: Final session cleanup completed');
                     } catch (error) {
                         console.error('❌ C-Client: Error in final session cleanup:', error);
@@ -1014,17 +1061,16 @@ class ElectronApp {
 
         try {
             // Clear all sessions BEFORE destroying ViewManager
-            if (this.viewManager) {
+            if (this.tabManager) {
                 try {
                     console.log('🧹 C-Client: Clearing all sessions before cleanup...');
-                    await this.viewManager.clearAllSessions();
+                    await this.tabManager.clearAllSessions();
                     console.log('✅ C-Client: All sessions cleared before cleanup');
                 } catch (error) {
                     console.error('❌ C-Client: Error clearing sessions during cleanup:', error);
                 }
 
-                this.viewManager.cleanup();
-                this.viewManager = null;
+                this.tabManager.cleanup();
             }
 
             if (this.ipcHandlers) {
@@ -1077,10 +1123,10 @@ class ElectronApp {
 
         try {
             // Clear all sessions immediately (same as user switch)
-            if (this.viewManager) {
+            if (this.tabManager) {
                 try {
                     console.log('🧹 C-Client: Emergency session cleanup including persistent partitions...');
-                    await this.viewManager.clearAllSessions();
+                    await this.tabManager.clearAllSessions();
                     console.log('✅ C-Client: Emergency session cleanup completed');
                 } catch (error) {
                     console.error('❌ C-Client: Error in emergency session cleanup:', error);
@@ -1571,8 +1617,9 @@ class ElectronApp {
                         try {
                             // Get the current view's session
                             let targetSession = null;
-                            if (this.viewManager && this.viewManager.currentViewId) {
-                                const currentView = this.viewManager.views[this.viewManager.currentViewId];
+                            if (this.tabManager) {
+                                const currentTab = this.tabManager.getCurrentTab();
+                                const currentView = currentTab ? currentTab.browserView : null;
                                 if (currentView && currentView.webContents) {
                                     targetSession = currentView.webContents.session;
                                     console.log(`🔄 C-Client: Using current view's session for cookie setting`);
@@ -1814,13 +1861,14 @@ class ElectronApp {
                             }
 
                             // Navigate to NSN root path to trigger auto-login with the new cookies
-                            if (this.viewManager && this.viewManager.currentViewId) {
+                            if (this.tabManager) {
                                 console.log(`🔄 C-Client: ===== NAVIGATION START =====`);
                                 console.log(`🔄 C-Client: Navigating to NSN root path to trigger auto-login`);
-                                const currentView = this.viewManager.views[this.viewManager.currentViewId];
+                                const currentTab = this.tabManager.getCurrentTab();
+                                const currentView = currentTab ? currentTab.browserView : null;
                                 if (currentView && currentView.webContents) {
                                     // Get current local user info for NMP parameters (security: use local user info, not B-Client data)
-                                    const localUserInfo = await this.viewManager.getCurrentUserInfo();
+                                    const localUserInfo = await this.tabManager.getCurrentUserInfo();
                                     if (!localUserInfo) {
                                         console.error(`❌ C-Client: Cannot get current local user info for NMP parameters`);
                                         return false;
@@ -1914,13 +1962,13 @@ class ElectronApp {
             }
 
             // Navigate to the NSN URL with NMP parameters
-            if (this.viewManager && this.viewManager.navigateTo) {
+            if (this.tabManager && this.tabManager.navigateTo) {
                 console.log(`🧭 C-Client: Navigating to NSN URL with NMP parameters`);
-                await this.viewManager.navigateTo(navigationData.url);
+                await this.tabManager.navigateTo(navigationData.url);
                 console.log(`✅ C-Client: Successfully navigated to NSN with NMP parameters`);
                 return true;
             } else {
-                console.error(`❌ C-Client: ViewManager not available for navigation`);
+                console.error(`❌ C-Client: TabManager not available for navigation`);
                 return false;
             }
 
@@ -1935,14 +1983,22 @@ class ElectronApp {
             console.log(`🔓 C-Client: Handling logout for user: ${logoutData.username}`);
             const { user_id, username } = logoutData;
 
-            // Get all views and clear their sessions
-            const views = this.viewManager.getAllViews();
-            console.log(`🔓 C-Client: Found ${Object.keys(views).length} views to clear`);
+            // Get all tabs/views and clear their sessions
+            let viewsToClear = [];
+            if (this.tabManager) {
+                // Use TabManager to get all tabs
+                const allTabs = this.tabManager.getAllTabs();
+                viewsToClear = allTabs.map(tab => ({
+                    id: tab.id,
+                    view: tab.browserView
+                }));
+                console.log(`🔓 C-Client: Found ${viewsToClear.length} tabs to clear (using TabManager)`);
+            }
 
-            for (const [viewId, view] of Object.entries(views)) {
+            for (const { id, view } of viewsToClear) {
                 if (view && view.webContents && !view.webContents.isDestroyed()) {
                     try {
-                        console.log(`🔓 C-Client: Clearing session for view ${viewId}`);
+                        console.log(`🔓 C-Client: Clearing session for tab/view ${id}`);
 
                         // Clear all storage data for this view
                         await view.webContents.session.clearStorageData({
