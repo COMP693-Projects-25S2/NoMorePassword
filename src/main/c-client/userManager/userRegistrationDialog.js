@@ -3,7 +3,8 @@ const path = require('path');
 const fs = require('fs');
 
 class UserRegistrationDialog {
-    constructor() {
+    constructor(clientId = null) {
+        this.clientId = clientId;
         this.dialogWindow = null;
         this.mainWindow = null;
         this.monitoringEnabled = false;
@@ -107,12 +108,19 @@ class UserRegistrationDialog {
 
             // Creating user greeting dialog window
 
-            // Get current user from database
-            const db = require('../sqlite/database');
-            const currentUser = db.prepare('SELECT username FROM local_users WHERE is_current = 1').get();
+            // Get current user from database using DatabaseManager
+            const DatabaseManager = require('../sqlite/databaseManager');
+            console.log(`🔍 UserRegistrationDialog: showGreeting - clientId: ${this.clientId}`);
+
+            // Always use client-specific lookup, generate fallback clientId if needed
+            const clientId = this.clientId || process.env.C_CLIENT_ID || `c-client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const currentUser = DatabaseManager.getCurrentUserFieldsForClient(['username'], clientId);
+
+            console.log(`🔍 UserRegistrationDialog: showGreeting - currentUser:`, currentUser);
 
             if (!currentUser) {
                 // No current user found, skipping greeting dialog
+                console.warn(`🔍 UserRegistrationDialog: No current user found, skipping greeting dialog`);
                 return;
             }
 

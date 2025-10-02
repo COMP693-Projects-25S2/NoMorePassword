@@ -84,9 +84,10 @@ class UrlParameterInjector {
 
     /**
      * Get current user information and node information
+     * @param {string} clientId - Client ID for user lookup
      * @returns {Object|null} - User and node information or null
      */
-    getCurrentUserInfo() {
+    getCurrentUserInfo(clientId = null) {
         try {
             console.log('🔍 URLParameterInjector: Attempting to get current user info...');
 
@@ -103,23 +104,38 @@ class UrlParameterInjector {
             // First check if database is accessible
             console.log('🔍 URLParameterInjector: Database connection established');
 
-            // Query for current user with all NMP parameters from local_users table
-            const currentUser = db.prepare(
-                'SELECT user_id, username, node_id, domain_id, cluster_id, channel_id FROM local_users WHERE is_current = 1'
-            ).get();
+            // Query for current user with all NMP parameters using DatabaseManager
+            const DatabaseManager = require('../sqlite/databaseManager');
+            let currentUser;
+            if (clientId) {
+                // Use client-specific lookup (includes fallback to latest updated user)
+                currentUser = DatabaseManager.getCurrentUserFieldsForClient(
+                    ['user_id', 'username', 'node_id', 'domain_id', 'cluster_id', 'channel_id'],
+                    clientId
+                );
+                console.log('🔍 URLParameterInjector: Using client-specific user lookup for clientId:', clientId);
+                console.log('🔍 URLParameterInjector: Found current user:', currentUser ? `${currentUser.username} (${currentUser.user_id})` : 'null');
 
-            // Get client_id from NodeManager
-            let clientId = null;
-            try {
-                const NodeManager = require('../nodeManager/nodeManager');
-                const nodeManager = new NodeManager();
-                clientId = nodeManager.getClientId();
-                console.log('🔍 URLParameterInjector: Retrieved client_id from NodeManager:', clientId);
-            } catch (error) {
-                console.error('❌ URLParameterInjector: Failed to get client_id from NodeManager:', error);
-                // Fallback: try to get from global variable or generate one
-                clientId = `c-client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                console.log('🔍 URLParameterInjector: Generated fallback client_id:', clientId);
+                // Debug: Check current user status
+                DatabaseManager.debugClientCurrentUser(clientId);
+            } else {
+                // Fallback: try to get any available clientId from environment or generate one
+                const fallbackClientId = process.env.C_CLIENT_ID || `c-client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                console.log('🔍 URLParameterInjector: No clientId provided, using fallback clientId:', fallbackClientId);
+
+                currentUser = DatabaseManager.getCurrentUserFieldsForClient(
+                    ['user_id', 'username', 'node_id', 'domain_id', 'cluster_id', 'channel_id'],
+                    fallbackClientId
+                );
+                console.log('🔍 URLParameterInjector: Using fallback clientId for user lookup');
+            }
+
+            // Use provided clientId or the fallback clientId generated above
+            let finalClientId = clientId || fallbackClientId;
+            if (clientId) {
+                console.log('🔍 URLParameterInjector: Using provided client_id:', finalClientId);
+            } else {
+                console.log('🔍 URLParameterInjector: Using fallback client_id:', finalClientId);
             }
 
             console.log('🔍 URLParameterInjector: Query result:', currentUser);
@@ -128,12 +144,26 @@ class UrlParameterInjector {
             console.log('🔍 URLParameterInjector: Current user domain_id:', currentUser?.domain_id);
             console.log('🔍 URLParameterInjector: Current user cluster_id:', currentUser?.cluster_id);
             console.log('🔍 URLParameterInjector: Current user channel_id:', currentUser?.channel_id);
+            console.log('🔍 URLParameterInjector: Using finalClientId:', finalClientId);
+
+            // Debug: Check all users and their client_id
+            try {
+                const allUsers = DatabaseManager.getAllLocalUsers();
+                console.log('🔍 URLParameterInjector: All users in database:', allUsers.map(u => ({
+                    user_id: u.user_id,
+                    username: u.username,
+                    is_current: u.is_current,
+                    client_id: u.client_id
+                })));
+            } catch (debugError) {
+                console.error('🔍 URLParameterInjector: Error getting all users for debug:', debugError);
+            }
 
             if (currentUser) {
                 const userInfo = {
                     user_id: currentUser.user_id,
                     username: currentUser.username,
-                    client_id: clientId,
+                    client_id: finalClientId,
                     node_id: currentUser.node_id || 'unknown',
                     domain_id: currentUser.domain_id || null,
                     cluster_id: currentUser.cluster_id || null,
@@ -145,9 +175,9 @@ class UrlParameterInjector {
             } else {
                 console.log('⚠️ URLParameterInjector: No current user found in database');
 
-                // Try to get all users to debug
+                // Try to get all users to debug using DatabaseManager
                 try {
-                    const allUsers = db.prepare('SELECT user_id, username, is_current FROM local_users').all();
+                    const allUsers = DatabaseManager.getAllLocalUsers();
                     console.log('🔍 URLParameterInjector: All users in database:', allUsers);
                 } catch (debugError) {
                     console.error('❌ URLParameterInjector: Error querying all users:', debugError);
@@ -184,7 +214,7 @@ class UrlParameterInjector {
             urlObj.searchParams.set(this.parameterNames.username, userInfo.username);
             urlObj.searchParams.set(this.parameterNames.client_type, 'c-client');  // Hardcoded as requested
 
-            // Use current timestamp for last_login
+            // Use current timestamp for NMP timestamp parameter
             urlObj.searchParams.set(this.parameterNames.timestamp, Date.now().toString());
             urlObj.searchParams.set(this.parameterNames.injected, 'true');  // Mark as injected by C-Client
 
@@ -259,7 +289,7 @@ class UrlParameterInjector {
      * @param {string} url - Original URL
      * @returns {string} - Processed URL with parameters if applicable
      */
-    async processUrl(url) {
+    async processUrl(url, clientId = null) {
         console.log(`\n🔗 URLParameterInjector: Processing URL: ${url}`);
 
         // First, fix protocol for local development
@@ -275,7 +305,7 @@ class UrlParameterInjector {
 
         console.log('✅ URLParameterInjector: URL is valid for parameter injection, proceeding...');
 
-        const userInfo = this.getCurrentUserInfo();
+        const userInfo = this.getCurrentUserInfo(clientId);
         if (!userInfo) {
             console.log('⚠️ URLParameterInjector: No current user found, skipping parameter injection');
             return fixedUrl;
@@ -367,11 +397,12 @@ class UrlParameterInjector {
     /**
      * Get parameter injection status for a URL
      * @param {string} url - URL to check
+     * @param {string} clientId - Client ID for user lookup
      * @returns {Object} - Status information
      */
-    getInjectionStatus(url) {
+    getInjectionStatus(url, clientId = null) {
         const shouldInject = this.shouldInjectParameters(url);
-        const userInfo = this.getCurrentUserInfo();
+        const userInfo = this.getCurrentUserInfo(clientId);
 
         return {
             shouldInject,

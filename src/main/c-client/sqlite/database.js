@@ -79,7 +79,7 @@ db.exec(`
     )
 `);
 
-// Create table: local_users, record local users with same structure as channel_nodes, maximum 1000 records
+// Create table: local_users, record local users with client_ids array for multi-client support
 db.exec(`
     CREATE TABLE IF NOT EXISTS local_users (
         user_id         VARCHAR(50) PRIMARY KEY,
@@ -91,12 +91,9 @@ db.exec(`
         status          VARCHAR(20) DEFAULT 'active',
         created_at      INTEGER DEFAULT (strftime('%s', 'now')),
         updated_at      INTEGER DEFAULT (strftime('%s', 'now')),
-        is_current      INTEGER DEFAULT 0
+        client_ids      TEXT DEFAULT '[]'
     )
 `);
-
-
-
 
 // Create table: user_activities
 db.exec(`
@@ -115,78 +112,6 @@ db.exec(`
         updated_at  INTEGER DEFAULT (strftime('%s', 'now'))
     )
 `);
-
-// Add is_current column to existing local_users table if it doesn't exist
-try {
-    db.exec(`ALTER TABLE local_users ADD COLUMN is_current INTEGER DEFAULT 0`);
-    console.log('Added is_current column to local_users table');
-} catch (error) {
-    // Column might already exist, which is fine
-}
-
-// Add username column to existing user_activities table if it doesn't exist
-try {
-    db.exec(`ALTER TABLE user_activities ADD COLUMN username TEXT`);
-    console.log('Added username column to user_activities table');
-} catch (error) {
-    // Column might already exist, which is fine
-}
-
-// Add activity_type column to existing user_activities table if it doesn't exist
-try {
-    db.exec(`ALTER TABLE user_activities ADD COLUMN activity_type VARCHAR(50)`);
-    console.log('Added activity_type column to user_activities table');
-} catch (error) {
-    // Column might already exist, which is fine
-}
-
-// Add start_time column to existing user_activities table if it doesn't exist
-try {
-    db.exec(`ALTER TABLE user_activities ADD COLUMN start_time INTEGER`);
-    console.log('Added start_time column to user_activities table');
-} catch (error) {
-    // Column might already exist, which is fine
-}
-
-// Add end_time column to existing user_activities table if it doesn't exist
-try {
-    db.exec(`ALTER TABLE user_activities ADD COLUMN end_time INTEGER`);
-    console.log('Added end_time column to user_activities table');
-} catch (error) {
-    // Column might already exist, which is fine
-}
-
-// Add created_at column to existing user_activities table if it doesn't exist
-try {
-    db.exec(`ALTER TABLE user_activities ADD COLUMN created_at INTEGER`);
-    console.log('Added created_at column to user_activities table');
-} catch (error) {
-    // Column might already exist, which is fine
-}
-
-// Add updated_at column to existing user_activities table if it doesn't exist
-try {
-    db.exec(`ALTER TABLE user_activities ADD COLUMN updated_at INTEGER`);
-    console.log('Added updated_at column to user_activities table');
-} catch (error) {
-    // Column might already exist, which is fine
-}
-
-// Add client_type column to existing local_users table if it doesn't exist
-try {
-    db.exec(`ALTER TABLE local_users ADD COLUMN client_type VARCHAR(50) DEFAULT 'c-client'`);
-    console.log('Added client_type column to local_users table');
-} catch (error) {
-    // Column might already exist, which is fine
-}
-
-// Add last_login column to existing local_users table if it doesn't exist
-try {
-    db.exec(`ALTER TABLE local_users ADD COLUMN last_login INTEGER`);
-    console.log('Added last_login column to local_users table');
-} catch (error) {
-    // Column might already exist, which is fine
-}
 
 // Disable foreign key constraints for simpler data management
 db.pragma('foreign_keys = OFF');

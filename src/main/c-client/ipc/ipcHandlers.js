@@ -3,7 +3,8 @@ const NetworkConfigManager = require('../config/networkConfigManager');
 
 // IPC handlers
 class IpcHandlers {
-    constructor(viewManager, historyManager, mainWindow = null, clientManager = null, nodeManager = null, startupValidator = null, apiPort = null, webSocketClient = null, tabManager = null) {
+    constructor(viewManager, historyManager, mainWindow = null, clientManager = null, nodeManager = null, startupValidator = null, apiPort = null, webSocketClient = null, tabManager = null, clientId = null) {
+        this.clientId = clientId; // Store client ID for user-specific operations
         this.viewManager = viewManager;
         this.historyManager = historyManager;
         this.mainWindow = mainWindow; // Store reference to main window
@@ -486,7 +487,7 @@ class IpcHandlers {
 
                 // Process URL and inject parameters if needed
                 console.log('🔧 C-Client IPC: Processing URL for parameter injection...');
-                const processedUrl = await urlInjector.processUrl(url);
+                const processedUrl = await urlInjector.processUrl(url, this.clientId);
 
                 console.log(`🔧 C-Client IPC: URL processing completed:`);
                 console.log(`   Input URL:  ${url}`);
@@ -524,7 +525,22 @@ class IpcHandlers {
                 return { success: true };
             } catch (error) {
                 console.error('❌ C-Client IPC: Failed to navigate to URL:', error);
-                return { success: false, error: error.message };
+
+                // Handle specific error types
+                if (error.code === 'ERR_ABORTED') {
+                    console.log('⚠️ C-Client IPC: Navigation was aborted (ERR_ABORTED)');
+                    console.log('⚠️ C-Client IPC: This usually means the navigation was interrupted by another navigation request');
+                    console.log('⚠️ C-Client IPC: This is often normal during logout/login sequences');
+
+                    // For ERR_ABORTED, we might want to retry or just log it as a warning
+                    return { success: false, error: 'Navigation was aborted', code: 'ERR_ABORTED', retry: true };
+                } else if (error.code === 'ERR_INVALID_URL') {
+                    console.log('❌ C-Client IPC: Invalid URL provided');
+                    return { success: false, error: 'Invalid URL', code: 'ERR_INVALID_URL' };
+                } else {
+                    console.log('❌ C-Client IPC: Unknown navigation error');
+                    return { success: false, error: error.message, code: error.code || 'UNKNOWN' };
+                }
             }
         });
 
@@ -841,6 +857,16 @@ class IpcHandlers {
             }
         });
 
+        // Node Test: Generate unique node_id for each user
+        this.safeRegisterHandler('node-test-unique-ids', () => {
+            try {
+                const DatabaseManager = require('../sqlite/databaseManager');
+                return DatabaseManager.generateUniqueNodeIdsForAllUsers();
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        });
+
         // Exit application
         this.safeRegisterHandler('exit-app', () => {
             try {
@@ -857,7 +883,7 @@ class IpcHandlers {
         this.safeRegisterHandler('clear-current-user-activities', () => {
             try {
                 const DatabaseManager = require('../sqlite/databaseManager');
-                const result = DatabaseManager.clearCurrentUserActivities();
+                const result = DatabaseManager.clearCurrentUserActivities(this.clientId);
                 return result;
             } catch (error) {
                 console.error('Error clearing current user activities:', error);
@@ -958,9 +984,17 @@ class IpcHandlers {
                 // Insert new user into database using DatabaseManager
                 const DatabaseManager = require('../sqlite/databaseManager');
 
-                // First, set all existing users to not current
-                const db = require('../sqlite/database');
-                db.prepare('UPDATE local_users SET is_current = 0').run();
+                // Use the client_id from IpcHandlers constructor
+                let clientId = this.clientId;
+
+                // Remove client from all users for this client only (multi-client support)
+                if (clientId) {
+                    DatabaseManager.removeClientFromCurrentUsers(clientId);
+                    console.log(`🔧 C-Client IPC: Removed client from all users for client: ${clientId}`);
+                    console.log(`🔧 C-Client IPC: Using client_id for new user: ${clientId}`);
+                } else {
+                    console.warn(`⚠️ C-Client IPC: No client_id available for new user`);
+                }
 
                 // Then insert the new user as current using DatabaseManager (which handles node_id consistency)
                 const result = DatabaseManager.addLocalUser(
@@ -971,7 +1005,9 @@ class IpcHandlers {
                     userData.channelId,
                     null, // nodeId will be handled by addLocalUser method
                     userData.ipAddress,
-                    1 // isCurrent = 1
+                    1, // isCurrent = 1
+                    'c-client', // clientType
+                    clientId // clientId
                 );
 
                 // User will be registered to third-party websites only when they click "signup with NMP"
@@ -1022,11 +1058,8 @@ class IpcHandlers {
                             console.log('🔄 C-Client IPC: Closing dialog from startupValidator.nodeManager');
                             this.startupValidator.nodeManager.userRegistrationDialog.closeFromExternalRequest();
                         }
-                        // Also try the current nodeManager as fallback
-                        else if (this.nodeManager && this.nodeManager.userRegistrationDialog) {
-                            console.log('🔄 C-Client IPC: Closing dialog from current nodeManager');
-                            this.nodeManager.userRegistrationDialog.closeFromExternalRequest();
-                        }
+                        // Note: nodeManager.userRegistrationDialog is no longer available after refactoring
+                        // Dialog closing is now handled through direct window management
 
                         // Also try to close any dialog windows directly
                         const { BrowserWindow } = require('electron');
@@ -1082,7 +1115,7 @@ class IpcHandlers {
                     // Then show greeting dialog
                     try {
                         const UserRegistrationDialog = require('../userManager/userRegistrationDialog');
-                        const userRegistrationDialog = new UserRegistrationDialog();
+                        const userRegistrationDialog = new UserRegistrationDialog(this.clientId);
 
                         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
                             await userRegistrationDialog.showGreeting(this.mainWindow);
@@ -1107,25 +1140,22 @@ class IpcHandlers {
         // Handle dialog close request
         ipcMain.on('close-user-registration-dialog', async (event) => {
             // Close the registration dialog
-            if (this.nodeManager && this.nodeManager.userRegistrationDialog) {
-                this.nodeManager.userRegistrationDialog.closeFromExternalRequest();
+            // Note: nodeManager.userRegistrationDialog is no longer available after refactoring
+            // Dialog closing is now handled through direct window management
 
-                // After closing registration dialog, show greeting dialog
-                try {
-                    const UserRegistrationDialog = require('../userManager/userRegistrationDialog');
-                    const userRegistrationDialog = new UserRegistrationDialog();
+            // After closing registration dialog, show greeting dialog
+            try {
+                const UserRegistrationDialog = require('../userManager/userRegistrationDialog');
+                const userRegistrationDialog = new UserRegistrationDialog(this.clientId);
 
-                    // Use the stored main window reference
-                    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                        await userRegistrationDialog.showGreeting(this.mainWindow);
-                    } else {
-                        console.warn('Main window not available for greeting dialog');
-                    }
-                } catch (greetingError) {
-                    console.error('Error showing greeting dialog after registration:', greetingError);
+                // Use the stored main window reference
+                if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                    await userRegistrationDialog.showGreeting(this.mainWindow);
+                } else {
+                    console.warn('Main window not available for greeting dialog');
                 }
-            } else {
-                console.warn('NodeManager or userRegistrationDialog not available');
+            } catch (greetingError) {
+                console.error('Error showing greeting dialog after registration:', greetingError);
             }
         });
 
@@ -1245,7 +1275,7 @@ class IpcHandlers {
         this.safeRegisterHandler('open-user-selector', async (event) => {
             try {
                 const UserSelectorModal = require('../userSelectorModal');
-                const userSelectorModal = new UserSelectorModal();
+                const userSelectorModal = new UserSelectorModal(this.clientId);
 
                 // Use the stored main window reference
                 if (this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -1267,17 +1297,20 @@ class IpcHandlers {
 
                 const DatabaseManager = require('../sqlite/databaseManager');
 
-                // First, set all users to not current
-                const clearResult = DatabaseManager.clearAllCurrentUsers();
-                if (!clearResult.success) {
-                    throw new Error(`Failed to clear current users: ${clearResult.error}`);
+                // Use the client_id from IpcHandlers constructor
+                let clientId = this.clientId;
+                if (clientId) {
+                    console.log(`🔧 C-Client IPC: Using client_id for user switch: ${clientId}`);
+                } else {
+                    console.warn(`⚠️ C-Client IPC: No client_id available for user switch`);
                 }
 
-                // Then set the selected user as current
-                const updateResult = DatabaseManager.updateLocalUserWithCurrent(userId, null, null, null, null, null, 1);
+                // Set the selected user as current with client_id (supports multiple clients with different current users)
+                const updateResult = DatabaseManager.setCurrentLocalUser(userId, clientId);
                 if (!updateResult.success) {
                     throw new Error(`Failed to update user: ${updateResult.error}`);
                 }
+                console.log(`✅ C-Client IPC: Set user ${userId} as current with client_id: ${clientId}`);
 
                 // Get the new current user info
                 const newUser = DatabaseManager.getLocalUserById(userId);
@@ -1286,6 +1319,30 @@ class IpcHandlers {
                 }
 
                 console.log(`✅ C-Client IPC: User switched to: ${newUser.username}`);
+
+                // Debug: Check current user status after switch
+                DatabaseManager.debugUserStatus();
+                DatabaseManager.debugClientCurrentUser(clientId);
+
+                // Update nodeManager current user reference
+                if (this.nodeManager) {
+                    try {
+                        this.nodeManager.setCurrentUser(newUser);
+                        console.log(`🔄 C-Client IPC: Updated NodeManager current user to: ${newUser.username}`);
+                    } catch (nodeError) {
+                        console.error(`❌ C-Client IPC: Error updating NodeManager current user:`, nodeError);
+                    }
+                }
+
+                // Update userActivityManager current user reference
+                if (this.historyManager && this.historyManager.userActivityManager) {
+                    try {
+                        this.historyManager.userActivityManager.updateCurrentUser();
+                        console.log(`🔄 C-Client IPC: Updated UserActivityManager current user to: ${newUser.username}`);
+                    } catch (activityError) {
+                        console.error(`❌ C-Client IPC: Error updating UserActivityManager current user:`, activityError);
+                    }
+                }
 
                 // Re-register with WebSocket service to ensure accurate counting (instead of disconnecting)
                 try {
@@ -1320,67 +1377,69 @@ class IpcHandlers {
                     // Don't fail the user switch if WebSocket disconnect fails
                 }
 
-                // Clear all sessions and close all existing tabs before creating new default page
-                if (this.tabManager) {
-                    try {
-                        console.log('🔄 C-Client IPC: Clearing all sessions and closing all tabs...');
-                        console.log('🔍 C-Client IPC: TabManager available:', !!this.tabManager);
-                        console.log('🔍 C-Client IPC: clearAllSessions method available:', typeof this.tabManager.clearAllSessions);
-                        console.log('🔍 C-Client IPC: closeAllTabsAndCreateDefault method available:', typeof this.tabManager.closeAllTabsAndCreateDefault);
-
-                        // First, clear all sessions (including persistent partitions)
-                        console.log('🧹 C-Client IPC: Clearing all sessions including persistent partitions...');
-                        await this.tabManager.clearAllSessions();
-                        console.log('✅ C-Client IPC: All sessions cleared');
-
-                        // Then close all tabs and create new default page
-                        if (this.tabManager) {
-                            await this.tabManager.closeAllTabs();
-                            // Create a new default tab
-                            await this.tabManager.createTab();
-                            console.log('✅ C-Client IPC: All tabs closed and new default tab created (using TabManager)');
-                        } else {
-                            await this.tabManager.closeAllTabsAndCreateDefault();
-                            console.log('✅ C-Client IPC: All tabs closed and new default page created (using ViewManager)');
-                        }
-                    } catch (viewError) {
-                        console.error('❌ C-Client IPC: Error managing views during user switch:', viewError);
-                        console.error('❌ C-Client IPC: ViewError details:', {
-                            message: viewError.message,
-                            stack: viewError.stack
-                        });
-                        // Don't fail the user switch if view management fails
-                    }
-                } else {
-                    console.error('❌ C-Client IPC: ViewManager not available for user switch');
-                }
-
-                // Close user selector modal if it exists
+                // Close user selector modal immediately (don't wait for any other operations)
                 try {
                     // Send message to close any open user selector modal
                     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
                         this.mainWindow.webContents.send('close-user-selector-modal');
                     }
+                    console.log('✅ C-Client IPC: User selector modal closed immediately');
                 } catch (modalCloseError) {
                     console.error('Error closing user selector modal:', modalCloseError);
                     // Don't fail the user switch if modal close fails
                 }
 
-                // Show greeting dialog for the switched user
-                try {
-                    const UserRegistrationDialog = require('../userManager/userRegistrationDialog');
-                    const greetingDialog = new UserRegistrationDialog();
+                // Process ALL remaining operations asynchronously (don't block user interaction)
+                setImmediate(async () => {
+                    try {
+                        console.log('🔄 C-Client IPC: [Async] Processing all post-switch operations...');
 
-                    // Use the stored main window reference instead of event.sender
-                    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                        await greetingDialog.showGreeting(this.mainWindow);
-                    } else {
-                        console.warn('Main window not available for greeting dialog');
+                        // Clear all sessions and close all existing tabs
+                        if (this.tabManager) {
+                            try {
+                                console.log('🔄 C-Client IPC: [Async] Clearing all sessions and closing all tabs...');
+                                console.log('🔍 C-Client IPC: [Async] TabManager available:', !!this.tabManager);
+                                console.log('🔍 C-Client IPC: [Async] closeAllTabsAndCreateDefault method available:', typeof this.tabManager.closeAllTabsAndCreateDefault);
+
+                                // Use the unified method that clears sessions and creates default tab
+                                if (this.tabManager.closeAllTabsAndCreateDefault) {
+                                    console.log('🔧 C-Client IPC: [Async] Using closeAllTabsAndCreateDefault method...');
+                                    await this.tabManager.closeAllTabsAndCreateDefault();
+                                    console.log('✅ C-Client IPC: [Async] All tabs closed and default tab created');
+                                } else {
+                                    console.warn('⚠️ C-Client IPC: [Async] closeAllTabsAndCreateDefault method not available');
+                                }
+                            } catch (viewError) {
+                                console.error('❌ C-Client IPC: [Async] Error managing views during user switch:', viewError);
+                                console.error('❌ C-Client IPC: [Async] ViewError details:', {
+                                    message: viewError.message,
+                                    stack: viewError.stack
+                                });
+                                // Don't fail the user switch if view management fails
+                            }
+                        } else {
+                            console.error('❌ C-Client IPC: [Async] TabManager not available for user switch');
+                        }
+
+                        // Show greeting dialog for the switched user (also async)
+                        try {
+                            const UserRegistrationDialog = require('../userManager/userRegistrationDialog');
+                            const greetingDialog = new UserRegistrationDialog(this.clientId);
+
+                            // Use the stored main window reference instead of event.sender
+                            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                                await greetingDialog.showGreeting(this.mainWindow);
+                                console.log('✅ C-Client IPC: [Async] Greeting dialog shown for switched user');
+                            }
+                        } catch (greetingError) {
+                            console.error('❌ C-Client IPC: [Async] Error showing greeting dialog:', greetingError);
+                            // Don't fail the user switch if greeting fails
+                        }
+                    } catch (sessionError) {
+                        console.error('❌ C-Client IPC: [Async] Failed to process post-switch operations:', sessionError);
+                        // Don't fail the user switch if post-switch operations fail
                     }
-                } catch (greetingError) {
-                    console.error('Error showing greeting dialog:', greetingError);
-                    // Don't fail the user switch if greeting fails
-                }
+                });
 
                 return {
                     success: true,
@@ -1397,12 +1456,10 @@ class IpcHandlers {
         this.safeRegisterHandler('open-user-registration', async (event) => {
             try {
                 const UserRegistrationDialog = require('../userManager/userRegistrationDialog');
-                const userRegistrationDialog = new UserRegistrationDialog();
+                const userRegistrationDialog = new UserRegistrationDialog(this.clientId);
 
-                // Store the dialog instance in nodeManager so it can be closed later
-                if (this.nodeManager) {
-                    this.nodeManager.userRegistrationDialog = userRegistrationDialog;
-                }
+                // Note: nodeManager.userRegistrationDialog is no longer available after refactoring
+                // Dialog management is now handled through direct window management
 
                 // Use the stored main window reference
                 if (this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -1422,11 +1479,9 @@ class IpcHandlers {
 
     }
 
-
-
     /**
-     * Clean up all IPC handlers
-     */
+ * Clean up all IPC handlers
+ */
     cleanup() {
         console.log('🧹 C-Client IPC: Starting cleanup of all handlers...');
 

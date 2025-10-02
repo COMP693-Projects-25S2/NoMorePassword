@@ -222,6 +222,10 @@ class ConfigModal {
                 <span class="config-option-icon">👤</span>
                 <span class="config-option-text">Switch User</span>
             </div>
+            <div class="config-option" id="node-test">
+                <span class="config-option-icon">🧪</span>
+                <span class="config-option-text">Node Test</span>
+            </div>
             <div class="config-option" id="exit-app">
                 <span class="config-option-icon">🚪</span>
                 <span class="config-option-text">Exit Application</span>
@@ -241,6 +245,7 @@ class ConfigModal {
             const switchClientBtn = document.getElementById('switch-client');
             const newUserBtn = document.getElementById('new-user');
             const switchUserBtn = document.getElementById('switch-user');
+            const nodeTestBtn = document.getElementById('node-test');
             const exitAppBtn = document.getElementById('exit-app');
 
             // Handle close button click
@@ -342,6 +347,25 @@ class ConfigModal {
                 window.close();
             });
 
+            // Handle node test
+            nodeTestBtn.addEventListener('click', async () => {
+                try {
+                    const confirmed = confirm('🧪 Generate unique node_id for users (except the first user)?');
+                    
+                    if (confirmed) {
+                        const result = await ipcRenderer.invoke('node-test-unique-ids');
+                        
+                        if (result.success) {
+                            alert('Success! Updated ' + result.count + ' users (first user kept unchanged)');
+                        } else {
+                            alert('Failed: ' + result.error);
+                        }
+                    }
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                }
+                window.close();
+            });
 
             // Handle exit app
             exitAppBtn.addEventListener('click', async () => {

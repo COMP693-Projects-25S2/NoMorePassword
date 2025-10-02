@@ -5,7 +5,8 @@ const db = require('../sqlite/database');
  * Records user activities based on current user
  */
 class UserActivityManager {
-    constructor() {
+    constructor(clientId = null) {
+        this.clientId = clientId;
         this.currentUserId = null;
         this.currentUsername = null;
         this.updateCurrentUser();
@@ -16,7 +17,10 @@ class UserActivityManager {
      */
     updateCurrentUser() {
         try {
-            const currentUser = db.prepare('SELECT user_id, username FROM local_users WHERE is_current = 1').get();
+            const DatabaseManager = require('../sqlite/databaseManager');
+            // Always use client-specific lookup, generate fallback clientId if needed
+            const clientId = this.clientId || process.env.C_CLIENT_ID || `c-client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const currentUser = DatabaseManager.getCurrentUserFieldsForClient(['user_id', 'username'], clientId);
             if (currentUser) {
                 this.currentUserId = currentUser.user_id;
                 this.currentUsername = currentUser.username;

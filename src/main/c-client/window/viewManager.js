@@ -238,7 +238,9 @@ class ViewManager {
                 const urlInjector = getUrlParameterInjector();
                 console.log(`   - URL injector available: ${!!urlInjector}`);
 
-                const processedUrl = await urlInjector.processUrl('https://www.google.com');
+                // Get clientId from electronApp if available
+                const clientId = this.electronApp && this.electronApp.clientId ? this.electronApp.clientId : null;
+                const processedUrl = await urlInjector.processUrl('https://www.google.com', clientId);
                 console.log(`   - Original URL: https://www.google.com`);
                 console.log(`   - Processed URL: ${processedUrl}`);
                 console.log(`   - URL injection successful: ${!!processedUrl}`);
@@ -490,9 +492,16 @@ class ViewManager {
      */
     async getCurrentUserInfo() {
         try {
-            const db = require('../sqlite/database');
-            const stmt = db.prepare('SELECT * FROM local_users WHERE is_current = 1 LIMIT 1');
-            const user = stmt.get();
+            const DatabaseManager = require('../sqlite/databaseManager');
+            // Get clientId from electronApp if available
+            const clientId = this.electronApp && this.electronApp.clientId ? this.electronApp.clientId : null;
+            console.log(`🔍 ViewManager: getCurrentUserInfo - clientId: ${clientId}`);
+
+            // Always use client-specific lookup, generate fallback clientId if needed
+            const finalClientId = clientId || process.env.C_CLIENT_ID || `c-client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const user = DatabaseManager.getCurrentUserFieldsForClient(['user_id', 'username', 'node_id', 'domain_id', 'cluster_id', 'channel_id'], finalClientId);
+
+            console.log(`🔍 ViewManager: getCurrentUserInfo - user:`, user);
             return user;
         } catch (error) {
             console.error('Error getting current user info:', error);
@@ -604,7 +613,9 @@ class ViewManager {
             // Process URL with parameter injection
             const { getUrlParameterInjector } = require('../utils/urlParameterInjector');
             const urlInjector = getUrlParameterInjector();
-            processedUrl = await urlInjector.processUrl(url);
+            // Get clientId from electronApp if available
+            const clientId = this.electronApp && this.electronApp.clientId ? this.electronApp.clientId : null;
+            processedUrl = await urlInjector.processUrl(url, clientId);
 
             console.log(`🔗 ViewManager: Creating browser view with URL: ${url} -> ${processedUrl}`);
 

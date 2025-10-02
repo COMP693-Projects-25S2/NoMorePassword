@@ -20,9 +20,9 @@ class ElectronApp {
         this.config = this.loadConfig(); // Load network configuration
 
         this.clientManager = new ClientManager();
-        this.historyManager = new HistoryManager();
+        this.historyManager = new HistoryManager(this.clientId);
         this.windowManager = new WindowManager(this.historyManager, this.clientManager);
-        this.startupValidator = new StartupValidator();
+        this.startupValidator = new StartupValidator(this.clientId);
         this.viewManager = null;
         this.ipcHandlers = null;
         this.mainWindow = null; // Initialize mainWindow property
@@ -119,6 +119,12 @@ class ElectronApp {
             this.webSocketClient.setElectronApp(this); // Set ElectronApp reference for connection sharing
             console.log(`🔌 C-Client: WebSocket client initialized (not connected) with client ID: ${this.clientId}`);
 
+            // Set WebSocket client in NodeManager for sending assignConfirmed
+            if (this.nodeManager) {
+                this.nodeManager.setWebSocketClient(this.webSocketClient);
+                console.log(`🔌 C-Client: WebSocket client set in NodeManager`);
+            }
+
             // Update URL injector with the correct API port
             try {
                 const { updateGlobalApiPort } = require('./utils/urlParameterInjector');
@@ -158,7 +164,7 @@ class ElectronApp {
             }
 
             // Create IPC handlers with WebSocket client reference (after ViewManager is created)
-            this.ipcHandlers = new IpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager, null, this.startupValidator, apiPort, this.webSocketClient, this.tabManager);
+            this.ipcHandlers = new IpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager, null, this.startupValidator, apiPort, this.webSocketClient, this.tabManager, this.clientId);
             console.log(`🌐 C-Client: Created IpcHandlers with WebSocket client reference and TabManager`);
 
             // Initialize B-Client configuration modal
@@ -172,11 +178,13 @@ class ElectronApp {
 
             // Set current user for NodeManager (if available) and update port in database
             try {
-                const db = require('./sqlite/database');
-                const currentUser = db.prepare('SELECT * FROM local_users WHERE is_current = 1').get();
+                const DatabaseManager = require('./sqlite/databaseManager');
+                // Get current user for this specific client
+                const currentUser = DatabaseManager.getCurrentLocalUserForClient(this.clientId);
                 if (currentUser) {
+                    console.log(`🌐 C-Client: Found current user ${currentUser.username} for client_id ${this.clientId}`);
+
                     // Update the port and IP address in database based on configuration
-                    const DatabaseManager = require('./sqlite/databaseManager');
                     const NetworkConfigManager = require('./config/networkConfigManager');
                     const configuredIp = this.getConfiguredIpAddress();
 
@@ -193,7 +201,14 @@ class ElectronApp {
                     }
 
                     this.apiServer.setCurrentUser(currentUser);
-                    console.log(`🌐 C-Client: Set current user for NodeManager: ${currentUser.username}`);
+
+                    // Set current user for NodeManager
+                    if (this.nodeManager) {
+                        this.nodeManager.setCurrentUser(currentUser);
+                        console.log(`🌐 C-Client: Set current user for NodeManager: ${currentUser.username}`);
+                    } else {
+                        console.warn(`⚠️ C-Client: NodeManager not initialized, cannot set current user`);
+                    }
                 } else {
                     console.log(`🌐 C-Client: No current user found in database`);
                 }
@@ -254,6 +269,13 @@ class ElectronApp {
         try {
             console.log('🔧 Initializing distributed node management...');
 
+            // Initialize NodeManager for node management system
+            console.log('🔧 Initializing NodeManager...');
+            const NodeManager = require('./nodeManager/nodeManager');
+            this.nodeManager = new NodeManager();
+            console.log(`✅ NodeManager initialized: ${this.nodeManager.getClientId()}`);
+            console.log(`📋 NodeManager available as electronApp.nodeManager`);
+
             // Set C-Client environment configuration
             if (!process.env.C_CLIENT_ENVIRONMENT) {
                 process.env.C_CLIENT_ENVIRONMENT = 'local'; // Default to local for development
@@ -279,6 +301,28 @@ class ElectronApp {
         }
     }
 
+    async assignStartupUser() {
+        try {
+            console.log(`🔧 C-Client: Starting startup user assignment for client: ${this.clientId}`);
+
+            const DatabaseManager = require('./sqlite/databaseManager');
+            const result = DatabaseManager.assignStartupUser(this.clientId);
+
+            if (result.success) {
+                console.log(`✅ C-Client: Startup user assignment completed: ${result.message}`);
+                if (result.currentUser) {
+                    console.log(`✅ C-Client: Assigned user: ${result.currentUser.username} (${result.currentUser.user_id})`);
+                }
+            } else {
+                console.error(`❌ C-Client: Failed to assign startup user: ${result.error}`);
+            }
+
+            return result;
+        } catch (error) {
+            console.error(`❌ C-Client: Error assigning startup user:`, error);
+            return { success: false, error: error.message };
+        }
+    }
 
     async initialize() {
         if (this.isInitialized) {
@@ -300,6 +344,10 @@ class ElectronApp {
             // Initialize distributed node management
             console.log(`🔄 C-Client: Initializing distributed node management...`);
             await this.initializeDistributedNodeManagement();
+
+            // Assign startup user for current client
+            console.log(`🔧 C-Client: Assigning startup user for current client...`);
+            await this.assignStartupUser();
 
             // Validate node status on startup
             console.log(`🔄 C-Client: Validating node status on startup...`);
@@ -382,7 +430,7 @@ class ElectronApp {
                         // For existing users, show greeting dialog
                         try {
                             const UserRegistrationDialog = require('./userManager/userRegistrationDialog');
-                            const userRegistrationDialog = new UserRegistrationDialog();
+                            const userRegistrationDialog = new UserRegistrationDialog(this.clientId);
 
                             if (this.mainWindow && !this.mainWindow.isDestroyed()) {
                                 await userRegistrationDialog.showGreeting(this.mainWindow);

@@ -32,6 +32,14 @@
                     </svg>
                     C-Client Statics
                 </button>
+                <button class="config-button" id="nodeManagementButton">
+                    <svg class="config-icon" viewBox="0 0 24 24">
+                        <path d="M12 2L2 7L12 12L22 7L12 2Z" />
+                        <path d="M2 17L12 22L22 17" />
+                        <path d="M2 12L12 17L22 12" />
+                    </svg>
+                    Node Management
+                </button>
             </div>
         </div>
     </div>
@@ -151,6 +159,17 @@
     .header-buttons .config-button:nth-child(3):hover {
         transform: translateY(-1px);
         box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .header-buttons .config-button:nth-child(4) {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important;
+        color: white !important;
+        box-shadow: 0 2px 8px rgba(240, 147, 251, 0.3);
+    }
+
+    .header-buttons .config-button:nth-child(4):hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(240, 147, 251, 0.4);
     }
 
     @media (max-width: 768px) {
@@ -362,6 +381,17 @@
             console.log('✅ C-Client Test button event listener added');
         } else {
             console.error('❌ C-Client Test button not found');
+        }
+
+        // Add Node Management button event listener
+        const nodeManagementBtn = document.getElementById('nodeManagementButton');
+        if (nodeManagementBtn) {
+            nodeManagementBtn.addEventListener('click', () => {
+                window.open('/node-management', '_blank', 'width=1400,height=900,scrollbars=yes,resizable=yes');
+            });
+            console.log('✅ Node Management button event listener added');
+        } else {
+            console.error('❌ Node Management button not found');
         }
     });
 </script>

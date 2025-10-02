@@ -2,7 +2,8 @@ const { BrowserWindow, screen } = require('electron');
 const path = require('path');
 
 class UserSelectorModal {
-    constructor() {
+    constructor(clientId = null) {
+        this.clientId = clientId;
         this.modalWindow = null;
         this.mainWindow = null;
         this.selectedUserId = null;
@@ -114,6 +115,32 @@ class UserSelectorModal {
         // Display all users without limit
         const displayUsers = users;
         const hasMoreUsers = false;
+
+        // Get current user for this client to determine which user is current
+        let currentUserId = null;
+        console.log(`🔍 UserSelectorModal: clientId = ${this.clientId}`);
+        if (this.clientId) {
+            try {
+                const DatabaseManager = require('./sqlite/databaseManager');
+
+                // Use client-specific lookup (includes fallback to latest updated user)
+                let currentUser = DatabaseManager.getCurrentUserFieldsForClient(['user_id'], this.clientId);
+
+                currentUserId = currentUser ? currentUser.user_id : null;
+                console.log(`🔍 UserSelectorModal: Found current user ID = ${currentUserId}`);
+
+                // Debug: Check current user status for this client
+                DatabaseManager.debugClientCurrentUser(this.clientId);
+
+                // Debug: Check all users and their client_id
+                const allUsers = DatabaseManager.getAllLocalUsers();
+                console.log(`🔍 UserSelectorModal: All users:`, allUsers.map(u => ({ user_id: u.user_id, username: u.username, is_current: u.is_current, client_id: u.client_id })));
+            } catch (error) {
+                console.error('Error getting current user for client:', error);
+            }
+        } else {
+            console.warn('🔍 UserSelectorModal: No clientId provided');
+        }
 
         const htmlContent = `
 <!DOCTYPE html>
@@ -302,15 +329,19 @@ class UserSelectorModal {
 
         <div class="modal-body">
             <ul class="user-list" id="userList">
-                ${displayUsers.map(user => `
+                ${displayUsers.map(user => {
+            const isCurrent = currentUserId === user.user_id;
+            console.log(`🔍 UserSelectorModal: User ${user.username} (${user.user_id}) - isCurrent: ${isCurrent}, currentUserId: ${currentUserId}`);
+            return `
                     <li class="user-item" data-user-id="${user.user_id}">
-                        <input type="radio" name="user" value="${user.user_id}" class="user-radio" ${user.is_current ? 'checked' : ''}>
+                        <input type="radio" name="user" value="${user.user_id}" class="user-radio" ${isCurrent ? 'checked' : ''}>
                         <div class="user-info">
                             <p class="user-name">${user.username}</p>
-                            <p class="user-status ${user.is_current ? 'current-user' : ''}">${user.is_current ? 'Current User' : 'Available'}</p>
+                            <p class="user-status ${isCurrent ? 'current-user' : ''}">${isCurrent ? 'Current User' : 'Available'}</p>
                         </div>
                     </li>
-                `).join('')}
+                    `;
+        }).join('')}
             </ul>
         </div>
 

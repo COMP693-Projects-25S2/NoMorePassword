@@ -4,10 +4,11 @@ const UserActivityManager = require('./userActivityManager');
 
 // History Manager - Database version
 class HistoryManager {
-    constructor() {
+    constructor(clientId = null) {
+        this.clientId = clientId;
         this.historyDB = new HistoryDatabase();
         this.visitTracker = new VisitTracker();
-        this.userActivityManager = new UserActivityManager();
+        this.userActivityManager = new UserActivityManager(clientId);
         this.sessionStartTime = Date.now();
         this.isFullyInitialized = false;
     }

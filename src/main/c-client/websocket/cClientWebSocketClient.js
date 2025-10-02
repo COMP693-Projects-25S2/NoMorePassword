@@ -89,12 +89,13 @@ class CClientWebSocketClient {
     }
 
     getCurrentUserInfo() {
-        // Get current user information from local database
+        // Get current user information from local database for this specific client
         try {
-            const db = require('../sqlite/database');
-            const currentUser = db.prepare(
-                'SELECT user_id, username, node_id, domain_id, cluster_id, channel_id FROM local_users WHERE is_current = 1'
-            ).get();
+            const DatabaseManager = require('../sqlite/databaseManager');
+            const currentUser = DatabaseManager.getCurrentUserFieldsForClient(
+                ['user_id', 'username', 'node_id', 'domain_id', 'cluster_id', 'channel_id'],
+                this.clientId
+            );
 
             if (currentUser) {
                 return {
@@ -125,6 +126,21 @@ class CClientWebSocketClient {
             const currentUser = this.getCurrentUserInfo();
             console.log(`👤 [WebSocket Client] Current user info:`, currentUser);
 
+            // Get main node IDs from NodeManager
+            let mainNodeIds = {
+                domain_main_node_id: null,
+                cluster_main_node_id: null,
+                channel_main_node_id: null
+            };
+
+            if (this.electronApp && this.electronApp.nodeManager) {
+                console.log(`🔍 [WebSocket Client] Getting main node IDs from NodeManager...`);
+                mainNodeIds = this.electronApp.nodeManager.getMainNodeIds();
+                console.log(`📋 [WebSocket Client] Main node IDs:`, mainNodeIds);
+            } else {
+                console.warn(`⚠️ [WebSocket Client] NodeManager not available, using null for main node IDs`);
+            }
+
             // Register as C-Client with user_id and additional parameters
             const registerMessage = {
                 type: 'c_client_register',
@@ -135,8 +151,12 @@ class CClientWebSocketClient {
                 domain_id: currentUser ? currentUser.domain_id : null,
                 cluster_id: currentUser ? currentUser.cluster_id : null,
                 channel_id: currentUser ? currentUser.channel_id : null,
+                // Add main node IDs for node type determination
+                domain_main_node_id: mainNodeIds.domain_main_node_id,
+                cluster_main_node_id: mainNodeIds.cluster_main_node_id,
+                channel_main_node_id: mainNodeIds.channel_main_node_id
             };
-            console.log(`📤 [WebSocket Client] Sending registration message:`, registerMessage);
+            console.log(`📤 [WebSocket Client] Sending registration message with main node IDs:`, registerMessage);
             this.sendMessage(registerMessage);
             return true;
         } catch (error) {
@@ -588,8 +608,179 @@ class CClientWebSocketClient {
                 console.error('[WebSocket Client] Received error:', message.message);
                 break;
 
+            // ========== NodeManager Commands ==========
+            case 'new_domain_node':
+            case 'new_cluster_node':
+            case 'new_channel_node':
+            case 'assign_to_domain':
+            case 'assign_to_cluster':
+            case 'assign_to_channel':
+            case 'add_new_node_to_peers':
+            case 'add_new_channel_to_peers':
+            case 'add_new_cluster_to_peers':
+            case 'add_new_domain_to_peers':
+            case 'count_peers_amount':
+                console.log(`🔧 [WebSocket Client] Received NodeManager command: ${type}`);
+                this.handleNodeManagerCommand(message);
+                break;
+
             default:
                 console.log('[WebSocket Client] Unknown message type:', type);
+        }
+    }
+
+    async handleNodeManagerCommand(message) {
+        console.log('='.repeat(80));
+        console.log(`🔧 [WebSocket Client] handleNodeManagerCommand() CALLED`);
+        console.log(`📋 Command type: ${message.type}`);
+        console.log(`📋 Command data:`, message.data);
+        console.log(`📋 Request ID: ${message.request_id}`);
+
+        try {
+            // Get NodeManager instance
+            const NodeManager = require('../nodeManager/nodeManager');
+
+            // Check if nodeManager is available in electronApp
+            if (!this.electronApp || !this.electronApp.nodeManager) {
+                console.error('❌ [WebSocket Client] NodeManager not available in electronApp');
+
+                // Send error response
+                this.send({
+                    success: false,
+                    error: 'NodeManager not initialized',
+                    request_id: message.request_id
+                });
+                return;
+            }
+
+            const nodeManager = this.electronApp.nodeManager;
+            console.log('✅ [WebSocket Client] NodeManager found');
+
+            let result = null;
+
+            // Handle different command types
+            switch (message.type) {
+                case 'new_domain_node':
+                    console.log('🏗️ [WebSocket Client] Calling nodeManager.newDomainNode()...');
+                    result = await nodeManager.newDomainNode();
+                    break;
+
+                case 'new_cluster_node':
+                    console.log('🏗️ [WebSocket Client] Calling nodeManager.newClusterNode()...');
+                    result = await nodeManager.newClusterNode(message.data.domain_id);
+                    break;
+
+                case 'new_channel_node':
+                    console.log('🏗️ [WebSocket Client] Calling nodeManager.newChannelNode()...');
+                    result = await nodeManager.newChannelNode(
+                        message.data.domain_id,
+                        message.data.cluster_id
+                    );
+                    break;
+
+                case 'assign_to_domain':
+                    console.log('📍 [WebSocket Client] Calling nodeManager.assignToDomain()...');
+                    result = await nodeManager.assignToDomain(
+                        message.data.domain_id,
+                        message.data.node_id
+                    );
+                    break;
+
+                case 'assign_to_cluster':
+                    console.log('📍 [WebSocket Client] Calling nodeManager.assignToCluster()...');
+                    result = await nodeManager.assignToCluster(
+                        message.data.cluster_id,
+                        message.data.node_id
+                    );
+                    break;
+
+                case 'assign_to_channel':
+                    console.log('📍 [WebSocket Client] Calling nodeManager.assignToChannel()...');
+                    result = await nodeManager.assignToChannel(
+                        message.data.channel_id,
+                        message.data.node_id
+                    );
+                    break;
+
+                case 'add_new_node_to_peers':
+                    console.log('👥 [WebSocket Client] Calling nodeManager.addNewNodeToPeers()...');
+                    result = await nodeManager.addNewNodeToPeers(
+                        message.data.domain_id,
+                        message.data.cluster_id,
+                        message.data.channel_id,
+                        message.data.node_id
+                    );
+                    break;
+
+                case 'add_new_channel_to_peers':
+                    console.log('👥 [WebSocket Client] Calling nodeManager.addNewChannelToPeers()...');
+                    result = await nodeManager.addNewChannelToPeers(
+                        message.data.domain_id,
+                        message.data.cluster_id,
+                        message.data.channel_id,
+                        message.data.node_id
+                    );
+                    break;
+
+                case 'add_new_cluster_to_peers':
+                    console.log('👥 [WebSocket Client] Calling nodeManager.addNewClusterToPeers()...');
+                    result = await nodeManager.addNewClusterToPeers(
+                        message.data.domain_id,
+                        message.data.cluster_id,
+                        message.data.node_id
+                    );
+                    break;
+
+                case 'add_new_domain_to_peers':
+                    console.log('👥 [WebSocket Client] Calling nodeManager.addNewDomainToPeers()...');
+                    result = await nodeManager.addNewDomainToPeers(
+                        message.data.domain_id,
+                        message.data.node_id
+                    );
+                    break;
+
+                case 'count_peers_amount':
+                    console.log('📊 [WebSocket Client] Calling nodeManager.countPeersAmount()...');
+                    result = await nodeManager.countPeersAmount(
+                        message.data.domain_id,
+                        message.data.cluster_id,
+                        message.data.channel_id
+                    );
+                    break;
+
+                default:
+                    console.warn(`[WebSocket Client] Unhandled NodeManager command: ${message.type}`);
+                    result = {
+                        success: false,
+                        error: `Unknown command type: ${message.type}`
+                    };
+            }
+
+            console.log(`✅ [WebSocket Client] NodeManager command completed:`, result);
+
+            // Send response back to B-Client
+            const response = {
+                success: result.success,
+                data: result,
+                request_id: message.request_id,
+                command_type: message.type
+            };
+
+            console.log(`📤 [WebSocket Client] Sending response to B-Client:`, response);
+            this.sendMessage(response);  // Use sendMessage instead of send
+            console.log('='.repeat(80));
+
+        } catch (error) {
+            console.error('❌ [WebSocket Client] Error handling NodeManager command:', error);
+            console.error(error.stack);
+
+            // Send error response
+            this.sendMessage({  // Use sendMessage instead of send
+                success: false,
+                error: error.message,
+                request_id: message.request_id
+            });
+            console.log('='.repeat(80));
         }
     }
 
@@ -1656,7 +1847,7 @@ class CClientWebSocketClient {
 
                                         // Get the processed URL with NMP parameters using website config
                                         const websiteUrl = website_config.root_url || 'http://localhost:5000';
-                                        const processedUrl = await injector.processUrl(websiteUrl);
+                                        const processedUrl = await injector.processUrl(websiteUrl, this.clientId);
                                         console.log(`🔄 [WebSocket Client] Processed URL with NMP parameters for ${website_config.name}:`, processedUrl);
 
                                         await tabManager.navigateTo(processedUrl);
@@ -2477,6 +2668,10 @@ class CClientWebSocketClient {
 
             console.log('✅ [WebSocket Client] Logout handling completed');
 
+            // Add a small delay before sending feedback to ensure all cleanup is complete
+            console.log('⏳ [WebSocket Client] Waiting for cleanup to complete...');
+            await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+
             // Send feedback to B-Client that logout is completed
             this.sendLogoutFeedback(message, true, 'Logout completed successfully');
 
@@ -2593,27 +2788,28 @@ class CClientWebSocketClient {
             console.log(`🔓 [WebSocket Client] Logout URL: ${logoutUrl}`);
             console.log(`🔓 [WebSocket Client] Website Root Path: ${websiteRootPath}`);
 
-            // Direct HTTP request to NSN logout endpoint
-            const fetch = require('node-fetch');
+            // Use axios instead of node-fetch for better compatibility
+            const axios = require('axios');
 
             try {
                 console.log('🔓 [WebSocket Client] Making direct HTTP request to NSN logout endpoint...');
-                const response = await fetch(logoutUrl, {
-                    method: 'GET',
+                const response = await axios.get(logoutUrl, {
                     headers: {
                         'Content-Type': 'application/json',
                         'User-Agent': 'C-Client/1.0'
-                    }
+                    },
+                    timeout: 5000 // 5 second timeout
                 });
 
                 console.log('🔓 [WebSocket Client] NSN logout response status:', response.status);
 
-                if (response.ok) {
+                if (response.status >= 200 && response.status < 300) {
                     console.log('✅ [WebSocket Client] NSN server-side logout successful');
                     console.log('✅ [WebSocket Client] Response status:', response.status);
+                    console.log('✅ [WebSocket Client] Response data:', response.data);
                 } else {
                     console.log('⚠️ [WebSocket Client] NSN server-side logout failed:', response.status);
-                    console.log('⚠️ [WebSocket Client] Response text:', await response.text());
+                    console.log('⚠️ [WebSocket Client] Response data:', response.data);
                 }
             } catch (error) {
                 console.error('❌ [WebSocket Client] Error calling NSN logout API:', error);

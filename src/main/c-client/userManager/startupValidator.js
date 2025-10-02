@@ -2,8 +2,9 @@
 const UserManager = require('./userManager');
 
 class StartupValidator {
-    constructor() {
-        this.userManager = new UserManager();
+    constructor(clientId = null) {
+        this.clientId = clientId;
+        this.userManager = new UserManager(clientId);
     }
 
     /**
@@ -51,8 +52,10 @@ class StartupValidator {
             const users = this.userManager.db.prepare('SELECT COUNT(*) as total FROM local_users').get();
             status.totalUsers = users.total;
 
-            const currentUsers = this.userManager.db.prepare('SELECT COUNT(*) as current FROM local_users WHERE is_current = 1').get();
-            status.currentUsers = currentUsers.current;
+            // In multi-client environment, multiple users can be current for different clients
+            const DatabaseManager = require('../sqlite/databaseManager');
+            const currentUsers = this.userManager.db.prepare('SELECT COUNT(*) as count FROM local_users WHERE is_current = 1').get();
+            status.currentUsers = currentUsers.count;
 
             return status;
 

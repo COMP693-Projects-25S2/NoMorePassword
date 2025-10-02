@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const NodeManager = require('../nodeManager/nodeManager');
 const net = require('net');
 
 class CClientApiServer {
@@ -10,7 +9,6 @@ class CClientApiServer {
         this.mainWindow = mainWindow;
         this.storedCookie = null;
         this.pendingReload = null; // Store pending reload requests
-        this.nodeManager = new NodeManager();
         this.setupMiddleware();
         this.setupRoutes();
     }
@@ -64,7 +62,9 @@ class CClientApiServer {
     async getCurrentLocalUserInfo() {
         try {
             const DatabaseManager = require('../sqlite/databaseManager');
-            const localUser = DatabaseManager.getCurrentLocalUser();
+            // Use client-specific lookup with fallback clientId
+            const clientId = process.env.C_CLIENT_ID || `c-client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const localUser = DatabaseManager.getCurrentUserFieldsForClient(['user_id', 'username', 'node_id', 'domain_id', 'cluster_id', 'channel_id'], clientId);
             return localUser;
         } catch (error) {
             console.error(`[C-Client API] Error getting current local user info:`, error);
@@ -476,226 +476,12 @@ class CClientApiServer {
             }
         });
 
-        // Node Management API Routes
-        this.setupNodeManagementRoutes();
+        // Node Management API Routes - REMOVED
+        // Node management now handled via WebSocket from B-Client
     }
 
-    setupNodeManagementRoutes() {
-        // New Domain Node
-        this.app.post('/newdomainnode', async (req, res) => {
-            try {
-                const result = await this.nodeManager.newDomainNode();
-
-                if (result.success) {
-                    res.json(result);
-                } else {
-                    res.status(400).json(result);
-                }
-            } catch (error) {
-                console.error('Error in newdomainnode endpoint:', error);
-                res.status(500).json({
-                    success: false,
-                    error: error.message
-                });
-            }
-        });
-
-        // New Cluster Node
-        this.app.post('/newclusternode', async (req, res) => {
-            try {
-                const { node_id } = req.body;
-
-                if (!node_id) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'node_id parameter is required'
-                    });
-                }
-
-                const result = await this.nodeManager.newClusterNode(node_id);
-
-                if (result.success) {
-                    res.json(result);
-                } else {
-                    res.status(400).json(result);
-                }
-            } catch (error) {
-                console.error('Error in newclusternode endpoint:', error);
-                res.status(500).json({
-                    success: false,
-                    error: error.message
-                });
-            }
-        });
-
-        // New Channel Node
-        this.app.post('/newchannelnode', async (req, res) => {
-            try {
-                const { node_id } = req.body;
-
-                if (!node_id) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'node_id parameter is required'
-                    });
-                }
-
-                const result = await this.nodeManager.newChannelNode(node_id);
-
-                if (result.success) {
-                    res.json(result);
-                } else {
-                    res.status(400).json(result);
-                }
-            } catch (error) {
-                console.error('Error in newchannelnode endpoint:', error);
-                res.status(500).json({
-                    success: false,
-                    error: error.message
-                });
-            }
-        });
-
-        // Register to Domain Node
-        this.app.post('/registertodomainnode', async (req, res) => {
-            try {
-                const { domain_id, node_id } = req.body;
-
-                if (!domain_id || !node_id) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'domain_id and node_id parameters are required'
-                    });
-                }
-
-                const result = await this.nodeManager.registerToDomainNode(domain_id, node_id);
-
-                if (result.success) {
-                    res.json(result);
-                } else {
-                    res.status(400).json(result);
-                }
-            } catch (error) {
-                console.error('Error in registertodomainnode endpoint:', error);
-                res.status(500).json({
-                    success: false,
-                    error: error.message
-                });
-            }
-        });
-
-        // Register to Cluster Node
-        this.app.post('/registertoclusternode', async (req, res) => {
-            try {
-                const { cluster_id, node_id } = req.body;
-
-                if (!cluster_id || !node_id) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'cluster_id and node_id parameters are required'
-                    });
-                }
-
-                const result = await this.nodeManager.registerToClusterNode(cluster_id, node_id);
-
-                if (result.success) {
-                    res.json(result);
-                } else {
-                    res.status(400).json(result);
-                }
-            } catch (error) {
-                console.error('Error in registertoclusternode endpoint:', error);
-                res.status(500).json({
-                    success: false,
-                    error: error.message
-                });
-            }
-        });
-
-        // Register to Channel Node
-        this.app.post('/registertochannelnode', async (req, res) => {
-            try {
-                const { channel_id, node_id, target_node_id } = req.body;
-
-                if (!channel_id || !node_id || !target_node_id) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'channel_id, node_id, and target_node_id parameters are required'
-                    });
-                }
-
-                const result = await this.nodeManager.registerToChannelNode(channel_id, node_id, target_node_id);
-
-                if (result.success) {
-                    res.json(result);
-                } else {
-                    res.status(400).json(result);
-                }
-            } catch (error) {
-                console.error('Error in registertochannelnode endpoint:', error);
-                res.status(500).json({
-                    success: false,
-                    error: error.message
-                });
-            }
-        });
-
-        // Add New Node
-        this.app.post('/addnewnode', async (req, res) => {
-            try {
-                const { domain_id, cluster_id, channel_id, node_id, target_node_id } = req.body;
-
-                if (!domain_id || !cluster_id || !channel_id || !node_id || !target_node_id) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'domain_id, cluster_id, channel_id, node_id, and target_node_id parameters are required'
-                    });
-                }
-
-                const result = await this.nodeManager.addNewNode(domain_id, cluster_id, channel_id, node_id, target_node_id);
-
-                if (result.success) {
-                    res.json(result);
-                } else {
-                    res.status(400).json(result);
-                }
-            } catch (error) {
-                console.error('Error in addnewnode endpoint:', error);
-                res.status(500).json({
-                    success: false,
-                    error: error.message
-                });
-            }
-        });
-
-        // Register Confirmed
-        this.app.post('/registerconfirmed', async (req, res) => {
-            try {
-                const { domain_id, cluster_id, channel_id, node_id, target_node_id, confirmed_by } = req.body;
-
-                if (!domain_id || !cluster_id || !node_id || !target_node_id || !confirmed_by) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'domain_id, cluster_id, node_id, target_node_id, and confirmed_by parameters are required'
-                    });
-                }
-
-                const result = await this.nodeManager.registerConfirmed(domain_id, cluster_id, channel_id, node_id, target_node_id, confirmed_by);
-
-                if (result.success) {
-                    res.json(result);
-                } else {
-                    res.status(400).json(result);
-                }
-            } catch (error) {
-                console.error('Error in registerconfirmed endpoint:', error);
-                res.status(500).json({
-                    success: false,
-                    error: error.message
-                });
-            }
-        });
-    }
+    // setupNodeManagementRoutes() - REMOVED
+    // Node management now handled via WebSocket from B-Client
 
     // Trigger C-Client to reload with cookie
     triggerCClientReloadWithCookie(user_id, username, cookie, complete_session_data = null, reloadData = null) {
@@ -868,15 +654,7 @@ class CClientApiServer {
                 console.log(`[C-Client API] Cookie endpoint: http://localhost:${this.port}/api/cookie/:user_id`);
                 console.log(`[C-Client API] Register endpoint: http://localhost:${this.port}/api/register`);
                 console.log(`[C-Client API] Login endpoint: http://localhost:${this.port}/api/login`);
-                console.log(`[C-Client API] Node Management endpoints:`);
-                console.log(`[C-Client API]   - POST /newdomainnode`);
-                console.log(`[C-Client API]   - POST /newclusternode`);
-                console.log(`[C-Client API]   - POST /newchannelnode`);
-                console.log(`[C-Client API]   - POST /registertodomainnode`);
-                console.log(`[C-Client API]   - POST /registertoclusternode`);
-                console.log(`[C-Client API]   - POST /registertochannelnode`);
-                console.log(`[C-Client API]   - POST /addnewnode`);
-                console.log(`[C-Client API]   - POST /registerconfirmed`);
+                console.log(`[C-Client API] Node Management: Handled via WebSocket from B-Client`);
             }).on('error', (error) => {
                 if (error.code === 'EADDRINUSE') {
                     console.error(`[C-Client API] Port ${this.port} is already in use, trying next port...`);
@@ -903,20 +681,14 @@ class CClientApiServer {
         }
     }
 
-    // Set current user for NodeManager
+    // Set current user (no longer needed for NodeManager)
     setCurrentUser(currentUser) {
-        if (this.nodeManager) {
-            this.nodeManager.currentUser = currentUser;
-            console.log(`[C-Client API] Set current user for NodeManager: ${currentUser?.username || 'unknown'}`);
-        }
+        console.log(`[C-Client API] Current user set: ${currentUser?.username || 'unknown'}`);
     }
 
-    // Set API port for NodeManager
+    // Set API port (no longer needed for NodeManager)
     setApiPort(port) {
-        if (this.nodeManager) {
-            this.nodeManager.setApiPort(port);
-            console.log(`[C-Client API] Set API port for NodeManager: ${port}`);
-        }
+        console.log(`[C-Client API] API port set: ${port}`);
     }
 }
 

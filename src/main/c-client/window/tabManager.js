@@ -625,8 +625,48 @@ class TabManager {
     async navigateTo(url) {
         const currentTab = this.getCurrentTab();
         if (currentTab && currentTab.browserView && currentTab.browserView.webContents) {
-            await currentTab.browserView.webContents.loadURL(url);
-            return true;
+            try {
+                console.log(`🧭 TabManager: Navigating to URL: ${url}`);
+
+                // Add error handling for navigation
+                const webContents = currentTab.browserView.webContents;
+
+                // Set up error handlers for this navigation
+                const handleNavigationError = (event, errorCode, errorDescription, validatedURL) => {
+                    console.error(`❌ TabManager: Navigation failed: ${errorCode} (${errorDescription}) loading '${validatedURL}'`);
+                    console.error(`❌ TabManager: Error details:`, {
+                        errorCode,
+                        errorDescription,
+                        validatedURL,
+                        timestamp: new Date().toISOString()
+                    });
+                };
+
+                const handleNavigationSuccess = () => {
+                    console.log(`✅ TabManager: Navigation successful: ${url}`);
+                };
+
+                // Add temporary event listeners
+                webContents.once('did-fail-load', handleNavigationError);
+                webContents.once('did-finish-load', handleNavigationSuccess);
+
+                // Perform navigation with timeout
+                const navigationPromise = webContents.loadURL(url);
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Navigation timeout')), 10000); // 10 second timeout
+                });
+
+                await Promise.race([navigationPromise, timeoutPromise]);
+
+                // Clean up event listeners
+                webContents.removeListener('did-fail-load', handleNavigationError);
+                webContents.removeListener('did-finish-load', handleNavigationSuccess);
+
+                return true;
+            } catch (error) {
+                console.error(`❌ TabManager: Navigation error for URL ${url}:`, error);
+                return false;
+            }
         }
         return false;
     }
@@ -999,7 +1039,7 @@ class TabManager {
             // Clear only NSN persistent session partition
             await this.clearNSNPersistentSessionPartition();
 
-            // Navigate NSN tabs to logout URL
+            // Navigate NSN tabs to logout URL with error handling
             for (const tabId of tabIds) {
                 const tabData = this.tabs.get(tabId);
                 if (tabData && tabData.browserView && tabData.browserView.webContents && !tabData.browserView.webContents.isDestroyed()) {
@@ -1007,7 +1047,46 @@ class TabManager {
                         const currentURL = tabData.browserView.webContents.getURL();
                         if (this.isNSNUrl(currentURL)) {
                             console.log('🔓 TabManager: Navigating NSN tab to logout URL...');
-                            await tabData.browserView.webContents.loadURL('http://localhost:5000/logout');
+
+                            // Add error handling for logout navigation
+                            const webContents = tabData.browserView.webContents;
+
+                            // Set up error handlers for logout navigation
+                            const handleLogoutNavigationError = (event, errorCode, errorDescription, validatedURL) => {
+                                if (errorCode === -3) { // ERR_ABORTED
+                                    console.log(`⚠️ TabManager: Logout navigation aborted for tab ${tabId} (this is often normal during logout)`);
+                                } else {
+                                    console.error(`❌ TabManager: Logout navigation failed for tab ${tabId}: ${errorCode} (${errorDescription})`);
+                                }
+                            };
+
+                            const handleLogoutNavigationSuccess = () => {
+                                console.log(`✅ TabManager: Logout navigation successful for tab ${tabId}`);
+                            };
+
+                            // Add temporary event listeners
+                            webContents.once('did-fail-load', handleLogoutNavigationError);
+                            webContents.once('did-finish-load', handleLogoutNavigationSuccess);
+
+                            // Perform logout navigation with timeout
+                            const logoutPromise = webContents.loadURL('http://localhost:5000/logout');
+                            const timeoutPromise = new Promise((_, reject) => {
+                                setTimeout(() => reject(new Error('Logout navigation timeout')), 5000); // 5 second timeout
+                            });
+
+                            try {
+                                await Promise.race([logoutPromise, timeoutPromise]);
+                            } catch (error) {
+                                if (error.message === 'Logout navigation timeout') {
+                                    console.log(`⚠️ TabManager: Logout navigation timeout for tab ${tabId}, but this is often normal`);
+                                } else {
+                                    console.error(`❌ TabManager: Logout navigation error for tab ${tabId}:`, error);
+                                }
+                            }
+
+                            // Clean up event listeners
+                            webContents.removeListener('did-fail-load', handleLogoutNavigationError);
+                            webContents.removeListener('did-finish-load', handleLogoutNavigationSuccess);
                         }
                     } catch (error) {
                         console.error(`❌ TabManager: Error navigating to logout for tab ${tabId}:`, error);

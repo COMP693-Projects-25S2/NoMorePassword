@@ -86,7 +86,7 @@ class DatabaseManager {
     // Get current node ID from local_users
     static getCurrentNodeId() {
         try {
-            const stmt = db.prepare('SELECT node_id FROM local_users WHERE is_current = 1 LIMIT 1');
+            const stmt = db.prepare('SELECT node_id FROM local_users ORDER BY updated_at DESC LIMIT 1');
             const result = stmt.get();
             return result ? result.node_id : null;
         } catch (error) {
@@ -95,15 +95,56 @@ class DatabaseManager {
         }
     }
 
+    // Get current node ID for specific client
+    static getCurrentNodeIdForClient(clientId) {
+        try {
+            if (!clientId) {
+                console.warn('No clientId provided, returning null for current node ID');
+                return null;
+            }
+
+            const stmt = db.prepare('SELECT node_id FROM local_users WHERE client_ids LIKE ? ORDER BY updated_at DESC LIMIT 1');
+            const result = stmt.get(`%"${clientId}"%`);
+            const nodeId = result ? result.node_id : null;
+
+            if (nodeId) {
+                console.log(`Found current node_id ${nodeId} for client_id ${clientId}`);
+            } else {
+                console.log(`No current node found for client_id ${clientId}`);
+            }
+
+            return nodeId;
+        } catch (error) {
+            console.error('🔧 DatabaseManager: Error getting current node ID for client:', error);
+            return null;
+        }
+    }
+
     // ===================== Domain main nodes table domain_main_nodes =====================
 
     // Add domain main node
     static addDomainMainNode(nodeId, domainId) {
-        const stmt = db.prepare(`
-            INSERT INTO domain_main_nodes (node_id, domain_id)
-            VALUES (?, ?)
-        `);
-        return stmt.run(nodeId, domainId);
+        // Check if node already exists
+        const existing = this.getDomainMainNodeByNodeId(nodeId);
+
+        if (existing) {
+            // Update existing record
+            const stmt = db.prepare(`
+                UPDATE domain_main_nodes 
+                SET domain_id = ?
+                WHERE node_id = ?
+            `);
+            console.log(`🔄 Updating existing domain_main_node: ${nodeId}`);
+            return stmt.run(domainId, nodeId);
+        } else {
+            // Insert new record
+            const stmt = db.prepare(`
+                INSERT INTO domain_main_nodes (node_id, domain_id)
+                VALUES (?, ?)
+            `);
+            console.log(`➕ Inserting new domain_main_node: ${nodeId}`);
+            return stmt.run(nodeId, domainId);
+        }
     }
 
     // Add domain main node with auto-generated UUID
@@ -180,11 +221,27 @@ class DatabaseManager {
 
     // Add cluster main node
     static addClusterMainNode(nodeId, domainId, clusterId) {
-        const stmt = db.prepare(`
-            INSERT INTO cluster_main_nodes (node_id, domain_id, cluster_id)
-            VALUES (?, ?, ?)
-        `);
-        return stmt.run(nodeId, domainId, clusterId);
+        // Check if node already exists
+        const existing = this.getClusterMainNodeByNodeId(nodeId);
+
+        if (existing) {
+            // Update existing record
+            const stmt = db.prepare(`
+                UPDATE cluster_main_nodes 
+                SET domain_id = ?, cluster_id = ?
+                WHERE node_id = ?
+            `);
+            console.log(`🔄 Updating existing cluster_main_node: ${nodeId}`);
+            return stmt.run(domainId, clusterId, nodeId);
+        } else {
+            // Insert new record
+            const stmt = db.prepare(`
+                INSERT INTO cluster_main_nodes (node_id, domain_id, cluster_id)
+                VALUES (?, ?, ?)
+            `);
+            console.log(`➕ Inserting new cluster_main_node: ${nodeId}`);
+            return stmt.run(nodeId, domainId, clusterId);
+        }
     }
 
     // Add cluster main node with auto-generated UUID
@@ -281,11 +338,27 @@ class DatabaseManager {
 
     // Add channel main node
     static addChannelMainNode(nodeId, domainId, clusterId, channelId) {
-        const stmt = db.prepare(`
-            INSERT INTO channel_main_nodes (node_id, domain_id, cluster_id, channel_id)
-            VALUES (?, ?, ?, ?)
-        `);
-        return stmt.run(nodeId, domainId, clusterId, channelId);
+        // Check if node already exists
+        const existing = this.getChannelMainNodeByNodeId(nodeId);
+
+        if (existing) {
+            // Update existing record
+            const stmt = db.prepare(`
+                UPDATE channel_main_nodes 
+                SET domain_id = ?, cluster_id = ?, channel_id = ?
+                WHERE node_id = ?
+            `);
+            console.log(`🔄 Updating existing channel_main_node: ${nodeId}`);
+            return stmt.run(domainId, clusterId, channelId, nodeId);
+        } else {
+            // Insert new record
+            const stmt = db.prepare(`
+                INSERT INTO channel_main_nodes (node_id, domain_id, cluster_id, channel_id)
+                VALUES (?, ?, ?, ?)
+            `);
+            console.log(`➕ Inserting new channel_main_node: ${nodeId}`);
+            return stmt.run(nodeId, domainId, clusterId, channelId);
+        }
     }
 
     // Add channel main node with auto-generated UUID
@@ -464,11 +537,27 @@ class DatabaseManager {
 
     // Add channel node
     static addChannelNode(nodeId, domainId, clusterId, channelId) {
-        const stmt = db.prepare(`
-            INSERT INTO channel_nodes (node_id, domain_id, cluster_id, channel_id)
-            VALUES (?, ?, ?, ?)
-        `);
-        return stmt.run(nodeId, domainId, clusterId, channelId);
+        // Check if node already exists
+        const existing = this.getChannelNodeById(nodeId);
+
+        if (existing) {
+            // Update existing record
+            const stmt = db.prepare(`
+                UPDATE channel_nodes 
+                SET domain_id = ?, cluster_id = ?, channel_id = ?
+                WHERE node_id = ?
+            `);
+            console.log(`🔄 Updating existing channel_node: ${nodeId}`);
+            return stmt.run(domainId, clusterId, channelId, nodeId);
+        } else {
+            // Insert new record
+            const stmt = db.prepare(`
+                INSERT INTO channel_nodes (node_id, domain_id, cluster_id, channel_id)
+                VALUES (?, ?, ?, ?)
+            `);
+            console.log(`➕ Inserting new channel_node: ${nodeId}`);
+            return stmt.run(nodeId, domainId, clusterId, channelId);
+        }
     }
 
     // Add channel node with auto-generated UUID
@@ -545,7 +634,7 @@ class DatabaseManager {
 
     // Add local user
     // @param {string} userId - UUID for the user
-    static addLocalUser(userId, username, domainId, clusterId, channelId, nodeId = null, ipAddress = null, isCurrent = 0, clientType = 'c-client') {
+    static addLocalUser(userId, username, domainId, clusterId, channelId, nodeId = null, ipAddress = null, isCurrent = 0, clientType = 'c-client', clientId = null) {
         // Check if local_users table is empty
         const existingUsers = this.getAllLocalUsers();
 
@@ -570,10 +659,11 @@ class DatabaseManager {
         }
 
         const stmt = db.prepare(`
-            INSERT INTO local_users (user_id, username, domain_id, cluster_id, channel_id, node_id, is_current)
+            INSERT INTO local_users (user_id, username, domain_id, cluster_id, channel_id, node_id, client_ids)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         `);
-        return stmt.run(userId, username, domainId, clusterId, channelId, finalNodeId, isCurrent);
+        const clientIds = clientId ? this.serializeClientIds([clientId]) : '[]';
+        return stmt.run(userId, username, domainId, clusterId, channelId, finalNodeId, clientIds);
     }
 
     // Add local user with auto-generated UUID
@@ -581,15 +671,16 @@ class DatabaseManager {
         const userId = nodeData.userId || generateUserId();
         const stmt = db.prepare(`
             INSERT INTO local_users 
-            (user_id, username, domain_id, cluster_id, channel_id, node_id, status, created_at, updated_at, is_current)
+            (user_id, username, domain_id, cluster_id, channel_id, node_id, status, created_at, updated_at, client_ids)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
+        const clientIds = nodeData.clientId ? this.serializeClientIds([nodeData.clientId]) : '[]';
         return stmt.run(
             userId, nodeData.username, nodeData.domainId, nodeData.clusterId, nodeData.channelId,
             nodeData.nodeId, nodeData.status || 'active',
             nodeData.createdAt || Math.floor(Date.now() / 1000),
             nodeData.updatedAt || Math.floor(Date.now() / 1000),
-            nodeData.isCurrent || 0
+            clientIds
         );
     }
 
@@ -669,18 +760,18 @@ class DatabaseManager {
         }
     }
 
-    // Clear all current users (set is_current to 0)
+    // Clear all client assignments (deprecated - use client-specific methods instead)
     static clearAllCurrentUsers() {
         try {
-            const result = db.prepare('UPDATE local_users SET is_current = 0').run();
+            const result = db.prepare('UPDATE local_users SET client_ids = \'[]\', updated_at = ?').run(Math.floor(Date.now() / 1000));
             return { success: true, changes: result.changes };
         } catch (error) {
-            console.error('Error clearing all current users:', error);
+            console.error('Error clearing all client assignments:', error);
             return { success: false, error: error.message };
         }
     }
 
-    // Update local user with is_current flag
+    // Update local user (deprecated - use client_ids based methods instead)
     static updateLocalUserWithCurrent(userId, username, domainId, clusterId, channelId, nodeId = null, isCurrent = 0) {
         try {
             const stmt = db.prepare(`
@@ -690,11 +781,10 @@ class DatabaseManager {
                     cluster_id = COALESCE(?, cluster_id), 
                     channel_id = COALESCE(?, channel_id), 
                     node_id = COALESCE(?, node_id), 
-                    updated_at = ?,
-                    is_current = ?
+                    updated_at = ?
                 WHERE user_id = ?
             `);
-            const result = stmt.run(username, domainId, clusterId, channelId, nodeId, Math.floor(Date.now() / 1000), isCurrent, userId);
+            const result = stmt.run(username, domainId, clusterId, channelId, nodeId, Math.floor(Date.now() / 1000), userId);
             return { success: true, changes: result.changes };
         } catch (error) {
             console.error('Error updating local user with current flag:', error);
@@ -703,10 +793,16 @@ class DatabaseManager {
     }
 
     // Clear current user activities
-    static clearCurrentUserActivities() {
+    static clearCurrentUserActivities(clientId = null) {
         try {
             // Get current user
-            const currentUser = db.prepare('SELECT user_id FROM local_users WHERE is_current = 1').get();
+            let currentUser;
+            if (clientId) {
+                currentUser = db.prepare('SELECT user_id FROM local_users WHERE client_ids LIKE ? ORDER BY updated_at DESC LIMIT 1').get(`%"${clientId}"%`);
+            } else {
+                currentUser = db.prepare('SELECT user_id FROM local_users ORDER BY updated_at DESC LIMIT 1').get();
+            }
+
             if (!currentUser) {
                 return { success: false, error: 'No current user found' };
             }
@@ -916,6 +1012,43 @@ class DatabaseManager {
         return null;
     }
 
+    // Node Test: Generate unique node_id for users except the first one
+    static generateUniqueNodeIdsForAllUsers() {
+        try {
+            const allUsers = this.getAllLocalUsers();
+
+            if (allUsers.length === 0) {
+                return { success: true, count: 0 };
+            }
+
+            // Update each user with a unique node_id (except the first user)
+            const stmt = db.prepare(`UPDATE local_users SET node_id = ? WHERE user_id = ?`);
+            let updatedCount = 0;
+
+            for (let i = 0; i < allUsers.length; i++) {
+                const user = allUsers[i];
+
+                if (i === 0) {
+                    // Keep the first user's node_id unchanged
+                    console.log(`🧪 Node Test: ${user.username} -> KEPT (${user.node_id})`);
+                    continue;
+                }
+
+                // Generate new node_id for other users
+                const newNodeId = generateUserId();
+                stmt.run(newNodeId, user.user_id);
+                console.log(`🧪 Node Test: ${user.username} -> ${newNodeId}`);
+                updatedCount++;
+            }
+
+            return { success: true, count: updatedCount, total: allUsers.length };
+
+        } catch (error) {
+            console.error('❌ Node Test error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
     // Ensure all local users have the same node_id
     static ensureLocalUsersNodeIdConsistency() {
         const users = this.getAllLocalUsers();
@@ -942,21 +1075,224 @@ class DatabaseManager {
         return targetNodeId;
     }
 
-    // Clear all current user flags
-    static clearCurrentLocalUserFlags() {
+    // Clear all client assignments (deprecated - use client-specific methods instead)
+    static clearAllClientAssignments() {
         try {
-            const result = db.prepare('UPDATE local_users SET is_current = 0').run();
+            const result = db.prepare('UPDATE local_users SET client_ids = \'[]\', updated_at = ?').run(Math.floor(Date.now() / 1000));
+            console.log(`Cleared client_ids for ${result.changes} users`);
             return { success: true, changes: result.changes };
         } catch (error) {
-            console.error('Error clearing current local user flags:', error);
+            console.error('Error clearing all client assignments:', error);
             return { success: false, error: error.message };
         }
     }
 
-    // Set current local user
-    static setCurrentLocalUser(userId) {
+    // Clear current user flags for specific client_id only
+    static removeClientFromCurrentUsers(clientId) {
         try {
-            const result = db.prepare('UPDATE local_users SET is_current = 1 WHERE user_id = ?').run(userId);
+            if (!clientId) {
+                console.warn('No clientId provided, skipping client removal');
+                return { success: true, changes: 0 };
+            }
+
+            // Remove client_id from all users' client_ids arrays
+            const result = this.removeClientFromAllUsers(clientId);
+            console.log(`Removed client ${clientId} from all users, affected ${result.changes} records`);
+            return result;
+        } catch (error) {
+            console.error('Error removing client from current users:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // 辅助方法：解析client_ids数组
+    static parseClientIds(clientIdsJson) {
+        try {
+            return clientIdsJson ? JSON.parse(clientIdsJson) : [];
+        } catch (error) {
+            console.error('Error parsing client_ids:', error);
+            return [];
+        }
+    }
+
+    // 辅助方法：序列化client_ids数组
+    static serializeClientIds(clientIds) {
+        try {
+            return JSON.stringify(clientIds || []);
+        } catch (error) {
+            console.error('Error serializing client_ids:', error);
+            return '[]';
+        }
+    }
+
+    // 检查用户是否被指定客户端使用
+    static isUserAssignedToClient(userId, clientId) {
+        try {
+            const user = db.prepare('SELECT client_ids FROM local_users WHERE user_id = ?').get(userId);
+            if (!user) return false;
+
+            const clientIds = this.parseClientIds(user.client_ids);
+            return clientIds.includes(clientId);
+        } catch (error) {
+            console.error('Error checking user assignment:', error);
+            return false;
+        }
+    }
+
+    // 将用户分配给客户端
+    static assignUserToClient(userId, clientId) {
+        try {
+            if (!clientId) {
+                console.warn('No clientId provided for assignUserToClient');
+                return { success: false, error: 'clientId is required' };
+            }
+
+            const user = db.prepare('SELECT client_ids FROM local_users WHERE user_id = ?').get(userId);
+            if (!user) {
+                return { success: false, error: `User ${userId} not found` };
+            }
+
+            const clientIds = this.parseClientIds(user.client_ids);
+            if (!clientIds.includes(clientId)) {
+                clientIds.push(clientId);
+                const newClientIds = this.serializeClientIds(clientIds);
+
+                const result = db.prepare('UPDATE local_users SET client_ids = ?, updated_at = ? WHERE user_id = ?').run(
+                    newClientIds,
+                    Math.floor(Date.now() / 1000),
+                    userId
+                );
+
+                console.log(`Assigned user ${userId} to client ${clientId}, affected ${result.changes} records`);
+                return { success: true, changes: result.changes };
+            } else {
+                console.log(`User ${userId} already assigned to client ${clientId}`);
+                return { success: true, changes: 0 };
+            }
+        } catch (error) {
+            console.error('Error assigning user to client:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // 从客户端移除用户
+    static removeUserFromClient(userId, clientId) {
+        try {
+            if (!clientId) {
+                console.warn('No clientId provided for removeUserFromClient');
+                return { success: false, error: 'clientId is required' };
+            }
+
+            const user = db.prepare('SELECT client_ids FROM local_users WHERE user_id = ?').get(userId);
+            if (!user) {
+                return { success: false, error: `User ${userId} not found` };
+            }
+
+            const clientIds = this.parseClientIds(user.client_ids);
+            const index = clientIds.indexOf(clientId);
+            if (index > -1) {
+                clientIds.splice(index, 1);
+                const newClientIds = this.serializeClientIds(clientIds);
+
+                const result = db.prepare('UPDATE local_users SET client_ids = ?, updated_at = ? WHERE user_id = ?').run(
+                    newClientIds,
+                    Math.floor(Date.now() / 1000),
+                    userId
+                );
+
+                console.log(`Removed user ${userId} from client ${clientId}, affected ${result.changes} records`);
+                return { success: true, changes: result.changes };
+            } else {
+                console.log(`User ${userId} not assigned to client ${clientId}`);
+                return { success: true, changes: 0 };
+            }
+        } catch (error) {
+            console.error('Error removing user from client:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // 获取用户的所有客户端
+    static getUserClients(userId) {
+        try {
+            const user = db.prepare('SELECT client_ids FROM local_users WHERE user_id = ?').get(userId);
+            if (!user) return [];
+
+            return this.parseClientIds(user.client_ids);
+        } catch (error) {
+            console.error('Error getting user clients:', error);
+            return [];
+        }
+    }
+
+    // 从所有用户中移除指定客户端ID
+    static removeClientFromAllUsers(clientId) {
+        try {
+            if (!clientId) {
+                console.warn('No clientId provided for removeClientFromAllUsers');
+                return { success: false, error: 'clientId is required' };
+            }
+
+            // 获取所有包含该客户端ID的用户
+            const users = db.prepare('SELECT user_id, client_ids FROM local_users WHERE client_ids LIKE ?').all(`%"${clientId}"%`);
+
+            let totalChanges = 0;
+            for (const user of users) {
+                const clientIds = this.parseClientIds(user.client_ids);
+                const index = clientIds.indexOf(clientId);
+                if (index > -1) {
+                    clientIds.splice(index, 1);
+                    const newClientIds = this.serializeClientIds(clientIds);
+
+                    const result = db.prepare('UPDATE local_users SET client_ids = ?, updated_at = ? WHERE user_id = ?').run(
+                        newClientIds,
+                        Math.floor(Date.now() / 1000),
+                        user.user_id
+                    );
+
+                    totalChanges += result.changes;
+                    console.log(`Removed client ${clientId} from user ${user.user_id}, client_ids now: [${clientIds.join(', ')}]`);
+                }
+            }
+
+            console.log(`Removed client ${clientId} from ${totalChanges} users`);
+            return { success: true, changes: totalChanges };
+        } catch (error) {
+            console.error('Error removing client from all users:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // Set current local user (new approach: just assign user to client, no is_current dependency)
+    static setCurrentLocalUser(userId, clientId = null) {
+        try {
+            if (!clientId) {
+                console.warn('No clientId provided for setCurrentLocalUser');
+                return { success: false, error: 'clientId is required' };
+            }
+
+            // Step 1: 从其他用户中移除当前客户端ID
+            this.removeClientFromAllUsers(clientId);
+
+            // Step 2: 将用户分配给客户端（如果还没有分配）
+            const assignResult = this.assignUserToClient(userId, clientId);
+            if (!assignResult.success) {
+                return assignResult;
+            }
+
+            // Step 3: 更新用户的 updated_at 时间戳
+            const result = db.prepare('UPDATE local_users SET updated_at = ? WHERE user_id = ?').run(
+                Math.floor(Date.now() / 1000),
+                userId
+            );
+
+            console.log(`Set user ${userId} as current for client_id ${clientId}, affected ${result.changes} records`);
+
+            if (result.changes === 0) {
+                console.error(`Failed to set user ${userId} as current - user may not exist`);
+                return { success: false, error: `User ${userId} not found` };
+            }
+
             return { success: true, changes: result.changes };
         } catch (error) {
             console.error('Error setting current local user:', error);
@@ -964,13 +1300,287 @@ class DatabaseManager {
         }
     }
 
-    // Get current local user
+    // Get latest local user (deprecated - use client-specific methods instead)
     static getCurrentLocalUser() {
         try {
-            return db.prepare('SELECT * FROM local_users WHERE is_current = 1').get();
+            return db.prepare('SELECT * FROM local_users ORDER BY updated_at DESC LIMIT 1').get();
         } catch (error) {
-            console.error('Error getting current local user:', error);
+            console.error('Error getting latest local user:', error);
             return null;
+        }
+    }
+
+    // Get current local user for specific client (new approach: no is_current dependency)
+    static getCurrentLocalUserForClient(clientId) {
+        try {
+            if (!clientId) {
+                console.warn('No clientId provided, returning null for current user');
+                return null;
+            }
+
+            // First try: find user with matching client_id in client_ids array
+            let user = db.prepare('SELECT * FROM local_users WHERE client_ids LIKE ? ORDER BY updated_at DESC LIMIT 1').get(`%"${clientId}"%`);
+            if (user) {
+                console.log(`Found current user for client_id ${clientId}: ${user.username || user.user_id}`);
+                return user;
+            }
+
+            console.log(`No current user found for client_id ${clientId}, trying fallback to latest updated user`);
+
+            // Fallback: get the latest updated user (regardless of is_current or client_ids)
+            user = db.prepare('SELECT * FROM local_users ORDER BY updated_at DESC LIMIT 1').get();
+            if (user) {
+                console.log(`Found latest updated user as fallback: ${user.username || user.user_id}`);
+                // Auto-assign this user to current client
+                this.assignUserToClient(user.user_id, clientId);
+                return user;
+            }
+
+            console.log(`No users found in database`);
+            return null;
+        } catch (error) {
+            console.error('Error getting current local user for client:', error);
+            return null;
+        }
+    }
+
+    // Get total user count (replacing is_current based counting)
+    static getTotalUserCount() {
+        try {
+            const result = db.prepare('SELECT COUNT(*) as total FROM local_users').get();
+            return result ? result.total : 0;
+        } catch (error) {
+            console.error('Error getting total user count:', error);
+            return 0;
+        }
+    }
+
+    // Get latest user by specific fields (replacing is_current based query)
+    static getLatestUserFields(fields) {
+        try {
+            const fieldList = fields.join(', ');
+            return db.prepare(`SELECT ${fieldList} FROM local_users ORDER BY updated_at DESC LIMIT 1`).get();
+        } catch (error) {
+            console.error('Error getting latest user fields:', error);
+            return null;
+        }
+    }
+
+    // Assign user to client during startup (without clearing is_current flags)
+    static assignUserToClientOnStartup(userId, clientId) {
+        try {
+            if (!clientId) {
+                console.warn('No clientId provided for assignUserToClientOnStartup');
+                return { success: false, error: 'clientId is required' };
+            }
+
+            // Only update the user's client_ids and updated_at, don't touch is_current flags
+            const user = db.prepare('SELECT client_ids FROM local_users WHERE user_id = ?').get(userId);
+            if (!user) {
+                return { success: false, error: `User ${userId} not found` };
+            }
+
+            const clientIds = this.parseClientIds(user.client_ids);
+            if (!clientIds.includes(clientId)) {
+                clientIds.push(clientId);
+                const newClientIds = this.serializeClientIds(clientIds);
+
+                const result = db.prepare('UPDATE local_users SET client_ids = ?, updated_at = ? WHERE user_id = ?').run(
+                    newClientIds,
+                    Math.floor(Date.now() / 1000),
+                    userId
+                );
+
+                console.log(`Assigned user ${userId} to client_id ${clientId} on startup, affected ${result.changes} records`);
+                return { success: true, changes: result.changes };
+            } else {
+                console.log(`User ${userId} already assigned to client ${clientId} on startup`);
+                return { success: true, changes: 0 };
+            }
+        } catch (error) {
+            console.error('Error assigning user to client on startup:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+
+    // Get current user fields for specific client (new approach: no is_current dependency)
+    static getCurrentUserFieldsForClient(fields, clientId) {
+        try {
+            if (!clientId) {
+                console.warn('No clientId provided, returning null for current user fields');
+                return null;
+            }
+
+            const fieldList = fields.join(', ');
+
+            // First try: find user with matching client_id in client_ids array
+            let user = db.prepare(`SELECT ${fieldList} FROM local_users WHERE client_ids LIKE ? ORDER BY updated_at DESC LIMIT 1`).get(`%"${clientId}"%`);
+            if (user) {
+                console.log(`Found current user fields for client_id ${clientId}: ${user.username || user.user_id}`);
+                return user;
+            }
+
+            console.log(`No current user found for client_id ${clientId}, trying fallback to latest updated user`);
+
+            // Fallback: get the latest updated user (regardless of is_current or client_ids)
+            user = db.prepare(`SELECT ${fieldList} FROM local_users ORDER BY updated_at DESC LIMIT 1`).get();
+            if (user) {
+                console.log(`Found latest updated user as fallback: ${user.username || user.user_id}`);
+                // Auto-assign this user to current client
+                this.assignUserToClient(user.user_id, clientId);
+                return user;
+            }
+
+            console.log(`No users found in database`);
+            return null;
+        } catch (error) {
+            console.error('Error getting current user fields for client:', error);
+            return null;
+        }
+    }
+
+    // Get all users (replacing is_current based query)
+    static getAllUsers() {
+        try {
+            return db.prepare('SELECT user_id FROM local_users ORDER BY updated_at DESC').all();
+        } catch (error) {
+            console.error('Error getting all users:', error);
+            return [];
+        }
+    }
+
+    // Update client_ids for user assigned to specific client
+    static updateUserClientId(clientId) {
+        try {
+            // Find the user with matching client_id in client_ids array
+            const currentUser = db.prepare('SELECT user_id, client_ids FROM local_users WHERE client_ids LIKE ?').get(`%"${clientId}"%`);
+            if (!currentUser) {
+                console.log(`No user found with client_id ${clientId} to update`);
+                return { success: false, error: `No user found with client_id ${clientId}` };
+            }
+
+            // Update the user's client_ids array and updated_at
+            const clientIds = this.parseClientIds(currentUser.client_ids);
+            if (!clientIds.includes(clientId)) {
+                clientIds.push(clientId);
+                const newClientIds = this.serializeClientIds(clientIds);
+
+                const result = db.prepare('UPDATE local_users SET client_ids = ?, updated_at = ? WHERE user_id = ?').run(
+                    newClientIds,
+                    Math.floor(Date.now() / 1000),
+                    currentUser.user_id
+                );
+
+                console.log(`Updated client_ids for user ${currentUser.user_id}: added ${clientId}, affected ${result.changes} records`);
+                return { success: true, changes: result.changes };
+            } else {
+                console.log(`User ${currentUser.user_id} already assigned to client ${clientId}`);
+                return { success: true, changes: 0 };
+            }
+        } catch (error) {
+            console.error('Error updating client_ids for user:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // Debug method to check user status (no is_current dependency)
+    static debugUserStatus() {
+        try {
+            const allUsers = db.prepare('SELECT user_id, username, client_ids, updated_at FROM local_users ORDER BY updated_at DESC').all();
+            console.log('🔍 DatabaseManager: User status debug:');
+            allUsers.forEach(user => {
+                const updateTime = new Date(user.updated_at * 1000).toISOString();
+                const clientIds = this.parseClientIds(user.client_ids);
+                console.log(`  User: ${user.username} (${user.user_id}) - client_ids: [${clientIds.join(', ')}], updated_at: ${updateTime}`);
+            });
+            return allUsers;
+        } catch (error) {
+            console.error('Error debugging user status:', error);
+            return [];
+        }
+    }
+
+    // Debug method to check specific client's current user (no is_current dependency)
+    static debugClientCurrentUser(clientId) {
+        try {
+            console.log(`🔍 DatabaseManager: Debugging current user for client_id: ${clientId}`);
+
+            // Check client-specific current user
+            const clientUser = db.prepare('SELECT * FROM local_users WHERE client_ids LIKE ? ORDER BY updated_at DESC LIMIT 1').get(`%"${clientId}"%`);
+            if (clientUser) {
+                const clientIds = this.parseClientIds(clientUser.client_ids);
+                console.log(`✅ Found client-specific current user: ${clientUser.username} (${clientUser.user_id}) - client_ids: [${clientIds.join(', ')}]`);
+            } else {
+                console.log(`❌ No client-specific current user found for client_id: ${clientId}`);
+
+                // Check latest updated user
+                const latestUser = db.prepare('SELECT * FROM local_users ORDER BY updated_at DESC LIMIT 1').get();
+                if (latestUser) {
+                    const clientIds = this.parseClientIds(latestUser.client_ids);
+                    console.log(`📋 Latest updated user: ${latestUser.username} (${latestUser.user_id}) - client_ids: [${clientIds.join(', ')}]`);
+                }
+            }
+
+            return clientUser;
+        } catch (error) {
+            console.error('Error in debugClientCurrentUser:', error);
+            return null;
+        }
+    }
+
+    // Startup user assignment (no is_current dependency)
+    static assignStartupUser(clientId) {
+        try {
+            console.log('🔧 DatabaseManager: Starting startup user assignment...');
+            console.log(`🔧 DatabaseManager: Client ID: ${clientId}`);
+
+            // Check if current client already has a user assigned
+            const currentClientUser = db.prepare('SELECT * FROM local_users WHERE client_ids LIKE ? ORDER BY updated_at DESC LIMIT 1').get(`%"${clientId}"%`);
+
+            if (currentClientUser) {
+                console.log(`✅ DatabaseManager: Current client already has user: ${currentClientUser.username}`);
+                return {
+                    success: true,
+                    message: 'Current client already has user',
+                    currentUser: {
+                        user_id: currentClientUser.user_id,
+                        username: currentClientUser.username
+                    }
+                };
+            }
+
+            // Get the latest updated user
+            const latestUser = db.prepare('SELECT * FROM local_users ORDER BY updated_at DESC LIMIT 1').get();
+
+            if (!latestUser) {
+                console.log('🔧 DatabaseManager: No users found in database');
+                return { success: true, message: 'No users found, need user registration' };
+            }
+
+            console.log(`🔧 DatabaseManager: Found latest user: ${latestUser.username}, assigning to current client`);
+
+            // Assign this user to current client
+            const assignResult = this.assignUserToClientOnStartup(latestUser.user_id, clientId);
+            if (assignResult.success) {
+                return {
+                    success: true,
+                    message: 'Assigned latest user to current client',
+                    currentUser: {
+                        user_id: latestUser.user_id,
+                        username: latestUser.username
+                    }
+                };
+            }
+
+            return { success: false, error: 'Failed to assign user to client' };
+
+        } catch (error) {
+            console.error('❌ DatabaseManager: Error fixing multiple current users:', error);
+            return {
+                success: false,
+                error: error.message
+            };
         }
     }
 }

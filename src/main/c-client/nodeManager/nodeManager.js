@@ -1,48 +1,16 @@
 const { v4: uuidv4 } = require('uuid');
-const axios = require('axios');
 const DatabaseManager = require('../sqlite/databaseManager');
 
+/**
+ * NodeManager - Complete node management functionality
+ * Handles all node registration and management operations
+ */
 class NodeManager {
     constructor() {
         this.currentUser = null;
-        this.apiPort = null;
-        this.ipUpdateInterval = null; // Store the interval reference
-        this.config = this.loadConfig(); // Load network configuration
         this.clientId = uuidv4(); // Generate unique client ID on startup
+        this.websocketClient = null; // Will be set by external code
         console.log(`🆔 NodeManager: Generated client ID: ${this.clientId}`);
-    }
-
-    // Load network configuration
-    loadConfig() {
-        try {
-            const fs = require('fs');
-            const path = require('path');
-            const configPath = path.join(__dirname, '..', 'config.json');
-            const configData = fs.readFileSync(configPath, 'utf8');
-            const config = JSON.parse(configData);
-            console.log('🔧 NodeManager: Loaded network configuration');
-            return config;
-        } catch (error) {
-            console.log('🔧 NodeManager: Using default network configuration (config.json not found)');
-            return {
-                network: {
-                    use_public_ip: false,
-                    public_ip: '121.74.37.6',
-                    local_ip: '127.0.0.1'
-                }
-            };
-        }
-    }
-
-    // Get the appropriate IP address based on configuration
-    getConfiguredIpAddress() {
-        if (this.config.network.use_public_ip) {
-            console.log('🌐 NodeManager: Using public IP mode');
-            return this.config.network.public_ip;
-        } else {
-            console.log('🏠 NodeManager: Using local IP mode');
-            return this.config.network.local_ip;
-        }
     }
 
     setCurrentUser(user) {
@@ -53,34 +21,219 @@ class NodeManager {
         return this.clientId;
     }
 
-    async newDomainNode() {
+    setWebSocketClient(websocketClient) {
+        this.websocketClient = websocketClient;
+    }
+
+    // ===================== Get Main Node IDs Methods =====================
+
+    /**
+     * getMainNodeIds - Get all main node IDs for NMP parameters
+     * Returns domain_main_node_id, cluster_main_node_id, channel_main_node_id
+     */
+    getMainNodeIds() {
         try {
+            console.log('='.repeat(80));
+            console.log('[NodeManager] 🔍 getMainNodeIds() CALLED');
+
             if (!this.currentUser) {
-                throw new Error('No current user set');
+                console.warn('[NodeManager] ⚠️ No current user set');
+                console.log('='.repeat(80));
+                return {
+                    domain_main_node_id: null,
+                    cluster_main_node_id: null,
+                    channel_main_node_id: null
+                };
             }
 
-            // Generate domain ID
-            const domainId = uuidv4();
+            console.log(`[NodeManager] 📋 Current user: ${this.currentUser.user_id}`);
 
-            // Get node ID from local_user
             const localUser = DatabaseManager.getLocalUserById(this.currentUser.user_id);
+            if (!localUser || !localUser.node_id) {
+                console.warn('[NodeManager] ⚠️ No valid node_id found in local_user');
+                console.log('='.repeat(80));
+                return {
+                    domain_main_node_id: null,
+                    cluster_main_node_id: null,
+                    channel_main_node_id: null
+                };
+            }
+
+            console.log(`[NodeManager] 📋 Local user info:`, {
+                user_id: localUser.user_id,
+                username: localUser.username,
+                node_id: localUser.node_id,
+                domain_id: localUser.domain_id,
+                cluster_id: localUser.cluster_id,
+                channel_id: localUser.channel_id
+            });
+
+            let domainMainNodeId = null;
+            let clusterMainNodeId = null;
+            let channelMainNodeId = null;
+
+            // Get domain_main_node_id (exclude current node)
+            console.log('[NodeManager] 🔍 Querying domain_main_nodes...');
+            const domainNodes = DatabaseManager.getAllDomainMainNodes();
+            console.log(`[NodeManager]    Found ${domainNodes.length} domain main node(s)`);
+            if (domainNodes.length > 0) {
+                // Find domain main node that is NOT the current node
+                const otherDomainMain = domainNodes.find(node => node.node_id !== localUser.node_id);
+                domainMainNodeId = otherDomainMain ? otherDomainMain.node_id : null;
+                console.log(`[NodeManager]    domain_main_node_id: ${domainMainNodeId} (excluding self)`);
+            } else {
+                console.log(`[NodeManager]    No domain main nodes found`);
+            }
+
+            // Get cluster_main_node_id (exclude current node)
+            console.log('[NodeManager] 🔍 Querying cluster_main_nodes...');
+            const clusterNodes = DatabaseManager.getAllClusterMainNodes();
+            console.log(`[NodeManager]    Found ${clusterNodes.length} cluster main node(s)`);
+            if (clusterNodes.length > 0) {
+                // Find cluster main node that is NOT the current node
+                const otherClusterMain = clusterNodes.find(node => node.node_id !== localUser.node_id);
+                clusterMainNodeId = otherClusterMain ? otherClusterMain.node_id : null;
+                console.log(`[NodeManager]    cluster_main_node_id: ${clusterMainNodeId} (excluding self)`);
+            } else {
+                console.log(`[NodeManager]    No cluster main nodes found`);
+            }
+
+            // Get channel_main_node_id (exclude current node)
+            console.log('[NodeManager] 🔍 Querying channel_main_nodes...');
+            const channelMainNodes = DatabaseManager.getAllChannelMainNodes();
+            console.log(`[NodeManager]    Found ${channelMainNodes.length} channel main node(s)`);
+            if (channelMainNodes.length > 0) {
+                // Find channel main node that is NOT the current node
+                const otherChannelMain = channelMainNodes.find(node => node.node_id !== localUser.node_id);
+                channelMainNodeId = otherChannelMain ? otherChannelMain.node_id : null;
+                console.log(`[NodeManager]    channel_main_node_id: ${channelMainNodeId} (excluding self)`);
+            } else {
+                console.log(`[NodeManager]    No channel main nodes found`);
+            }
+
+            const result = {
+                domain_main_node_id: domainMainNodeId,
+                cluster_main_node_id: clusterMainNodeId,
+                channel_main_node_id: channelMainNodeId
+            };
+
+            console.log(`[NodeManager] ✅ Main node IDs result:`, result);
+            console.log('='.repeat(80));
+
+            return result;
+
+        } catch (error) {
+            console.error(`[NodeManager] ❌ Error getting main node IDs:`, error);
+            console.log('='.repeat(80));
+            return {
+                domain_main_node_id: null,
+                cluster_main_node_id: null,
+                channel_main_node_id: null
+            };
+        }
+    }
+
+    // ===================== Confirm Methods =====================
+
+    /**
+     * assignConfirmed - Send current node's domain_id, cluster_id, channel_id to B-Client
+     * Queries domain_main_nodes, cluster_main_nodes, channel_main_nodes tables
+     * If only one record exists, gets the ID directly
+     * If multiple records exist, matches by local_users.node_id
+     */
+    async assignConfirmed() {
+        try {
+            // Get current user from database (fallback if not set)
+            let localUser = null;
+            if (this.currentUser) {
+                localUser = DatabaseManager.getLocalUserById(this.currentUser.user_id);
+            } else {
+                console.log('[NodeManager] ⚠️ currentUser not set, fetching from database...');
+                localUser = DatabaseManager.getCurrentLocalUserForClient(this.clientId);
+                if (localUser) {
+                    console.log(`[NodeManager] ✅ Found current user in database: ${localUser.username}`);
+                }
+            }
+
             if (!localUser || !localUser.node_id) {
                 throw new Error('No valid node_id found in local_user');
             }
 
             const nodeId = localUser.node_id;
+            let domainId = null;
+            let clusterId = null;
+            let channelId = null;
 
-            // Store in domain_main_nodes
-            DatabaseManager.addDomainMainNode(nodeId, domainId);
+            // Check domain_main_nodes
+            const domainNodes = DatabaseManager.getAllDomainMainNodes();
+            if (domainNodes.length === 1) {
+                domainId = domainNodes[0].domain_id;
+            } else if (domainNodes.length > 1) {
+                const domainNode = DatabaseManager.getDomainMainNodeByNodeId(nodeId);
+                if (domainNode) {
+                    domainId = domainNode.domain_id;
+                }
+            }
 
-            return {
-                success: true,
+            // Check cluster_main_nodes
+            const clusterNodes = DatabaseManager.getAllClusterMainNodes();
+            if (clusterNodes.length === 1) {
+                clusterId = clusterNodes[0].cluster_id;
+            } else if (clusterNodes.length > 1) {
+                const clusterNode = DatabaseManager.getClusterMainNodeByNodeId(nodeId);
+                if (clusterNode) {
+                    clusterId = clusterNode.cluster_id;
+                }
+            }
+
+            // Check channel_main_nodes
+            const channelMainNodes = DatabaseManager.getAllChannelMainNodes();
+            if (channelMainNodes.length === 1) {
+                channelId = channelMainNodes[0].channel_id;
+            } else if (channelMainNodes.length > 1) {
+                const channelMainNode = DatabaseManager.getChannelMainNodeByNodeId(nodeId);
+                if (channelMainNode) {
+                    channelId = channelMainNode.channel_id;
+                }
+            }
+
+            const assignData = {
                 domain_id: domainId,
+                cluster_id: clusterId,
+                channel_id: channelId,
                 node_id: nodeId
             };
 
+            console.log(`[NodeManager] assignConfirmed data:`, assignData);
+
+            // Update this.currentUser with latest information from database
+            if (this.currentUser) {
+                this.currentUser.domain_id = domainId;
+                this.currentUser.cluster_id = clusterId;
+                this.currentUser.channel_id = channelId;
+                this.currentUser.node_id = nodeId;
+                console.log(`[NodeManager] Updated this.currentUser with latest information`);
+            }
+
+            // Send to B-Client via WebSocket
+            if (this.websocketClient && this.websocketClient.sendMessage) {
+                console.log(`[NodeManager] 📤 Sending assignConfirmed to B-Client via WebSocket...`);
+                this.websocketClient.sendMessage({
+                    type: 'assignConfirmed',
+                    data: assignData
+                });
+                console.log(`[NodeManager] ✅ assignConfirmed sent successfully`);
+            } else {
+                console.warn(`[NodeManager] ⚠️ WebSocket client not available, cannot send assignConfirmed`);
+            }
+
+            return {
+                success: true,
+                data: assignData
+            };
+
         } catch (error) {
-            console.error('Error in newDomainNode:', error);
+            console.error(`[NodeManager] Error in assignConfirmed:`, error);
             return {
                 success: false,
                 error: error.message
@@ -88,44 +241,141 @@ class NodeManager {
         }
     }
 
-    async newClusterNode(nodeId) {
+    // ===================== New Main Nodes Methods =====================
+
+    /**
+     * newDomainNode - Create new domain node
+     * Stores current node info in domain_main_nodes table
+     */
+    async newDomainNode() {
         try {
-            if (!nodeId) {
-                return {
-                    success: false,
-                    error: 'node_id parameter is required'
-                };
+            console.log('='.repeat(80));
+            console.log('[NodeManager] 🏗️ newDomainNode() CALLED');
+
+            // Get current user from database (fallback if not set)
+            let localUser = null;
+            if (this.currentUser) {
+                localUser = DatabaseManager.getLocalUserById(this.currentUser.user_id);
+            } else {
+                console.log('[NodeManager] ⚠️ currentUser not set, fetching from database...');
+                localUser = DatabaseManager.getCurrentLocalUserForClient(this.clientId);
+                if (localUser) {
+                    console.log(`[NodeManager] ✅ Found current user in database: ${localUser.username}`);
+                }
             }
 
-            // Get domain_id from domain_main_nodes table using the provided node_id
-            const domainNode = DatabaseManager.getDomainMainNodeByNodeId(nodeId);
-            if (!domainNode) {
-                return {
-                    success: false,
-                    error: 'No domain found for the provided node_id. Please create a domain first.'
-                };
+            if (!localUser || !localUser.node_id) {
+                throw new Error('No valid node_id found in local_user');
             }
 
-            const domainId = domainNode.domain_id;
+            const nodeId = localUser.node_id;
+            const domainId = uuidv4();
 
-            // Generate cluster ID
+            console.log(`[NodeManager] 📋 Creating domain node:`);
+            console.log(`[NodeManager]    node_id: ${nodeId}`);
+            console.log(`[NodeManager]    domain_id: ${domainId} (new UUID)`);
+
+            // Clear existing domain_main_nodes and add new one
+            console.log('[NodeManager] 🗑️ Clearing existing domain_main_nodes...');
+            DatabaseManager.clearAllDomainMainNodes();
+
+            console.log('[NodeManager] ➕ Adding new domain_main_nodes record...');
+            DatabaseManager.addDomainMainNode(nodeId, domainId);
+            console.log('[NodeManager] ✅ domain_main_nodes record created');
+
+            // Update local_users with new domain_id
+            console.log('[NodeManager] 🔄 Updating local_users table...');
+            DatabaseManager.updateLocalUser(
+                localUser.user_id,
+                localUser.username,
+                domainId,  // Update domain_id
+                localUser.cluster_id,  // Keep existing cluster_id
+                localUser.channel_id,  // Keep existing channel_id
+                nodeId
+            );
+            console.log(`[NodeManager] ✅ local_users updated with domain_id: ${domainId}`);
+
+            // Call assignConfirmed to notify B-Client
+            console.log('[NodeManager] 📤 Calling assignConfirmed() to notify B-Client...');
+            await this.assignConfirmed();
+
+            console.log(`[NodeManager] ✅ newDomainNode() COMPLETED`);
+            console.log('='.repeat(80));
+
+            return {
+                success: true,
+                node_id: nodeId,
+                domain_id: domainId
+            };
+
+        } catch (error) {
+            console.error(`[NodeManager] ❌ Error in newDomainNode:`, error);
+            console.log('='.repeat(80));
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * newClusterNode - Create new cluster node
+     * @param {string} domain_id - Domain ID
+     */
+    async newClusterNode(domain_id) {
+        try {
+            if (!domain_id) {
+                throw new Error('domain_id parameter is required');
+            }
+
+            // Get current user from database (fallback if not set)
+            let localUser = null;
+            if (this.currentUser) {
+                localUser = DatabaseManager.getLocalUserById(this.currentUser.user_id);
+            } else {
+                console.log('[NodeManager] ⚠️ currentUser not set, fetching from database...');
+                localUser = DatabaseManager.getCurrentLocalUserForClient(this.clientId);
+                if (localUser) {
+                    console.log(`[NodeManager] ✅ Found current user in database: ${localUser.username}`);
+                }
+            }
+
+            if (!localUser || !localUser.node_id) {
+                throw new Error('No valid node_id found in local_user');
+            }
+
+            const nodeId = localUser.node_id;
             const clusterId = uuidv4();
 
-            // Store in cluster_main_nodes with domain_id
-            DatabaseManager.addClusterMainNode(nodeId, domainId, clusterId);
+            // Clear existing cluster_main_nodes and add new one
+            DatabaseManager.clearAllClusterMainNodes();
+            DatabaseManager.addClusterMainNode(nodeId, domain_id, clusterId);
 
-            // Register self to own cluster via registerConfirmed
-            await this.registerConfirmed(domainId, clusterId, null, nodeId, nodeId, 'cluster');
+            // Update local_users with new cluster_id
+            DatabaseManager.updateLocalUser(
+                localUser.user_id,
+                localUser.username,
+                domain_id,  // Update domain_id
+                clusterId,  // Update cluster_id
+                localUser.channel_id,  // Keep existing channel_id
+                nodeId
+            );
+
+            console.log(`[NodeManager] Created new cluster node: ${nodeId} with cluster: ${clusterId} in domain: ${domain_id}`);
+            console.log(`[NodeManager] Updated local_users with cluster_id: ${clusterId}`);
+
+            // Call assignConfirmed to notify B-Client
+            await this.assignConfirmed();
 
             return {
                 success: true,
-                domain_id: domainId,
-                cluster_id: clusterId,
-                node_id: nodeId
+                node_id: nodeId,
+                domain_id: domain_id,
+                cluster_id: clusterId
             };
 
         } catch (error) {
-            console.error('Error in newClusterNode:', error);
+            console.error(`[NodeManager] Error in newClusterNode:`, error);
             return {
                 success: false,
                 error: error.message
@@ -133,49 +383,69 @@ class NodeManager {
         }
     }
 
-    async newChannelNode(nodeId) {
+    /**
+     * newChannelNode - Create new channel node
+     * @param {string} domain_id - Domain ID
+     * @param {string} cluster_id - Cluster ID
+     */
+    async newChannelNode(domain_id, cluster_id) {
         try {
-            if (!nodeId) {
-                return {
-                    success: false,
-                    error: 'node_id parameter is required'
-                };
+            if (!domain_id || !cluster_id) {
+                throw new Error('domain_id and cluster_id parameters are required');
             }
 
-            // Get domain_id and cluster_id from cluster_main_nodes table using the provided node_id
-            const clusterNode = DatabaseManager.getClusterMainNodeByNodeId(nodeId);
-            if (!clusterNode) {
-                return {
-                    success: false,
-                    error: 'No cluster found for the provided node_id. Please create a cluster first.'
-                };
+            // Get current user from database (fallback if not set)
+            let localUser = null;
+            if (this.currentUser) {
+                localUser = DatabaseManager.getLocalUserById(this.currentUser.user_id);
+            } else {
+                console.log('[NodeManager] ⚠️ currentUser not set, fetching from database...');
+                localUser = DatabaseManager.getCurrentLocalUserForClient(this.clientId);
+                if (localUser) {
+                    console.log(`[NodeManager] ✅ Found current user in database: ${localUser.username}`);
+                }
             }
 
-            const domainId = clusterNode.domain_id;
-            const clusterId = clusterNode.cluster_id;
+            if (!localUser || !localUser.node_id) {
+                throw new Error('No valid node_id found in local_user');
+            }
 
-            // Generate channel ID
+            const nodeId = localUser.node_id;
             const channelId = uuidv4();
 
-            // Store in channel_main_nodes with domain_id and cluster_id
-            DatabaseManager.addChannelMainNode(nodeId, domainId, clusterId, channelId);
+            // Clear existing channel_main_nodes and add new one
+            DatabaseManager.clearAllChannelMainNodes();
+            DatabaseManager.addChannelMainNode(nodeId, domain_id, cluster_id, channelId);
 
-            // Store own information in channel_nodes table with domain_id and cluster_id
-            DatabaseManager.addChannelNode(nodeId, domainId, clusterId, channelId);
+            // Also add to channel_nodes
+            DatabaseManager.addChannelNode(nodeId, domain_id, cluster_id, channelId);
 
-            // Register self to own channel via registerConfirmed
-            await this.registerConfirmed(domainId, clusterId, channelId, nodeId, nodeId, 'channel');
+            // Update local_users with new channel_id
+            DatabaseManager.updateLocalUser(
+                localUser.user_id,
+                localUser.username,
+                domain_id,  // Update domain_id
+                cluster_id,  // Update cluster_id
+                channelId,  // Update channel_id
+                nodeId
+            );
+
+            console.log(`[NodeManager] Created new channel node: ${nodeId} with channel: ${channelId} in cluster: ${cluster_id}`);
+            console.log(`[NodeManager] Updated local_users with channel_id: ${channelId}`);
+
+            // Call assignConfirmed to notify B-Client
+            await this.assignConfirmed();
 
             return {
                 success: true,
-                domain_id: domainId,
-                cluster_id: clusterId,
-                channel_id: channelId,
-                node_id: nodeId
+                node_id: nodeId,
+                domain_id: domain_id,
+                cluster_id: cluster_id,
+                channel_id: channelId
             };
 
         } catch (error) {
-            console.error('Error in newChannelNode:', error);
+            console.error(`[NodeManager] Error in newChannelNode:`, error);
             return {
                 success: false,
                 error: error.message
@@ -183,384 +453,262 @@ class NodeManager {
         }
     }
 
-    async registerToDomainNode(domainId, nodeId, requesterIp, requesterPort) {
+    // ===================== Assign To Main Nodes Methods =====================
+
+    /**
+     * assignToDomain - Assign node to domain
+     * @param {string} domain_id - Domain ID
+     * @param {string} node_id - Node ID
+     */
+    async assignToDomain(domain_id, node_id) {
         try {
-            if (!this.currentUser) {
-                throw new Error('No current user set');
+            if (!domain_id || !node_id) {
+                throw new Error('domain_id and node_id parameters are required');
             }
 
-            // Check if domain exists in domain_main_nodes
-            const domainNode = DatabaseManager.getDomainMainNodeByDomainId(domainId);
+            // Get current user from database (fallback if not set)
+            let localUser = null;
+            if (this.currentUser) {
+                localUser = DatabaseManager.getLocalUserById(this.currentUser.user_id);
+            } else {
+                console.log('[NodeManager] ⚠️ currentUser not set, fetching from database...');
+                localUser = DatabaseManager.getCurrentLocalUserForClient(this.clientId);
+                if (localUser) {
+                    console.log(`[NodeManager] ✅ Found current user in database: ${localUser.username}`);
+                }
+            }
+
+            if (!localUser) {
+                throw new Error('Local user not found');
+            }
+
+            // Delete existing record if exists and add new one
+            DatabaseManager.clearAllDomainMainNodes();
+            DatabaseManager.addDomainMainNode(node_id, domain_id);
+
+            // Update local_users with domain_id
+            DatabaseManager.updateLocalUser(
+                localUser.user_id,
+                localUser.username,
+                domain_id,  // Update domain_id
+                localUser.cluster_id,  // Keep existing cluster_id
+                localUser.channel_id,  // Keep existing channel_id
+                node_id
+            );
+
+            console.log(`[NodeManager] Assigned node ${node_id} to domain ${domain_id}`);
+            console.log(`[NodeManager] Updated local_users with domain_id: ${domain_id}`);
+
+            // Call assignConfirmed to notify B-Client
+            await this.assignConfirmed();
+
+            return {
+                success: true,
+                node_id: node_id,
+                domain_id: domain_id
+            };
+
+        } catch (error) {
+            console.error(`[NodeManager] Error in assignToDomain:`, error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * assignToCluster - Assign node to cluster
+     * @param {string} cluster_id - Cluster ID
+     * @param {string} node_id - Node ID
+     */
+    async assignToCluster(cluster_id, node_id) {
+        try {
+            if (!cluster_id || !node_id) {
+                throw new Error('cluster_id and node_id parameters are required');
+            }
+
+            // Get current user from database (fallback if not set)
+            let localUser = null;
+            if (this.currentUser) {
+                localUser = DatabaseManager.getLocalUserById(this.currentUser.user_id);
+            } else {
+                console.log('[NodeManager] ⚠️ currentUser not set, fetching from database...');
+                localUser = DatabaseManager.getCurrentLocalUserForClient(this.clientId);
+                if (localUser) {
+                    console.log(`[NodeManager] ✅ Found current user in database: ${localUser.username}`);
+                }
+            }
+
+            if (!localUser) {
+                throw new Error('Local user not found');
+            }
+
+            // Get domain_id from cluster_main_nodes
+            const existingCluster = DatabaseManager.getClusterMainNodeByClusterId(cluster_id);
+            if (!existingCluster) {
+                throw new Error('Cluster not found');
+            }
+
+            const domain_id = existingCluster.domain_id;
+
+            // Delete existing record if exists and add new one
+            DatabaseManager.clearAllClusterMainNodes();
+            DatabaseManager.addClusterMainNode(node_id, domain_id, cluster_id);
+
+            // Update local_users with cluster_id and domain_id
+            DatabaseManager.updateLocalUser(
+                localUser.user_id,
+                localUser.username,
+                domain_id,   // Update domain_id
+                cluster_id,  // Update cluster_id
+                localUser.channel_id,  // Keep existing channel_id
+                node_id
+            );
+
+            console.log(`[NodeManager] Assigned node ${node_id} to cluster ${cluster_id}`);
+            console.log(`[NodeManager] Updated local_users with cluster_id: ${cluster_id}`);
+
+            // Call assignConfirmed to notify B-Client
+            await this.assignConfirmed();
+
+            return {
+                success: true,
+                node_id: node_id,
+                domain_id: domain_id,
+                cluster_id: cluster_id
+            };
+
+        } catch (error) {
+            console.error(`[NodeManager] Error in assignToCluster:`, error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * assignToChannel - Assign node to channel
+     * @param {string} channel_id - Channel ID
+     * @param {string} node_id - Node ID
+     */
+    async assignToChannel(channel_id, node_id) {
+        try {
+            if (!channel_id || !node_id) {
+                throw new Error('channel_id and node_id parameters are required');
+            }
+
+            // Get current user from database (fallback if not set)
+            let localUser = null;
+            if (this.currentUser) {
+                localUser = DatabaseManager.getLocalUserById(this.currentUser.user_id);
+            } else {
+                console.log('[NodeManager] ⚠️ currentUser not set, fetching from database...');
+                localUser = DatabaseManager.getCurrentLocalUserForClient(this.clientId);
+                if (localUser) {
+                    console.log(`[NodeManager] ✅ Found current user in database: ${localUser.username}`);
+                }
+            }
+
+            if (!localUser) {
+                throw new Error('Local user not found');
+            }
+
+            // Get domain_id and cluster_id from channel_main_nodes
+            const existingChannel = DatabaseManager.getChannelMainNodeByChannelId(channel_id);
+            if (!existingChannel) {
+                throw new Error('Channel not found');
+            }
+
+            const domain_id = existingChannel.domain_id;
+            const cluster_id = existingChannel.cluster_id;
+
+            // Delete existing record if exists and add new one
+            DatabaseManager.clearAllChannelMainNodes();
+            DatabaseManager.addChannelMainNode(node_id, domain_id, cluster_id, channel_id);
+
+            // Update local_users with all IDs
+            DatabaseManager.updateLocalUser(
+                localUser.user_id,
+                localUser.username,
+                domain_id,   // Update domain_id
+                cluster_id,  // Update cluster_id
+                channel_id,  // Update channel_id
+                node_id
+            );
+
+            console.log(`[NodeManager] Assigned node ${node_id} to channel ${channel_id}`);
+            console.log(`[NodeManager] Updated local_users with channel_id: ${channel_id}`);
+
+            // Call assignConfirmed to notify B-Client
+            await this.assignConfirmed();
+
+            return {
+                success: true,
+                node_id: node_id,
+                domain_id: domain_id,
+                cluster_id: cluster_id,
+                channel_id: channel_id
+            };
+
+        } catch (error) {
+            console.error(`[NodeManager] Error in assignToChannel:`, error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    // ===================== Add Peers Methods =====================
+
+    /**
+     * addNewNodeToPeers - Add new node to channel peers
+     * @param {string} domain_id - Domain ID
+     * @param {string} cluster_id - Cluster ID
+     * @param {string} channel_id - Channel ID
+     * @param {string} node_id - Node ID
+     */
+    async addNewNodeToPeers(domain_id, cluster_id, channel_id, node_id) {
+        try {
+            if (!domain_id || !cluster_id || !channel_id || !node_id) {
+                throw new Error('All parameters are required');
+            }
+
+            // Check if domain_main_nodes exists
+            const domainNode = DatabaseManager.getDomainMainNodeByDomainId(domain_id);
             if (!domainNode) {
-                return {
-                    success: false,
-                    error: 'Domain not found'
-                };
+                throw new Error('Domain not found');
             }
 
-            // Check if current user exists in local_users with matching node_id
-            const localUser = DatabaseManager.getLocalUserByNodeId(nodeId);
-            if (!localUser) {
-                return {
-                    success: false,
-                    error: 'Node not found in local users'
-                };
-            }
-
-            // Verify this is a domain main node by checking if node_id matches
-            if (domainNode.node_id !== nodeId) {
-                return {
-                    success: false,
-                    error: 'Node ID does not match domain main node'
-                };
-            }
-
-            // Find a cluster with less than 1000 members in this domain
-            let availableCluster = DatabaseManager.getClusterWithAvailableCapacityByDomain(domainId);
-
-            if (!availableCluster) {
-                // No available cluster found, call newClusterNode on the requester
-                try {
-                    console.log(`[NodeManager] No available cluster found, calling newClusterNode on ${requesterIp}:${requesterPort}`);
-
-                    const response = await axios.post(`http://${requesterIp}:${requesterPort}/newclusternode`, {
-                        node_id: nodeId
-                    }, {
-                        timeout: 10000,
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    });
-
-                    if (response.data.success) {
-                        console.log(`[NodeManager] Successfully created new cluster: ${response.data.cluster_id}`);
-                        return {
-                            success: true,
-                            clusterId: response.data.cluster_id,
-                            nodeId: response.data.node_id,
-                            message: 'New cluster created successfully, no registration confirmation needed'
-                        };
-                    } else {
-                        return {
-                            success: false,
-                            error: `Failed to create new cluster: ${response.data.error}`
-                        };
-                    }
-                } catch (error) {
-                    console.error(`[NodeManager] Failed to call newClusterNode on ${requesterIp}:${requesterPort}:`, error.message);
-                    return {
-                        success: false,
-                        error: `No available cluster found and failed to create new cluster: ${error.message}`
-                    };
-                }
-            }
-
-            // Asynchronously call registerConfirmed on the requester (only for existing clusters)
-            this.callRegisterConfirmedAsync(requesterIp, requesterPort, {
-                domain_id: domainId,
-                cluster_id: availableCluster.cluster_id,
-                channel_id: null, // Empty for domain main node confirmation
-                node_id: this.currentUser.node_id || nodeId,
-                target_node_id: availableCluster.node_id,
-                confirmed_by: 'domain'
-            });
-
-            return {
-                success: true,
-                clusterId: availableCluster.cluster_id,
-                nodeId: availableCluster.node_id,
-                message: 'Domain allocation successful, registration confirmation sent asynchronously'
-            };
-
-        } catch (error) {
-            console.error('Error in registerToDomainNode:', error);
-            return {
-                success: false,
-                error: error.message
-            };
-        }
-    }
-
-    async addNewNode(domainId, clusterId, channelId, nodeId, targetNodeId) {
-        try {
-            if (!this.currentUser) {
-                throw new Error('No current user set');
-            }
-
-            // Check if target_node_id equals local user's node_id
-            const localUser = DatabaseManager.getLocalUserByNodeId(targetNodeId);
-            if (localUser) {
-                // This is a registration from another peer node
-                // Just store the sender's information and don't forward
-                DatabaseManager.addChannelNode(nodeId, domainId, clusterId, channelId, ipAddress);
-
-                return {
-                    success: true,
-                    message: 'Peer node registration completed (no forwarding needed)',
-                    is_peer_registration: true
-                };
-            }
-
-            // This is a new node registration, store it and forward to target
-            DatabaseManager.addChannelNode(targetNodeId, domainId, clusterId, channelId);
-
-            // Prepare response data with current user info
-            const responseData = {
-                domain_id: domainId,
-                cluster_id: clusterId,
-                channel_id: channelId,
-                node_id: this.currentUser.node_id || nodeId,
-                target_node_id: targetNodeId,
-                user_id: this.currentUser.user_id,
-                username: this.currentUser.username
-            };
-
-            // Send response to calling node
-            try {
-                const response = await axios.post(`http://localhost:3001/addNewNode`, responseData, {
-                    timeout: 10000,
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                return {
-                    success: true,
-                    message: 'Node added successfully',
-                    response: response.data
-                };
-            } catch (httpError) {
-                // Even if HTTP call fails, node was added to database
-                return {
-                    success: true,
-                    message: 'Node added to database, but failed to notify calling node',
-                    error: httpError.message
-                };
-            }
-
-        } catch (error) {
-            console.error('Error in addNewNode:', error);
-            return {
-                success: false,
-                error: error.message
-            };
-        }
-    }
-
-    getLocalIpAddress() {
-        // Get local IP address (simplified implementation)
-        const os = require('os');
-        const interfaces = os.networkInterfaces();
-        for (const name of Object.keys(interfaces)) {
-            for (const iface of interfaces[name]) {
-                if (iface.family === 'IPv4' && !iface.internal) {
-                    return iface.address;
-                }
-            }
-        }
-        return '127.0.0.1';
-    }
-
-    async getPublicIpAddress() {
-        // Use configured IP address instead of fetching from external service
-        const configuredIp = this.getConfiguredIpAddress();
-        console.log(`🌐 NodeManager: Using configured IP address: ${configuredIp}`);
-        return configuredIp;
-    }
-
-    getLocalPort() {
-        // Return the port this API server is running on
-        // This should be set by the API server when it starts
-        return this.apiPort;
-    }
-
-    setApiPort(port) {
-        this.apiPort = port;
-        // Update timestamp in database if we have current user
-        if (this.currentUser && this.currentUser.user_id) {
-            try {
-                DatabaseManager.updateLocalUserTimestamp(this.currentUser.user_id);
-                console.log(`[NodeManager] Updated local_users timestamp for user ${this.currentUser.user_id}`);
-            } catch (error) {
-                console.error(`[NodeManager] Failed to update timestamp in database:`, error);
-            }
-        }
-    }
-
-    // Start IP update task - runs every 5 minutes
-    startIpUpdateTask() {
-        console.log('[NodeManager] Starting IP update task (every 5 minutes)');
-
-        // Run immediately on start
-        this.updateAllNodeIps();
-
-        // Set up interval for every 5 minutes
-        this.ipUpdateInterval = setInterval(() => {
-            this.updateAllNodeIps();
-        }, 5 * 60 * 1000); // 5 minutes in milliseconds
-    }
-
-    // Stop IP update task
-    stopIpUpdateTask() {
-        if (this.ipUpdateInterval) {
-            console.log('[NodeManager] Stopping IP update task');
-            clearInterval(this.ipUpdateInterval);
-            this.ipUpdateInterval = null;
-        }
-    }
-
-    // Update IP addresses based on local_users table and main node status
-    async updateAllNodeIps() {
-        try {
-            console.log('[NodeManager] Starting IP update based on local_users table...');
-
-            const newPublicIp = await this.getPublicIpAddress();
-            const currentPort = this.getLocalPort();
-
-            console.log(`[NodeManager] New configured IP: ${newPublicIp}, Port: ${currentPort} (${this.config.network.use_public_ip ? 'public' : 'local'} mode)`);
-
-            // Update local_users table timestamp
-            if (this.currentUser && this.currentUser.user_id) {
-                DatabaseManager.updateLocalUserTimestamp(this.currentUser.user_id);
-                console.log(`[NodeManager] Updated local_users timestamp for user: ${this.currentUser.user_id}`);
-
-                // Get the node_id from local_users
-                const localUser = DatabaseManager.getLocalUserById(this.currentUser.user_id);
-                if (localUser && localUser.node_id) {
-                    const nodeId = localUser.node_id;
-
-                    // Check if current node is a domain main node
-                    const domainNode = DatabaseManager.getDomainMainNodeByNodeId(nodeId);
-                    if (domainNode) {
-                        DatabaseManager.updateDomainMainNodeTimestamp(nodeId);
-                        console.log(`[NodeManager] Updated domain_main_nodes timestamp for: ${nodeId}`);
-                    }
-
-                    // Check if current node is a cluster main node
-                    const clusterNode = DatabaseManager.getClusterMainNodeByNodeId(nodeId);
-                    if (clusterNode) {
-                        DatabaseManager.updateClusterMainNodeTimestamp(nodeId);
-                        console.log(`[NodeManager] Updated cluster_main_nodes timestamp for: ${nodeId}`);
-                    }
-
-                    // Check if current node is a channel main node
-                    const channelMainNode = DatabaseManager.getChannelMainNodeByNodeId(nodeId);
-                    if (channelMainNode) {
-                        DatabaseManager.updateChannelMainNodeTimestamp(nodeId);
-                        console.log(`[NodeManager] Updated channel_main_nodes timestamp for: ${nodeId}`);
-                    }
-
-                    // Check if current node is a channel node
-                    const channelNode = DatabaseManager.getChannelNodeByNodeId(nodeId);
-                    if (channelNode) {
-                        DatabaseManager.updateChannelNodeTimestamp(nodeId);
-                        console.log(`[NodeManager] Updated channel_nodes timestamp for: ${nodeId}`);
-                    }
-
-                    console.log(`[NodeManager] IP update completed for node: ${nodeId}`);
-                } else {
-                    console.log(`[NodeManager] No node_id found in local_users for user: ${this.currentUser.user_id}`);
-                }
-            } else {
-                console.log(`[NodeManager] No current user set, skipping IP update`);
-            }
-
-        } catch (error) {
-            console.error('[NodeManager] Error updating IP addresses:', error);
-        }
-    }
-
-    async registerToClusterNode(clusterId, nodeId, requesterIp, requesterPort) {
-        try {
-            if (!this.currentUser) {
-                throw new Error('No current user set');
-            }
-
-            // Check if cluster exists in cluster_main_nodes
-            const clusterNode = DatabaseManager.getClusterMainNodeByClusterId(clusterId);
+            // Check if cluster_main_nodes exists
+            const clusterNode = DatabaseManager.getClusterMainNodeByClusterId(cluster_id);
             if (!clusterNode) {
-                return {
-                    success: false,
-                    error: 'Cluster not found'
-                };
+                throw new Error('Cluster not found');
             }
 
-            // Check if current user exists in local_users with matching node_id
-            const localUser = DatabaseManager.getLocalUserByNodeId(nodeId);
-            if (!localUser) {
-                return {
-                    success: false,
-                    error: 'Node not found in local users'
-                };
+            // Check if channel_main_nodes exists
+            const channelMainNode = DatabaseManager.getChannelMainNodeByChannelId(channel_id);
+            if (!channelMainNode) {
+                throw new Error('Channel main node not found');
             }
 
-            // Verify this is a cluster main node by checking if node_id matches
-            if (clusterNode.node_id !== nodeId) {
-                return {
-                    success: false,
-                    error: 'Node ID does not match cluster main node'
-                };
-            }
+            // Add to channel_nodes
+            DatabaseManager.addChannelNode(node_id, domain_id, cluster_id, channel_id);
 
-            // Find a channel with less than 1000 members in this cluster
-            let availableChannel = DatabaseManager.getChannelMainNodeWithAvailableCapacityByCluster(clusterId);
-
-            if (!availableChannel) {
-                // No available channel found, call newChannelNode on the requester
-                try {
-                    console.log(`[NodeManager] No available channel found, calling newChannelNode on ${requesterIp}:${requesterPort}`);
-
-                    const response = await axios.post(`http://${requesterIp}:${requesterPort}/newchannelnode`, {
-                        node_id: nodeId
-                    }, {
-                        timeout: 10000,
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    });
-
-                    if (response.data.success) {
-                        console.log(`[NodeManager] Successfully created new channel: ${response.data.channel_id}`);
-                        return {
-                            success: true,
-                            channelId: response.data.channel_id,
-                            nodeId: response.data.node_id,
-                            message: 'New channel created successfully, no registration confirmation needed'
-                        };
-                    } else {
-                        return {
-                            success: false,
-                            error: `Failed to create new channel: ${response.data.error}`
-                        };
-                    }
-                } catch (error) {
-                    console.error(`[NodeManager] Failed to call newChannelNode on ${requesterIp}:${requesterPort}:`, error.message);
-                    return {
-                        success: false,
-                        error: `No available channel found and failed to create new channel: ${error.message}`
-                    };
-                }
-            }
-
-            // Asynchronously call registerConfirmed on the requester (only for existing channels)
-            this.callRegisterConfirmedAsync(requesterIp, requesterPort, {
-                domain_id: clusterNode.domain_id,
-                cluster_id: clusterId,
-                channel_id: availableChannel.channel_id,
-                node_id: this.currentUser.node_id || nodeId,
-                target_node_id: availableChannel.node_id,
-                confirmed_by: 'cluster'
-            });
+            console.log(`[NodeManager] Added new node ${node_id} to channel ${channel_id}`);
 
             return {
                 success: true,
-                channelId: availableChannel.channel_id,
-                nodeId: availableChannel.node_id,
-                message: 'Cluster allocation successful, registration confirmation sent asynchronously'
+                node_id: node_id,
+                domain_id: domain_id,
+                cluster_id: cluster_id,
+                channel_id: channel_id
             };
 
         } catch (error) {
-            console.error('Error in registerToClusterNode:', error);
+            console.error(`[NodeManager] Error in addNewNodeToPeers:`, error);
             return {
                 success: false,
                 error: error.message
@@ -568,428 +716,165 @@ class NodeManager {
         }
     }
 
-    generateNodeId() {
-        // Generate a simple node ID if not available
-        return `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    }
-
-    // Asynchronously call registerConfirmed without blocking
-    async callRegisterConfirmedAsync(targetIp, targetPort, requestData) {
+    /**
+     * addNewChannelToPeers - Add new channel to cluster peers
+     * @param {string} domain_id - Domain ID
+     * @param {string} cluster_id - Cluster ID
+     * @param {string} channel_id - Channel ID
+     * @param {string} node_id - Node ID
+     */
+    async addNewChannelToPeers(domain_id, cluster_id, channel_id, node_id) {
         try {
-            console.log(`[NodeManager] Sending registerConfirmed to ${targetIp}:${targetPort}`);
-
-            const response = await axios.post(`http://${targetIp}:${targetPort}/registerconfirmed`, requestData, {
-                timeout: 10000,
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            console.log(`[NodeManager] registerConfirmed response from ${targetIp}:${targetPort}:`, response.data);
-        } catch (error) {
-            console.error(`[NodeManager] Failed to send registerConfirmed to ${targetIp}:${targetPort}:`, error.message);
-            // Could implement retry logic here or queue for later processing
-        }
-    }
-
-    // Asynchronously send addNewNode request without blocking
-    async sendAddNewNodeRequestAsync(channelNodeItem, requestData) {
-        try {
-            const response = await axios.post(`http://localhost:3001/addNewNode`, requestData, {
-                timeout: 10000,
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            console.log(`[NodeManager] Successfully sent addNewNode to ${channelNodeItem.node_id}:`, response.data);
-        } catch (error) {
-            console.error(`[NodeManager] Failed to send addNewNode to ${channelNodeItem.node_id}:`, error.message);
-            // Could implement retry logic here or queue for later processing
-        }
-    }
-
-    // Periodic synchronization of channel nodes
-    async syncChannelNodes(channelId) {
-        try {
-            console.log(`[NodeManager] Starting periodic sync for channel ${channelId}`);
-
-            // Get all channel nodes
-            const channelNodes = DatabaseManager.getChannelNodesByChannelId(channelId);
-
-            for (const node of channelNodes) {
-                try {
-                    // Send heartbeat or sync request to each node
-                    const response = await axios.get(`http://localhost:3001/health`, {
-                        timeout: 5000
-                    });
-
-                    console.log(`[NodeManager] Node ${node.node_id} is healthy`);
-                } catch (error) {
-                    console.warn(`[NodeManager] Node ${node.node_id} is unreachable:`, error.message);
-                    // Could mark node as inactive or remove from database
-                }
+            if (!domain_id || !cluster_id || !channel_id || !node_id) {
+                throw new Error('All parameters are required');
             }
 
-            console.log(`[NodeManager] Completed periodic sync for channel ${channelId}`);
+            // Check if domain_main_nodes exists
+            const domainNode = DatabaseManager.getDomainMainNodeByDomainId(domain_id);
+            if (!domainNode) {
+                throw new Error('Domain not found');
+            }
+
+            // Check if cluster_main_nodes exists
+            const clusterNode = DatabaseManager.getClusterMainNodeByClusterId(cluster_id);
+            if (!clusterNode) {
+                throw new Error('Cluster not found');
+            }
+
+            // Add to channel_main_nodes
+            DatabaseManager.addChannelMainNode(node_id, domain_id, cluster_id, channel_id);
+
+            console.log(`[NodeManager] Added new channel ${channel_id} to cluster ${cluster_id}`);
+
+            return {
+                success: true,
+                node_id: node_id,
+                domain_id: domain_id,
+                cluster_id: cluster_id,
+                channel_id: channel_id
+            };
+
         } catch (error) {
-            console.error(`[NodeManager] Error during periodic sync:`, error);
+            console.error(`[NodeManager] Error in addNewChannelToPeers:`, error);
+            return {
+                success: false,
+                error: error.message
+            };
         }
     }
 
-    // Start periodic synchronization
-    startPeriodicSync(intervalMinutes = 5) {
-        setInterval(() => {
-            // Sync all channels this node is part of
-            const allChannels = DatabaseManager.getAllChannelNodes();
-            const uniqueChannels = [...new Set(allChannels.map(node => node.channel_id))];
+    /**
+     * addNewClusterToPeers - Add new cluster to domain peers
+     * @param {string} domain_id - Domain ID
+     * @param {string} cluster_id - Cluster ID
+     * @param {string} node_id - Node ID
+     */
+    async addNewClusterToPeers(domain_id, cluster_id, node_id) {
+        try {
+            if (!domain_id || !cluster_id || !node_id) {
+                throw new Error('All parameters are required');
+            }
 
-            uniqueChannels.forEach(channelId => {
-                this.syncChannelNodes(channelId);
-            });
-        }, intervalMinutes * 60 * 1000);
+            // Check if domain_main_nodes exists
+            const domainNode = DatabaseManager.getDomainMainNodeByDomainId(domain_id);
+            if (!domainNode) {
+                throw new Error('Domain not found');
+            }
 
-        console.log(`[NodeManager] Started periodic sync every ${intervalMinutes} minutes`);
+            // Add to cluster_main_nodes
+            DatabaseManager.addClusterMainNode(node_id, domain_id, cluster_id);
+
+            console.log(`[NodeManager] Added new cluster ${cluster_id} to domain ${domain_id}`);
+
+            return {
+                success: true,
+                node_id: node_id,
+                domain_id: domain_id,
+                cluster_id: cluster_id
+            };
+
+        } catch (error) {
+            console.error(`[NodeManager] Error in addNewClusterToPeers:`, error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
     }
 
-    // Start confirmation timeout detection
-    startConfirmationTimeout(level, config) {
-        const timeoutId = setTimeout(async () => {
-            console.log(`[NodeManager] ${level} confirmation timeout, starting retry ${config.retryCount + 1}`);
+    /**
+     * addNewDomainToPeers - Add new domain to peers
+     * @param {string} domain_id - Domain ID
+     * @param {string} node_id - Node ID
+     */
+    async addNewDomainToPeers(domain_id, node_id) {
+        try {
+            if (!domain_id || !node_id) {
+                throw new Error('domain_id and node_id parameters are required');
+            }
 
-            if (config.retryCount < config.maxRetries) {
-                // Retry current level
-                await this.retryCurrentLevel(level, config);
+            // Add to domain_main_nodes
+            DatabaseManager.addDomainMainNode(node_id, domain_id);
+
+            console.log(`[NodeManager] Added new domain ${domain_id}`);
+
+            return {
+                success: true,
+                node_id: node_id,
+                domain_id: domain_id
+            };
+
+        } catch (error) {
+            console.error(`[NodeManager] Error in addNewDomainToPeers:`, error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    // ===================== Count Peers Methods =====================
+
+    /**
+     * countPeersAmount - Count peers in specified level
+     * @param {string} domain_id - Domain ID (optional)
+     * @param {string} cluster_id - Cluster ID (optional)
+     * @param {string} channel_id - Channel ID (optional)
+     */
+    async countPeersAmount(domain_id, cluster_id, channel_id) {
+        try {
+            let count = 0;
+
+            if (domain_id) {
+                // Count domain_main_nodes
+                const domainNodes = DatabaseManager.getAllDomainMainNodes();
+                count = domainNodes.length;
+            } else if (cluster_id) {
+                // Count cluster_main_nodes
+                const clusterNodes = DatabaseManager.getAllClusterMainNodes();
+                count = clusterNodes.length;
+            } else if (channel_id) {
+                // Count channel_main_nodes
+                const channelMainNodes = DatabaseManager.getAllChannelMainNodes();
+                count = channelMainNodes.length;
             } else {
-                // Retry upper level
-                await this.retryUpperLevel(level, config);
-            }
-        }, 60 * 1000); // 1 minute timeout
-
-        // Store timeout ID for cancellation
-        this.confirmationTimeouts = this.confirmationTimeouts || {};
-        this.confirmationTimeouts[level] = timeoutId;
-
-        console.log(`[NodeManager] Started ${level} confirmation timeout detection`);
-    }
-
-    // Cancel confirmation timeout
-    cancelConfirmationTimeout(level) {
-        if (this.confirmationTimeouts && this.confirmationTimeouts[level]) {
-            clearTimeout(this.confirmationTimeouts[level]);
-            delete this.confirmationTimeouts[level];
-            console.log(`[NodeManager] Cancelled ${level} confirmation timeout`);
-        }
-    }
-
-    // Retry current level registration
-    async retryCurrentLevel(level, config) {
-        try {
-            if (level === 'cluster') {
-                // Retry cluster registration
-                const response = await axios.post(`http://${config.targetIp}:${config.targetPort}/registerToClusterNode`, {
-                    cluster_id: config.clusterId,
-                    node_id: this.currentUser.node_id
-                }, {
-                    timeout: 10000,
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                if (response.data.success) {
-                    // Restart timeout detection
-                    this.startConfirmationTimeout('cluster', {
-                        ...config,
-                        retryCount: config.retryCount + 1
-                    });
-                }
-            } else if (level === 'channel') {
-                // Retry channel registration
-                const response = await axios.post(`http://${config.targetIp}:${config.targetPort}/registerToChannelNode`, {
-                    channel_id: config.channelId,
-                    node_id: this.currentUser.node_id,
-                    target_node_id: this.currentUser.node_id
-                }, {
-                    timeout: 10000,
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                if (response.data.success) {
-                    // Restart timeout detection
-                    this.startConfirmationTimeout('channel', {
-                        ...config,
-                        retryCount: config.retryCount + 1
-                    });
-                }
-            }
-        } catch (error) {
-            console.error(`[NodeManager] Retry failed for ${level}:`, error.message);
-            // Continue retry
-            this.startConfirmationTimeout(level, {
-                ...config,
-                retryCount: config.retryCount + 1
-            });
-        }
-    }
-
-    // Retry upper level registration
-    async retryUpperLevel(level, config) {
-        try {
-            if (level === 'cluster') {
-                // Request new cluster allocation from domain
-                console.log(`[NodeManager] Requesting new cluster allocation from domain`);
-                const domainNode = DatabaseManager.getDomainMainNodeById(this.currentUser.node_id);
-                if (domainNode) {
-                    const response = await axios.post(`http://localhost:3001/registerToDomainNode`, {
-                        domain_id: config.domainId,
-                        node_id: this.currentUser.node_id
-                    }, {
-                        timeout: 10000,
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    });
-
-                    if (response.data.success) {
-                        console.log(`[NodeManager] Successfully requested new cluster allocation`);
-                    }
-                }
-            } else if (level === 'channel') {
-                // Request new channel allocation from cluster
-                console.log(`[NodeManager] Requesting new channel allocation from cluster`);
-                const clusterNode = DatabaseManager.getClusterMainNodeById(this.currentUser.node_id);
-                if (clusterNode) {
-                    const response = await axios.post(`http://localhost:3001/registerToClusterNode`, {
-                        cluster_id: config.clusterId,
-                        node_id: this.currentUser.node_id
-                    }, {
-                        timeout: 10000,
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    });
-
-                    if (response.data.success) {
-                        console.log(`[NodeManager] Successfully requested new channel allocation`);
-                    }
-                }
-            }
-        } catch (error) {
-            console.error(`[NodeManager] Upper level retry failed for ${level}:`, error.message);
-        }
-    }
-
-    // Handle registration confirmation from domain/cluster/channel main nodes
-    async registerConfirmed(domainId, clusterId, channelId, nodeId, targetNodeId, confirmedBy) {
-        try {
-            if (!this.currentUser) {
-                throw new Error('No current user set');
+                // Count channel_nodes
+                const channelNodes = DatabaseManager.getAllChannelNodes();
+                count = channelNodes.length;
             }
 
-            // Case 1: Domain main node confirmation
-            if (confirmedBy === 'domain') {
-                console.log(`[NodeManager] Processing domain main node confirmation for domain ${domainId}`);
-
-                // Clear domain_main_nodes table and insert new record
-                DatabaseManager.clearAllDomainMainNodes();
-                DatabaseManager.addDomainMainNode(nodeId, domainId);
-
-                // Call registerToClusterNode on the target cluster node
-                try {
-                    const response = await axios.post(`http://localhost:3001/registerToClusterNode`, {
-                        cluster_id: clusterId,
-                        node_id: targetNodeId
-                    }, {
-                        timeout: 10000,
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    });
-
-                    if (response.data.success) {
-                        // Start timeout detection for cluster confirmation
-                        this.startConfirmationTimeout('cluster', {
-                            domainId: domainId,
-                            clusterId: clusterId,
-                            targetIp: targetIpAddress,
-                            targetPort: targetPort,
-                            retryCount: 0,
-                            maxRetries: 3
-                        });
-                    }
-
-                    return {
-                        success: true,
-                        message: 'Domain registration confirmed and cluster registration initiated',
-                        response: response.data
-                    };
-                } catch (error) {
-                    return {
-                        success: false,
-                        error: `Failed to register with cluster node: ${error.message}`
-                    };
-                }
-            }
-
-            // Case 2: Cluster main node confirmation
-            else if (confirmedBy === 'cluster') {
-                console.log(`[NodeManager] Processing cluster main node confirmation for cluster ${clusterId}`);
-
-                // Cancel cluster timeout detection
-                this.cancelConfirmationTimeout('cluster');
-
-                // Clear cluster_main_nodes table and insert new record
-                DatabaseManager.clearAllClusterMainNodes();
-                DatabaseManager.addClusterMainNode(nodeId, domainId, clusterId);
-
-                // Call registerToChannelNode on the target channel node
-                try {
-                    const response = await axios.post(`http://localhost:3001/registerToChannelNode`, {
-                        channel_id: channelId,
-                        node_id: targetNodeId,
-                        target_node_id: targetNodeId
-                    }, {
-                        timeout: 10000,
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    });
-
-                    if (response.data.success) {
-                        // Start timeout detection for channel confirmation
-                        this.startConfirmationTimeout('channel', {
-                            domainId: domainId,
-                            clusterId: clusterId,
-                            channelId: channelId,
-                            targetIp: targetIpAddress,
-                            targetPort: targetPort,
-                            retryCount: 0,
-                            maxRetries: 3
-                        });
-                    }
-
-                    return {
-                        success: true,
-                        message: 'Cluster registration confirmed and channel registration initiated',
-                        response: response.data
-                    };
-                } catch (error) {
-                    return {
-                        success: false,
-                        error: `Failed to register with channel node: ${error.message}`
-                    };
-                }
-            }
-
-            // Case 3: Channel main node confirmation
-            else if (confirmedBy === 'channel') {
-                console.log(`[NodeManager] Processing channel main node confirmation for channel ${channelId}`);
-
-                // Cancel channel timeout detection
-                this.cancelConfirmationTimeout('channel');
-
-                // Clear channel_main_nodes table and insert new record
-                DatabaseManager.clearAllChannelMainNodes();
-                DatabaseManager.addChannelMainNode(nodeId, domainId, clusterId, channelId);
-
-                return {
-                    success: true,
-                    message: 'Channel registration confirmed successfully'
-                };
-            }
-
-            else {
-                return {
-                    success: false,
-                    error: 'Invalid confirmed_by parameter. Must be one of: domain, cluster, channel'
-                };
-            }
-
-        } catch (error) {
-            console.error('Error in registerConfirmed:', error);
-            return {
-                success: false,
-                error: error.message
-            };
-        }
-    }
-
-    async registerToChannelNode(channelId, nodeId, targetNodeId) {
-        try {
-            if (!this.currentUser) {
-                throw new Error('No current user set');
-            }
-
-            // Check if channel exists in channel_main_nodes
-            const channelNode = DatabaseManager.getChannelMainNodeByChannelId(channelId);
-            if (!channelNode) {
-                return {
-                    success: false,
-                    error: 'Channel not found'
-                };
-            }
-
-            // Check if current user exists in local_users with matching node_id
-            const localUser = DatabaseManager.getLocalUserByNodeId(nodeId);
-            if (!localUser) {
-                return {
-                    success: false,
-                    error: 'Node not found in local users'
-                };
-            }
-
-            // Verify this is a channel main node by checking if node_id matches
-            if (channelNode.node_id !== nodeId) {
-                return {
-                    success: false,
-                    error: 'Node ID does not match channel main node'
-                };
-            }
-
-            // Get all channel nodes in this channel
-            const channelNodes = DatabaseManager.getChannelNodesByChannelId(channelId);
-            if (!channelNodes || channelNodes.length === 0) {
-                return {
-                    success: false,
-                    error: 'No channel nodes found in this channel'
-                };
-            }
-
-            // Asynchronously register the requesting node to all channel nodes
-            // Don't wait for responses to avoid blocking the main thread
-            channelNodes.forEach((channelNodeItem) => {
-                // Fire and forget - send requests asynchronously
-                this.sendAddNewNodeRequestAsync(channelNodeItem, {
-                    domain_id: channelNode.domain_id,
-                    cluster_id: channelNode.cluster_id,
-                    channel_id: channelNode.channel_id,
-                    node_id: this.currentUser.node_id,
-                    target_node_id: targetNodeId
-                });
-            });
-
-            // Asynchronously call registerConfirmed on the requester to notify channel registration success
-            this.callRegisterConfirmedAsync('localhost', 3001, {
-                domain_id: channelNode.domain_id,
-                cluster_id: channelNode.cluster_id,
-                channel_id: channelNode.channel_id,
-                node_id: this.currentUser.node_id,
-                target_node_id: targetNodeId,
-                confirmed_by: 'channel'
-            });
+            console.log(`[NodeManager] Count peers result: ${count} for domain_id: ${domain_id}, cluster_id: ${cluster_id}, channel_id: ${channel_id}`);
 
             return {
                 success: true,
-                message: 'Registration initiated asynchronously',
-                total_nodes: channelNodes.length,
-                note: 'Channel nodes will be synchronized via background tasks and channel registration confirmed'
+                count: count,
+                domain_id: domain_id,
+                cluster_id: cluster_id,
+                channel_id: channel_id
             };
 
         } catch (error) {
-            console.error('Error in registerToChannelNode:', error);
+            console.error(`[NodeManager] Error in countPeersAmount:`, error);
             return {
                 success: false,
                 error: error.message
@@ -999,3 +884,5 @@ class NodeManager {
 }
 
 module.exports = NodeManager;
+
+

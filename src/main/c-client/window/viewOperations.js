@@ -307,7 +307,10 @@ class ViewOperations {
             // Process URL with parameter injection
             const { getUrlParameterInjector } = require('../utils/urlParameterInjector');
             const urlInjector = getUrlParameterInjector();
-            const processedUrl = await urlInjector.processUrl(url);
+
+            // Get clientId from viewManager's electronApp if available
+            const clientId = this.viewManager.electronApp && this.viewManager.electronApp.clientId ? this.viewManager.electronApp.clientId : null;
+            const processedUrl = await urlInjector.processUrl(url, clientId);
 
             console.log(`🔗 ViewOperations: Navigating to URL: ${url} -> ${processedUrl}`);
 

@@ -1,9 +1,11 @@
 // /src/main/userManager/userManager.js
 const db = require('../sqlite/database');
+const DatabaseManager = require('../sqlite/databaseManager');
 const UserRegistrationDialog = require('./userRegistrationDialog');
 
 class UserManager {
-    constructor() {
+    constructor(clientId = null) {
+        this.clientId = clientId;
         this.db = db;
         this.userRegistrationDialog = null;
     }
@@ -18,25 +20,23 @@ class UserManager {
             // Get all users from database
             const allUsers = this.db.prepare('SELECT * FROM local_users').all();
 
-            // Count records with is_current=1
-            const currentUsers = allUsers.filter(user => user.is_current === 1);
-            const currentCount = currentUsers.length;
+            // In multi-client environment, multiple users can be is_current=1
+            // Just check if there are any users in the database
+            const userCount = allUsers.length;
 
 
-            if (currentCount === 0) {
+            if (userCount === 0) {
                 return true;
             }
 
-            if (currentCount === 1) {
+            if (userCount === 1) {
                 return true;
             }
 
-            // If more than 1 user marked as current node, need to fix
-            if (currentCount > 1) {
-                console.warn(`Found ${currentCount} users marked as current node, starting to fix...`);
-                await this.fixMultipleCurrentNodes();
-                return true;
-            }
+            // In multi-client environment, multiple users can be current for different clients
+            // No need to fix multiple current users anymore
+            console.log(`Found ${userCount} users in database, multi-client environment supports multiple current users`);
+            return true;
 
         } catch (error) {
             console.error('Error occurred while validating current node status:', error);
@@ -49,10 +49,8 @@ class UserManager {
  */
     async fixMultipleCurrentNodes() {
         try {
-            // Get all users with is_current=1
-            const currentUsers = this.db.prepare(
-                'SELECT user_id FROM local_users WHERE is_current = 1'
-            ).all();
+            // Get all users with is_current=1 using DatabaseManager
+            const currentUsers = DatabaseManager.getAllCurrentUsers();
 
             if (currentUsers.length <= 1) {
                 return;
@@ -60,9 +58,10 @@ class UserManager {
 
             console.log(`Found ${currentUsers.length} users marked as current node, starting to fix...`);
 
-            // Set all users' is_current to 0, indicating no user login state
-            const resetAllResult = this.db.prepare('UPDATE local_users SET is_current = 0').run();
-            console.log(`Set all ${resetAllResult.changes} users' is_current field to 0, now no user is logged in`);
+            // This method is deprecated in multi-client environment
+            // Each client should manage its own users independently
+            console.warn('⚠️ UserManager: resetAllCurrentNodes is deprecated in multi-client environment');
+            console.log('⚠️ UserManager: Each client should manage its own users independently');
 
             console.log('Fix completed, all users are set to non-current node state');
 
@@ -75,18 +74,21 @@ class UserManager {
     /**
      * Set specified user as current node
      */
-    setCurrentNode(userId) {
+    setCurrentNode(userId, clientId = null) {
         try {
-            // First set all users' is_current to 0
-            this.db.prepare('UPDATE local_users SET is_current = 0').run();
+            // First clear current user flags only for this client_id
+            const clearResult = DatabaseManager.removeClientFromCurrentUsers(clientId);
+            if (!clearResult.success) {
+                console.error(`Failed to clear current users for client: ${clearResult.error}`);
+                return false;
+            }
+            console.log(`🧹 UserManager: Cleared ${clearResult.changes} current user flags for client_id: ${clientId}`);
 
-            // Set specified user's is_current to 1
-            const result = this.db.prepare(
-                'UPDATE local_users SET is_current = 1 WHERE user_id = ?'
-            ).run(userId);
+            // Set specified user's is_current to 1 and client_id using DatabaseManager
+            const result = DatabaseManager.setCurrentLocalUser(userId, clientId);
 
-            if (result.changes > 0) {
-                console.log(`User ${userId} has been set as current node`);
+            if (result.success && result.changes > 0) {
+                console.log(`User ${userId} has been set as current node with client_id: ${clientId}`);
                 return true;
             } else {
                 console.warn(`User ${userId} not found, failed to set as current node`);
@@ -101,11 +103,11 @@ class UserManager {
     /**
      * Get current node information
      */
-    getCurrentNode() {
+    getCurrentNode(clientId = null) {
         try {
-            const currentUser = this.db.prepare(
-                'SELECT * FROM local_users WHERE is_current = 1'
-            ).get();
+            // Always use client-specific lookup, generate fallback clientId if needed
+            const finalClientId = clientId || process.env.C_CLIENT_ID || `c-client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const currentUser = DatabaseManager.getCurrentUserFieldsForClient(['user_id', 'username', 'node_id', 'domain_id', 'cluster_id', 'channel_id'], finalClientId);
 
             return currentUser || null;
         } catch (error) {
@@ -115,12 +117,17 @@ class UserManager {
     }
 
     /**
-     * Clear current node marker
+     * Clear current node marker for specific client
      */
-    clearCurrentNode() {
+    clearCurrentNode(clientId = null) {
         try {
-            const result = this.db.prepare('UPDATE local_users SET is_current = 0').run();
-            console.log(`Cleared all current node markers, affected ${result.changes} records`);
+            // Use client-specific clearing instead of global clearing
+            if (!clientId) {
+                console.warn('⚠️ UserManager: clearCurrentNode requires clientId parameter');
+                return false;
+            }
+            const result = DatabaseManager.removeClientFromCurrentUsers(clientId);
+            console.log(`Cleared current node markers for client ${clientId}, affected ${result.changes} records`);
             return true;
         } catch (error) {
             console.error('Error occurred while clearing current node markers:', error);
@@ -142,7 +149,7 @@ class UserManager {
                 if (mainWindow && !mainWindow.isDestroyed()) {
                     try {
                         if (!this.userRegistrationDialog) {
-                            this.userRegistrationDialog = new UserRegistrationDialog();
+                            this.userRegistrationDialog = new UserRegistrationDialog(this.clientId);
                         }
 
                         await this.userRegistrationDialog.show(mainWindow);
