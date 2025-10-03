@@ -86,16 +86,7 @@ def create_tables(conn):
         )
     """))
     
-    # Create domain_nodes table
-    conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS domain_nodes (
-            domain_id VARCHAR(50) PRIMARY KEY,
-            node_id VARCHAR(50),
-            ip_address VARCHAR(20),
-            port INTEGER DEFAULT 3000,
-            refresh_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """))
+    # Note: domain_nodes table removed - domain information now stored in NodeManager connection pools
     
     # Set database optimization
     conn.execute(text("PRAGMA journal_mode = WAL"))

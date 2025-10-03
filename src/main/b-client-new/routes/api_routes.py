@@ -14,17 +14,15 @@ api_routes = Blueprint('api_routes', __name__)
 db = None
 UserCookie = None
 UserAccount = None
-DomainNode = None
 c_client_ws = None
 
 
-def init_api_routes(database, user_cookie_model, user_account_model, domain_node_model, websocket_client):
+def init_api_routes(database, user_cookie_model, user_account_model, websocket_client):
     """Initialize API routes with database models and websocket client"""
-    global db, UserCookie, UserAccount, DomainNode, c_client_ws
+    global db, UserCookie, UserAccount, c_client_ws
     db = database
     UserCookie = user_cookie_model
     UserAccount = user_account_model
-    DomainNode = domain_node_model
     c_client_ws = websocket_client
 
 
@@ -359,7 +357,11 @@ def database_info():
         # Get database statistics
         total_cookies = UserCookie.query.count()
         total_accounts = UserAccount.query.count()
-        total_domains = DomainNode.query.count()
+        # Get domain count from NodeManager connection pools instead of database
+        if hasattr(c_client_ws, 'node_manager') and c_client_ws.node_manager:
+            total_domains = len(c_client_ws.node_manager.domain_pool)
+        else:
+            total_domains = 0
         
         # Get recent activity
         recent_cookies = UserCookie.query.order_by(UserCookie.create_time.desc()).limit(5).all()

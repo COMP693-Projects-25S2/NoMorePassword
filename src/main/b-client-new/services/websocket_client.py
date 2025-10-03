@@ -776,6 +776,24 @@ class CClientWebSocketClient:
                                         print(f"✅ Added to channel_pool[{conn.channel_id}]")
                                 break
                     
+                    # Also update WebSocket object attributes for proper cleanup on disconnect
+                    websocket.domain_id = assign_data.get('domain_id') or websocket.domain_id
+                    websocket.cluster_id = assign_data.get('cluster_id') or websocket.cluster_id
+                    websocket.channel_id = assign_data.get('channel_id') or websocket.channel_id
+                    
+                    # Update main node flags based on the connection's status in NodeManager
+                    # Find the connection in NodeManager to get the correct flags
+                    for domain_id, connections in self.node_manager.domain_pool.items():
+                        for conn in connections:
+                            if conn.node_id == node_id:
+                                websocket.is_domain_main_node = conn.is_domain_main_node
+                                websocket.is_cluster_main_node = conn.is_cluster_main_node
+                                websocket.is_channel_main_node = conn.is_channel_main_node
+                                break
+                    
+                    print(f"✅ Updated WebSocket attributes: domain={websocket.domain_id}, cluster={websocket.cluster_id}, channel={websocket.channel_id}")
+                    print(f"✅ Updated WebSocket main node flags: domain_main={websocket.is_domain_main_node}, cluster_main={websocket.is_cluster_main_node}, channel_main={websocket.is_channel_main_node}")
+                    
                     print(f"📊 Current pool stats:")
                     print(f"   Domains: {len(self.node_manager.domain_pool)}")
                     print(f"   Clusters: {len(self.node_manager.cluster_pool)}")

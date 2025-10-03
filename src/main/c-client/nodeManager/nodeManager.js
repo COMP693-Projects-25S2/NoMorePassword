@@ -482,8 +482,8 @@ class NodeManager {
                 throw new Error('Local user not found');
             }
 
-            // Delete existing record if exists and add new one
-            DatabaseManager.clearAllDomainMainNodes();
+            // Delete existing record for this node if exists and add new one
+            DatabaseManager.deleteDomainMainNode(node_id);
             DatabaseManager.addDomainMainNode(node_id, domain_id);
 
             // Update local_users with domain_id
@@ -521,8 +521,9 @@ class NodeManager {
      * assignToCluster - Assign node to cluster
      * @param {string} cluster_id - Cluster ID
      * @param {string} node_id - Node ID
+     * @param {string} domain_id - Domain ID (provided by B-Client)
      */
-    async assignToCluster(cluster_id, node_id) {
+    async assignToCluster(cluster_id, node_id, domain_id = null) {
         try {
             if (!cluster_id || !node_id) {
                 throw new Error('cluster_id and node_id parameters are required');
@@ -544,23 +545,35 @@ class NodeManager {
                 throw new Error('Local user not found');
             }
 
-            // Get domain_id from cluster_main_nodes
-            const existingCluster = DatabaseManager.getClusterMainNodeByClusterId(cluster_id);
+            // Get domain_id from cluster_main_nodes or use B-Client provided domain_id
+            let existingCluster = DatabaseManager.getClusterMainNodeByClusterId(cluster_id);
+            let final_domain_id;
+
             if (!existingCluster) {
-                throw new Error('Cluster not found');
+                // Cluster not found, use B-Client provided domain_id to create new record
+                console.log(`[NodeManager] Cluster ${cluster_id} not found, creating new record with B-Client provided domain_id`);
+
+                if (domain_id) {
+                    final_domain_id = domain_id;
+                    console.log(`[NodeManager] Using B-Client provided domain_id: ${final_domain_id}`);
+                } else {
+                    throw new Error('No domain_id provided by B-Client for cluster assignment');
+                }
+            } else {
+                // Use existing cluster's domain_id
+                final_domain_id = existingCluster.domain_id;
+                console.log(`[NodeManager] Found existing cluster record: domain_id=${final_domain_id}`);
             }
 
-            const domain_id = existingCluster.domain_id;
-
-            // Delete existing record if exists and add new one
-            DatabaseManager.clearAllClusterMainNodes();
-            DatabaseManager.addClusterMainNode(node_id, domain_id, cluster_id);
+            // Delete existing record for this node if exists and add new one
+            DatabaseManager.deleteClusterMainNode(node_id);
+            DatabaseManager.addClusterMainNode(node_id, final_domain_id, cluster_id);
 
             // Update local_users with cluster_id and domain_id
             DatabaseManager.updateLocalUser(
                 localUser.user_id,
                 localUser.username,
-                domain_id,   // Update domain_id
+                final_domain_id,   // Update domain_id
                 cluster_id,  // Update cluster_id
                 localUser.channel_id,  // Keep existing channel_id
                 node_id
@@ -575,7 +588,7 @@ class NodeManager {
             return {
                 success: true,
                 node_id: node_id,
-                domain_id: domain_id,
+                domain_id: final_domain_id,
                 cluster_id: cluster_id
             };
 
@@ -592,8 +605,10 @@ class NodeManager {
      * assignToChannel - Assign node to channel
      * @param {string} channel_id - Channel ID
      * @param {string} node_id - Node ID
+     * @param {string} domain_id - Domain ID (provided by B-Client)
+     * @param {string} cluster_id - Cluster ID (provided by B-Client)
      */
-    async assignToChannel(channel_id, node_id) {
+    async assignToChannel(channel_id, node_id, domain_id = null, cluster_id = null) {
         try {
             if (!channel_id || !node_id) {
                 throw new Error('channel_id and node_id parameters are required');
@@ -615,25 +630,38 @@ class NodeManager {
                 throw new Error('Local user not found');
             }
 
-            // Get domain_id and cluster_id from channel_main_nodes
-            const existingChannel = DatabaseManager.getChannelMainNodeByChannelId(channel_id);
+            // Get domain_id and cluster_id from channel_main_nodes or use B-Client provided values
+            let existingChannel = DatabaseManager.getChannelMainNodeByChannelId(channel_id);
+            let final_domain_id, final_cluster_id;
+
             if (!existingChannel) {
-                throw new Error('Channel not found');
+                // Channel not found, use B-Client provided values to create new record
+                console.log(`[NodeManager] Channel ${channel_id} not found, creating new record with B-Client provided values`);
+
+                if (domain_id && cluster_id) {
+                    final_domain_id = domain_id;
+                    final_cluster_id = cluster_id;
+                    console.log(`[NodeManager] Using B-Client provided values: domain_id=${final_domain_id}, cluster_id=${final_cluster_id}`);
+                } else {
+                    throw new Error('No domain_id or cluster_id provided by B-Client for channel assignment');
+                }
+            } else {
+                // Use existing channel's values
+                final_domain_id = existingChannel.domain_id;
+                final_cluster_id = existingChannel.cluster_id;
+                console.log(`[NodeManager] Found existing channel record: domain_id=${final_domain_id}, cluster_id=${final_cluster_id}`);
             }
 
-            const domain_id = existingChannel.domain_id;
-            const cluster_id = existingChannel.cluster_id;
-
-            // Delete existing record if exists and add new one
-            DatabaseManager.clearAllChannelMainNodes();
-            DatabaseManager.addChannelMainNode(node_id, domain_id, cluster_id, channel_id);
+            // Delete existing record for this node if exists and add new one
+            DatabaseManager.deleteChannelMainNode(node_id);
+            DatabaseManager.addChannelMainNode(node_id, final_domain_id, final_cluster_id, channel_id);
 
             // Update local_users with all IDs
             DatabaseManager.updateLocalUser(
                 localUser.user_id,
                 localUser.username,
-                domain_id,   // Update domain_id
-                cluster_id,  // Update cluster_id
+                final_domain_id,   // Update domain_id
+                final_cluster_id,  // Update cluster_id
                 channel_id,  // Update channel_id
                 node_id
             );
@@ -647,8 +675,8 @@ class NodeManager {
             return {
                 success: true,
                 node_id: node_id,
-                domain_id: domain_id,
-                cluster_id: cluster_id,
+                domain_id: final_domain_id,
+                cluster_id: final_cluster_id,
                 channel_id: channel_id
             };
 

@@ -816,6 +816,8 @@ class NodeManager:
             command = {
                 "type": "assign_to_channel",
                 "data": {
+                    "domain_id": connection.domain_id,    # Add domain_id
+                    "cluster_id": connection.cluster_id,  # Add cluster_id
                     "channel_id": channel_id,
                     "node_id": connection.node_id
                 }
@@ -886,6 +888,7 @@ class NodeManager:
             command = {
                 "type": "assign_to_cluster",
                 "data": {
+                    "domain_id": connection.domain_id,  # Add domain_id
                     "cluster_id": cluster_id,
                     "node_id": connection.node_id
                 }
@@ -897,21 +900,30 @@ class NodeManager:
                 # Add to cluster pool
                 self.add_to_cluster_pool(cluster_id, connection)
                 
-                # Try to assign to existing channel
+                # Try to assign to existing channel - try ALL channels in the cluster
+                channel_assigned = False
                 for channel_connection in self.cluster_pool.get(cluster_id, []):
                     if channel_connection.channel_id:
+                        logger.info(f"🔍 Trying to assign to existing channel: {channel_connection.channel_id}")
                         if await self.assign_to_channel(connection, channel_connection.channel_id, 
                                                        channel_connection.node_id):
-                            return True
+                            logger.info(f"✅ Successfully assigned to existing channel: {channel_connection.channel_id}")
+                            channel_assigned = True
+                            break
+                        else:
+                            logger.warning(f"⚠️ Failed to assign to channel {channel_connection.channel_id}, trying next...")
                 
-                # No available channel, create new one
-                domain_id = response.get("data", {}).get("domain_id")
-                if domain_id:
-                    await self.new_channel_node(connection, domain_id, cluster_id)
-                    # Assign to own channel
-                    if connection.channel_id:
-                        return await self.assign_to_channel(connection, connection.channel_id, 
-                                                          connection.node_id)
+                # Only create new channel if NO existing channels were available
+                if not channel_assigned:
+                    logger.info(f"📍 No available channels found, creating new channel for cluster {cluster_id}")
+                    # Use connection's domain_id instead of response data
+                    domain_id = connection.domain_id
+                    if domain_id:
+                        await self.new_channel_node(connection, domain_id, cluster_id)
+                        # Assign to own channel
+                        if connection.channel_id:
+                            return await self.assign_to_channel(connection, connection.channel_id, 
+                                                              connection.node_id)
                 
                 logger.info(f"✅ Successfully assigned {connection.node_id} to cluster {cluster_id}")
                 return True
@@ -975,15 +987,22 @@ class NodeManager:
                 # Add to domain pool
                 self.add_to_domain_pool(domain_id, connection)
                 
-                # Try to assign to existing cluster
+                # Try to assign to existing cluster - try ALL clusters in the domain
+                cluster_assigned = False
                 for cluster_connection in self.domain_pool.get(domain_id, []):
                     if cluster_connection.cluster_id:
+                        logger.info(f"🔍 Trying to assign to existing cluster: {cluster_connection.cluster_id}")
                         if await self.assign_to_cluster(connection, cluster_connection.cluster_id, 
                                                        cluster_connection.node_id):
-                            return True
+                            logger.info(f"✅ Successfully assigned to existing cluster: {cluster_connection.cluster_id}")
+                            cluster_assigned = True
+                            break
+                        else:
+                            logger.warning(f"⚠️ Failed to assign to cluster {cluster_connection.cluster_id}, trying next...")
                 
-                # No available cluster, create new one
-                if domain_id:
+                # Only create new cluster if NO existing clusters were available
+                if not cluster_assigned:
+                    logger.info(f"📍 No available clusters found, creating new cluster for domain {domain_id}")
                     await self.new_cluster_node(connection, domain_id)
                     # Assign to own cluster
                     if connection.cluster_id:

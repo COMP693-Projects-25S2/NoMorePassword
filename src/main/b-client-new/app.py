@@ -50,7 +50,7 @@ except ImportError:
 from werkzeug.security import generate_password_hash, check_password_hash
 
 # Import database models
-from models import db, UserCookie, UserAccount, DomainNode, init_db
+from models import db, UserCookie, UserAccount, init_db
 
 # Import service modules
 from services.nsn_client import NSNClient
@@ -416,7 +416,11 @@ def database_info():
         # Get database statistics
         total_cookies = UserCookie.query.count()
         total_accounts = UserAccount.query.count()
-        total_domains = DomainNode.query.count()
+        # Get domain count from NodeManager connection pools instead of database
+        if hasattr(c_client_ws, 'node_manager') and c_client_ws.node_manager:
+            total_domains = len(c_client_ws.node_manager.domain_pool)
+        else:
+            total_domains = 0
         
         # Get recent activity
         recent_cookies = UserCookie.query.order_by(UserCookie.create_time.desc()).limit(5).all()
@@ -830,7 +834,7 @@ c_client_ws = CClientWebSocketClient() if websockets else None
 init_websocket_server(websockets, asyncio, c_client_ws)
 
 # Initialize API routes with database models and services
-init_api_routes(db, UserCookie, UserAccount, DomainNode, c_client_ws)
+init_api_routes(db, UserCookie, UserAccount, c_client_ws)
 init_nsn_api_routes(db, UserCookie, nsn_client)
 init_c_client_api_routes(c_client_ws)
 # Note: init_bind_routes and send_session_to_client injection will be called after send_session_to_client is defined

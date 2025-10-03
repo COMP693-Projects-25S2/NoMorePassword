@@ -690,7 +690,8 @@ class CClientWebSocketClient {
                     console.log('📍 [WebSocket Client] Calling nodeManager.assignToCluster()...');
                     result = await nodeManager.assignToCluster(
                         message.data.cluster_id,
-                        message.data.node_id
+                        message.data.node_id,
+                        message.data.domain_id
                     );
                     break;
 
@@ -698,7 +699,9 @@ class CClientWebSocketClient {
                     console.log('📍 [WebSocket Client] Calling nodeManager.assignToChannel()...');
                     result = await nodeManager.assignToChannel(
                         message.data.channel_id,
-                        message.data.node_id
+                        message.data.node_id,
+                        message.data.domain_id,
+                        message.data.cluster_id
                     );
                     break;
 

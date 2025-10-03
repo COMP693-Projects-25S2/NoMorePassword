@@ -71,25 +71,7 @@ class UserAccount(db.Model):
     def __repr__(self):
         return f'<UserAccount {self.username}@{self.website}>'
 
-class DomainNode(db.Model):
-    """Domain Node Management Table
-    
-    Manages domain-to-node mappings and node configuration information.
-    Supports multiple nodes per domain and tracks node status.
-    """
-    __tablename__ = 'domain_nodes'
-    
-    # Primary Key
-    domain_id = db.Column(db.String(50), primary_key=True, comment='Domain identifier')
-    
-    # Node Information
-    node_id = db.Column(db.String(50), comment='Associated node ID')
-    
-    # Status Tracking
-    refresh_time = db.Column(db.DateTime, default=datetime.utcnow, comment='Last status update time')
-    
-    def __repr__(self):
-        return f'<DomainNode {self.domain_id} -> {self.node_id}>'
+# Note: DomainNode class removed - domain information now managed by NodeManager connection pools
 
 # Database initialization function
 def init_db(app):
@@ -110,4 +92,4 @@ def init_db(app):
             print("Run: pip install pysqlcipher3")
 
 # Export all models for easy importing
-__all__ = ['db', 'UserCookie', 'UserAccount', 'DomainNode', 'init_db']
+__all__ = ['db', 'UserCookie', 'UserAccount', 'init_db']
