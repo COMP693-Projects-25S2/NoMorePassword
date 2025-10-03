@@ -1586,6 +1586,52 @@ class CClientWebSocketClient:
                         print(f"🗑️ B-Client: Removed empty client connection list for {client_id_key}")
                     break
         
+        # Notify NodeManager to clean up hierarchy pools
+        if removed_from and hasattr(self, 'node_manager') and self.node_manager:
+            try:
+                print(f"🔧 B-Client: Preparing to notify NodeManager for hierarchy cleanup")
+                print(f"🔧 B-Client: Connection info - node_id: {node_id}, user_id: {user_id}, username: {username}")
+                
+                # Get hierarchy info from websocket attributes
+                domain_id = getattr(websocket, 'domain_id', None)
+                cluster_id = getattr(websocket, 'cluster_id', None)
+                channel_id = getattr(websocket, 'channel_id', None)
+                is_domain_main_node = getattr(websocket, 'is_domain_main_node', False)
+                is_cluster_main_node = getattr(websocket, 'is_cluster_main_node', False)
+                is_channel_main_node = getattr(websocket, 'is_channel_main_node', False)
+                
+                print(f"🔧 B-Client: Hierarchy info - domain: {domain_id}, cluster: {cluster_id}, channel: {channel_id}")
+                print(f"🔧 B-Client: Node types - domain_main: {is_domain_main_node}, cluster_main: {is_cluster_main_node}, channel_main: {is_channel_main_node}")
+                
+                # Create a ClientConnection object for NodeManager cleanup
+                from nodeManager import ClientConnection
+                connection = ClientConnection(
+                    websocket=websocket,
+                    node_id=node_id,
+                    user_id=user_id,
+                    username=username,
+                    domain_id=domain_id,
+                    cluster_id=cluster_id,
+                    channel_id=channel_id,
+                    is_domain_main_node=is_domain_main_node,
+                    is_cluster_main_node=is_cluster_main_node,
+                    is_channel_main_node=is_channel_main_node
+                )
+                
+                print(f"🔧 B-Client: Calling NodeManager.remove_connection()...")
+                
+                # Call NodeManager's remove_connection method
+                self.node_manager.remove_connection(connection)
+                print(f"✅ B-Client: Successfully notified NodeManager to clean up hierarchy pools")
+            except Exception as e:
+                print(f"⚠️ B-Client: Error notifying NodeManager: {e}")
+                import traceback
+                print(f"⚠️ B-Client: Full error details: {traceback.format_exc()}")
+        elif removed_from:
+            print(f"⚠️ B-Client: NodeManager not available, cannot clean up hierarchy pools")
+        else:
+            print(f"ℹ️ B-Client: No connections removed, skipping NodeManager notification")
+        
         if removed_from:
             print(f"✅ B-Client: Connection cleanup completed from: {', '.join(removed_from)}")
             print(f"📊 B-Client: Remaining nodes: {list(self.node_connections.keys()) if hasattr(self, 'node_connections') else []}")

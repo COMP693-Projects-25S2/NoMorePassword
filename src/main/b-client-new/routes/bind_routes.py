@@ -258,6 +258,48 @@ def bind():
                         c_client_ws.cleanup_invalid_connections()
                         print(f"✅ B-Client: Invalid connections cleanup completed after removing user from pools")
                         
+                        # Notify NodeManager to clean up hierarchy pools for each connection
+                        print(f"🔧 B-Client: Notifying NodeManager to clean up hierarchy pools for {len(user_connections)} connections...")
+                        for i, ws in enumerate(user_connections):
+                            try:
+                                # Get connection info from websocket attributes
+                                node_id = getattr(ws, 'node_id', 'unknown')
+                                user_id = getattr(ws, 'user_id', 'unknown')
+                                username = getattr(ws, 'username', 'unknown')
+                                domain_id = getattr(ws, 'domain_id', None)
+                                cluster_id = getattr(ws, 'cluster_id', None)
+                                channel_id = getattr(ws, 'channel_id', None)
+                                is_domain_main_node = getattr(ws, 'is_domain_main_node', False)
+                                is_cluster_main_node = getattr(ws, 'is_cluster_main_node', False)
+                                is_channel_main_node = getattr(ws, 'is_channel_main_node', False)
+                                
+                                # Create ClientConnection object for NodeManager cleanup
+                                from nodeManager import ClientConnection
+                                connection = ClientConnection(
+                                    websocket=ws,
+                                    node_id=node_id,
+                                    user_id=user_id,
+                                    username=username,
+                                    domain_id=domain_id,
+                                    cluster_id=cluster_id,
+                                    channel_id=channel_id,
+                                    is_domain_main_node=is_domain_main_node,
+                                    is_cluster_main_node=is_cluster_main_node,
+                                    is_channel_main_node=is_channel_main_node
+                                )
+                                
+                                # Call NodeManager's remove_connection method
+                                if hasattr(c_client_ws, 'node_manager') and c_client_ws.node_manager:
+                                    c_client_ws.node_manager.remove_connection(connection)
+                                    print(f"🔧 B-Client: Notified NodeManager to clean up hierarchy pools for connection {i+1}")
+                                else:
+                                    print(f"⚠️ B-Client: NodeManager not available for connection {i+1}")
+                                    
+                            except Exception as e:
+                                print(f"⚠️ B-Client: Error notifying NodeManager for connection {i+1}: {e}")
+                        
+                        print(f"✅ B-Client: NodeManager hierarchy cleanup completed for all connections")
+                        
                         # Wait a moment for the close to propagate
                         print(f"🔓 B-Client: Waiting for WebSocket close to propagate...")
                         time.sleep(1.0)  # Wait 1 second for close to propagate

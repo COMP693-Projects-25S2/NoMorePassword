@@ -40,6 +40,11 @@ class NodeManager:
         self.cluster_pool: Dict[str, List[ClientConnection]] = {}
         self.channel_pool: Dict[str, List[ClientConnection]] = {}
         
+        # Fast lookup indexes for O(1) removal by node_id
+        self.domain_node_index: Dict[str, Dict[str, ClientConnection]] = {}    # domain_id -> {node_id: ClientConnection}
+        self.cluster_node_index: Dict[str, Dict[str, ClientConnection]] = {}   # cluster_id -> {node_id: ClientConnection}
+        self.channel_node_index: Dict[str, Dict[str, ClientConnection]] = {}   # channel_id -> {node_id: ClientConnection}
+        
         # Request tracking for async operations
         self.pending_requests: Dict[str, asyncio.Future] = {}
         
@@ -338,16 +343,12 @@ class NodeManager:
         """Add connection to domain pool"""
         if domain_id not in self.domain_pool:
             self.domain_pool[domain_id] = []
+            self.domain_node_index[domain_id] = {}
         
-        # Check if this connection already exists in the pool
-        existing_connection = None
-        for existing_conn in self.domain_pool[domain_id]:
-            if existing_conn.node_id == connection.node_id:
-                existing_connection = existing_conn
-                break
-        
-        if existing_connection:
+        # Check if this connection already exists using fast index lookup
+        if connection.node_id in self.domain_node_index[domain_id]:
             # Connection already exists, update it instead of adding duplicate
+            existing_connection = self.domain_node_index[domain_id][connection.node_id]
             logger.info(f"Connection for node {connection.node_id} already exists in domain pool {domain_id}, updating...")
             # Update the existing connection with new websocket and user info
             existing_connection.websocket = connection.websocket
@@ -358,8 +359,9 @@ class NodeManager:
             existing_connection.is_channel_main_node = connection.is_channel_main_node
             logger.info(f"Updated existing connection for node {connection.node_id} in domain pool {domain_id}")
         else:
-            # New connection, add it to the pool
+            # New connection, add it to the pool and index
             self.domain_pool[domain_id].append(connection)
+            self.domain_node_index[domain_id][connection.node_id] = connection
             connection.domain_id = domain_id
             logger.info(f"Added new connection to domain pool {domain_id}")
     
@@ -367,16 +369,12 @@ class NodeManager:
         """Add connection to cluster pool"""
         if cluster_id not in self.cluster_pool:
             self.cluster_pool[cluster_id] = []
+            self.cluster_node_index[cluster_id] = {}
         
-        # Check if this connection already exists in the pool
-        existing_connection = None
-        for existing_conn in self.cluster_pool[cluster_id]:
-            if existing_conn.node_id == connection.node_id:
-                existing_connection = existing_conn
-                break
-        
-        if existing_connection:
+        # Check if this connection already exists using fast index lookup
+        if connection.node_id in self.cluster_node_index[cluster_id]:
             # Connection already exists, update it instead of adding duplicate
+            existing_connection = self.cluster_node_index[cluster_id][connection.node_id]
             logger.info(f"Connection for node {connection.node_id} already exists in cluster pool {cluster_id}, updating...")
             # Update the existing connection with new websocket and user info
             existing_connection.websocket = connection.websocket
@@ -387,8 +385,9 @@ class NodeManager:
             existing_connection.is_channel_main_node = connection.is_channel_main_node
             logger.info(f"Updated existing connection for node {connection.node_id} in cluster pool {cluster_id}")
         else:
-            # New connection, add it to the pool
+            # New connection, add it to the pool and index
             self.cluster_pool[cluster_id].append(connection)
+            self.cluster_node_index[cluster_id][connection.node_id] = connection
             connection.cluster_id = cluster_id
             logger.info(f"Added new connection to cluster pool {cluster_id}")
     
@@ -396,16 +395,12 @@ class NodeManager:
         """Add connection to channel pool"""
         if channel_id not in self.channel_pool:
             self.channel_pool[channel_id] = []
+            self.channel_node_index[channel_id] = {}
         
-        # Check if this connection already exists in the pool
-        existing_connection = None
-        for existing_conn in self.channel_pool[channel_id]:
-            if existing_conn.node_id == connection.node_id:
-                existing_connection = existing_conn
-                break
-        
-        if existing_connection:
+        # Check if this connection already exists using fast index lookup
+        if connection.node_id in self.channel_node_index[channel_id]:
             # Connection already exists, update it instead of adding duplicate
+            existing_connection = self.channel_node_index[channel_id][connection.node_id]
             logger.info(f"Connection for node {connection.node_id} already exists in channel pool {channel_id}, updating...")
             # Update the existing connection with new websocket and user info
             existing_connection.websocket = connection.websocket
@@ -416,41 +411,229 @@ class NodeManager:
             existing_connection.is_channel_main_node = connection.is_channel_main_node
             logger.info(f"Updated existing connection for node {connection.node_id} in channel pool {channel_id}")
         else:
-            # New connection, add it to the pool
+            # New connection, add it to the pool and index
             self.channel_pool[channel_id].append(connection)
+            self.channel_node_index[channel_id][connection.node_id] = connection
             connection.channel_id = channel_id
             logger.info(f"Added new connection to channel pool {channel_id}")
     
     def remove_connection(self, connection: ClientConnection):
-        """Remove connection from all pools"""
-        # Remove from domain pool
-        if connection.domain_id and connection.domain_id in self.domain_pool:
-            self.domain_pool[connection.domain_id] = [
-                conn for conn in self.domain_pool[connection.domain_id] 
-                if conn.websocket != connection.websocket
-            ]
-            if not self.domain_pool[connection.domain_id]:
-                del self.domain_pool[connection.domain_id]
+        """Remove connection from all pools with proper hierarchy cleanup"""
         
-        # Remove from cluster pool
-        if connection.cluster_id and connection.cluster_id in self.cluster_pool:
-            self.cluster_pool[connection.cluster_id] = [
-                conn for conn in self.cluster_pool[connection.cluster_id] 
-                if conn.websocket != connection.websocket
-            ]
-            if not self.cluster_pool[connection.cluster_id]:
-                del self.cluster_pool[connection.cluster_id]
+        logger.info(f"🔧 NodeManager: Starting connection removal process")
+        logger.info(f"🔧 NodeManager: Connection details - node_id: {connection.node_id}, user_id: {connection.user_id}")
+        logger.info(f"🔧 NodeManager: Connection hierarchy - domain: {connection.domain_id}, cluster: {connection.cluster_id}, channel: {connection.channel_id}")
+        logger.info(f"🔧 NodeManager: Connection types - domain_main: {connection.is_domain_main_node}, cluster_main: {connection.is_cluster_main_node}, channel_main: {connection.is_channel_main_node}")
         
-        # Remove from channel pool
+        # 1. 从所有池中移除连接（使用 WebSocket 对象引用）
+        removed_from = []
+        
+        # Remove from channel pool using O(1) index lookup
         if connection.channel_id and connection.channel_id in self.channel_pool:
-            self.channel_pool[connection.channel_id] = [
-                conn for conn in self.channel_pool[connection.channel_id] 
-                if conn.websocket != connection.websocket
-            ]
-            if not self.channel_pool[connection.channel_id]:
-                del self.channel_pool[connection.channel_id]
+            original_count = len(self.channel_pool[connection.channel_id])
+            logger.info(f"🔧 NodeManager: Channel pool {connection.channel_id} has {original_count} connections before removal")
+            
+            # Use fast index lookup for O(1) removal
+            if connection.node_id in self.channel_node_index[connection.channel_id]:
+                # Remove from index first
+                del self.channel_node_index[connection.channel_id][connection.node_id]
+                
+                # Remove from pool using list comprehension (still O(n) but only one pass)
+                self.channel_pool[connection.channel_id] = [
+                    conn for conn in self.channel_pool[connection.channel_id] 
+                    if conn.node_id != connection.node_id
+                ]
+                
+                removed_from.append(f"channel({connection.channel_id})")
+                logger.info(f"✅ NodeManager: Successfully removed connection from channel pool {connection.channel_id} using O(1) index lookup for node_id: {connection.node_id}")
+                
+                # 检查是否可以删除 channel 池
+                if self._should_remove_channel_pool(connection.channel_id):
+                    del self.channel_pool[connection.channel_id]
+                    del self.channel_node_index[connection.channel_id]
+                    removed_from.append(f"channel_pool({connection.channel_id})")
+                    logger.info(f"🗑️ NodeManager: Removed empty channel pool and index: {connection.channel_id}")
+                else:
+                    logger.info(f"📊 NodeManager: Channel pool {connection.channel_id} still has connections, keeping pool")
+            else:
+                logger.warning(f"⚠️ NodeManager: Node {connection.node_id} not found in channel index {connection.channel_id}")
         
-        logger.info(f"Removed connection from all pools")
+        # Remove from cluster pool using O(1) index lookup
+        if connection.cluster_id and connection.cluster_id in self.cluster_pool:
+            original_count = len(self.cluster_pool[connection.cluster_id])
+            logger.info(f"🔧 NodeManager: Cluster pool {connection.cluster_id} has {original_count} connections before removal")
+            
+            # Use fast index lookup for O(1) removal
+            if connection.node_id in self.cluster_node_index[connection.cluster_id]:
+                # Remove from index first
+                del self.cluster_node_index[connection.cluster_id][connection.node_id]
+                
+                # Remove from pool using list comprehension (still O(n) but only one pass)
+                self.cluster_pool[connection.cluster_id] = [
+                    conn for conn in self.cluster_pool[connection.cluster_id] 
+                    if conn.node_id != connection.node_id
+                ]
+                
+                removed_from.append(f"cluster({connection.cluster_id})")
+                logger.info(f"✅ NodeManager: Successfully removed connection from cluster pool {connection.cluster_id} using O(1) index lookup for node_id: {connection.node_id}")
+                
+                # 检查是否可以删除 cluster 池
+                if self._should_remove_cluster_pool(connection.cluster_id):
+                    del self.cluster_pool[connection.cluster_id]
+                    del self.cluster_node_index[connection.cluster_id]
+                    removed_from.append(f"cluster_pool({connection.cluster_id})")
+                    logger.info(f"🗑️ NodeManager: Removed empty cluster pool and index: {connection.cluster_id}")
+                else:
+                    logger.info(f"📊 NodeManager: Cluster pool {connection.cluster_id} still has connections, keeping pool")
+            else:
+                logger.warning(f"⚠️ NodeManager: Node {connection.node_id} not found in cluster index {connection.cluster_id}")
+        
+        # Remove from domain pool using O(1) index lookup
+        if connection.domain_id and connection.domain_id in self.domain_pool:
+            original_count = len(self.domain_pool[connection.domain_id])
+            logger.info(f"🔧 NodeManager: Domain pool {connection.domain_id} has {original_count} connections before removal")
+            
+            # Use fast index lookup for O(1) removal
+            if connection.node_id in self.domain_node_index[connection.domain_id]:
+                # Remove from index first
+                del self.domain_node_index[connection.domain_id][connection.node_id]
+                
+                # Remove from pool using list comprehension (still O(n) but only one pass)
+                self.domain_pool[connection.domain_id] = [
+                    conn for conn in self.domain_pool[connection.domain_id] 
+                    if conn.node_id != connection.node_id
+                ]
+                
+                removed_from.append(f"domain({connection.domain_id})")
+                logger.info(f"✅ NodeManager: Successfully removed connection from domain pool {connection.domain_id} using O(1) index lookup for node_id: {connection.node_id}")
+                
+                # 检查是否可以删除 domain 池
+                if self._should_remove_domain_pool(connection.domain_id):
+                    del self.domain_pool[connection.domain_id]
+                    del self.domain_node_index[connection.domain_id]
+                    removed_from.append(f"domain_pool({connection.domain_id})")
+                    logger.info(f"🗑️ NodeManager: Removed empty domain pool and index: {connection.domain_id}")
+                else:
+                    logger.info(f"📊 NodeManager: Domain pool {connection.domain_id} still has connections, keeping pool")
+            else:
+                logger.warning(f"⚠️ NodeManager: Node {connection.node_id} not found in domain index {connection.domain_id}")
+        
+        # Log final pool status
+        total_domains = len(self.domain_pool)
+        total_clusters = len(self.cluster_pool)
+        total_channels = len(self.channel_pool)
+        logger.info(f"📊 NodeManager: Final pool status after removal - Domains: {total_domains}, Clusters: {total_clusters}, Channels: {total_channels}")
+        
+        if removed_from:
+            logger.info(f"✅ NodeManager: Successfully removed connection from: {', '.join(removed_from)}")
+        else:
+            logger.warning(f"⚠️ NodeManager: Connection was not found in any hierarchy pools")
+
+    def _should_remove_channel_pool(self, channel_id: str) -> bool:
+        """Check if channel pool should be removed"""
+        logger.info(f"🔍 NodeManager: Checking if channel pool {channel_id} should be removed")
+        
+        # Channel 池可以删除的条件：
+        # 1. 池中没有连接了
+        # 2. 或者池中只剩下主节点连接，但主节点也断开了
+        if channel_id not in self.channel_pool:
+            logger.info(f"✅ NodeManager: Channel pool {channel_id} not found, should be removed")
+            return True
+            
+        remaining_connections = self.channel_pool[channel_id]
+        logger.info(f"🔍 NodeManager: Channel pool {channel_id} has {len(remaining_connections)} remaining connections")
+        
+        if not remaining_connections:
+            logger.info(f"✅ NodeManager: Channel pool {channel_id} is empty, should be removed")
+            return True
+            
+        # 如果只剩下主节点且主节点断开，可以删除
+        if len(remaining_connections) == 1:
+            main_connection = remaining_connections[0]
+            logger.info(f"🔍 NodeManager: Channel pool {channel_id} has 1 connection, checking if it's a closed main node")
+            logger.info(f"🔍 NodeManager: Connection is_channel_main_node: {main_connection.is_channel_main_node}")
+            logger.info(f"🔍 NodeManager: Connection websocket.closed: {main_connection.websocket.closed}")
+            
+            if (main_connection.is_channel_main_node and 
+                main_connection.websocket.closed):
+                logger.info(f"✅ NodeManager: Channel pool {channel_id} has only closed main node, should be removed")
+                return True
+            else:
+                logger.info(f"📊 NodeManager: Channel pool {channel_id} has active connection, keeping pool")
+        else:
+            logger.info(f"📊 NodeManager: Channel pool {channel_id} has multiple connections, keeping pool")
+                
+        return False
+
+    def _should_remove_cluster_pool(self, cluster_id: str) -> bool:
+        """Check if cluster pool should be removed"""
+        logger.info(f"🔍 NodeManager: Checking if cluster pool {cluster_id} should be removed")
+        
+        # Cluster 池可以删除的条件：
+        # 1. 池中没有连接了
+        # 2. 或者池中只剩下主节点连接，但主节点也断开了
+        # 3. 或者该 cluster 下的所有 channels 都被删除了
+        if cluster_id not in self.cluster_pool:
+            logger.info(f"✅ NodeManager: Cluster pool {cluster_id} not found, should be removed")
+            return True
+            
+        remaining_connections = self.cluster_pool[cluster_id]
+        logger.info(f"🔍 NodeManager: Cluster pool {cluster_id} has {len(remaining_connections)} remaining connections")
+        
+        if not remaining_connections:
+            logger.info(f"✅ NodeManager: Cluster pool {cluster_id} is empty, should be removed")
+            return True
+            
+        # 检查是否还有相关的 channels
+        active_channels = []
+        for conn in remaining_connections:
+            if conn.channel_id and conn.channel_id in self.channel_pool:
+                active_channels.append(conn.channel_id)
+        
+        logger.info(f"🔍 NodeManager: Cluster pool {cluster_id} has active channels: {active_channels}")
+        
+        if not active_channels:
+            logger.info(f"✅ NodeManager: Cluster pool {cluster_id} has no active channels, should be removed")
+            return True
+        else:
+            logger.info(f"📊 NodeManager: Cluster pool {cluster_id} has active channels, keeping pool")
+            
+        return False
+
+    def _should_remove_domain_pool(self, domain_id: str) -> bool:
+        """Check if domain pool should be removed"""
+        logger.info(f"🔍 NodeManager: Checking if domain pool {domain_id} should be removed")
+        
+        # Domain 池可以删除的条件：
+        # 1. 池中没有连接了
+        # 2. 或者池中只剩下主节点连接，但主节点也断开了
+        # 3. 或者该 domain 下的所有 clusters 都被删除了
+        if domain_id not in self.domain_pool:
+            logger.info(f"✅ NodeManager: Domain pool {domain_id} not found, should be removed")
+            return True
+            
+        remaining_connections = self.domain_pool[domain_id]
+        logger.info(f"🔍 NodeManager: Domain pool {domain_id} has {len(remaining_connections)} remaining connections")
+        
+        if not remaining_connections:
+            logger.info(f"✅ NodeManager: Domain pool {domain_id} is empty, should be removed")
+            return True
+            
+        # 检查是否还有相关的 clusters
+        active_clusters = []
+        for conn in remaining_connections:
+            if conn.cluster_id and conn.cluster_id in self.cluster_pool:
+                active_clusters.append(conn.cluster_id)
+        
+        logger.info(f"🔍 NodeManager: Domain pool {domain_id} has active clusters: {active_clusters}")
+        
+        if not active_clusters:
+            logger.info(f"✅ NodeManager: Domain pool {domain_id} has no active clusters, should be removed")
+            return True
+        else:
+            logger.info(f"📊 NodeManager: Domain pool {domain_id} has active clusters, keeping pool")
+            
+        return False
     
     # ===================== WebSocket Communication =====================
     
