@@ -6,6 +6,15 @@ Database table definitions for B-Client Flask Application
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 
+# 导入日志系统
+import sys
+import os
+sys.path.append(os.path.dirname(__file__))
+from utils.logger import get_bclient_logger
+
+# Initialize logger
+logger = get_bclient_logger('models')
+
 # Database instance (will be initialized in app.py)
 db = SQLAlchemy()
 
@@ -85,11 +94,11 @@ def init_db(app):
     with app.app_context():
         try:
             db.create_all()
-            print("B-Client: Database tables created successfully")
+            logger.info("Database tables created successfully")
         except Exception as e:
-            print(f"B-Client: Database creation warning: {e}")
-            print("If using SQLCipher, make sure pysqlcipher3 is installed")
-            print("Run: pip install pysqlcipher3")
+            logger.warning(f"Database creation warning: {e}")
+            logger.info("If using SQLCipher, make sure pysqlcipher3 is installed")
+            logger.info("Run: pip install pysqlcipher3")
 
 # Export all models for easy importing
 __all__ = ['db', 'UserCookie', 'UserAccount', 'init_db']

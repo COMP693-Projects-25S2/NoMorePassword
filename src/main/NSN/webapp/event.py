@@ -5,6 +5,7 @@ from flask import redirect, render_template, request, session, url_for, flash, j
 from datetime import datetime
 from werkzeug.utils import secure_filename
 import os
+from webapp.login import require_login_with_nmp
 
 ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png'}
 MAX_CONTENT_LENGTH = 5 * 1024 * 1024
@@ -15,10 +16,8 @@ def allowed_file(filename):
 
 
 @app.route('/events/private/view')
+@require_login_with_nmp
 def private_events():
-    # Ensure the user is logged in
-    if 'loggedin' not in session:
-        return redirect(url_for('login'))
     
     event_list = []
     is_member = None
@@ -190,14 +189,12 @@ def public_events():
                           filter=filter_type)  # Pass filter parameters
 
 @app.route('/event/add', methods=['GET', 'POST'])
+@require_login_with_nmp
 def add_event():
     """Event creation endpoint.
     
     Allows users to add an event to a journey, including title, description, start and end time, and location.
     """
-    # Ensure the user is logged in
-    if 'loggedin' not in session:
-        return redirect(url_for('login'))
 
     user_id = session.get("user_id")  # Retrieve the current user ID
     if not user_id:
@@ -314,6 +311,7 @@ def add_event():
 
 
 @app.route('/event/image/upload', methods=['POST'])
+@require_login_with_nmp
 def upload_event_image():
     """
     Handles event image upload logic:
@@ -322,11 +320,6 @@ def upload_event_image():
       3. Validate the uploaded file (only JPG/PNG, <= 5MB).
       4. Store file and update the database record.
     """
-
-    # Check if the user is logged in
-    if 'loggedin' not in session:
-        flash("Please log in first.", "danger")
-        return redirect(url_for('login'))
     
     user_id = session.get("user_id")  # Current logged-in user ID
     if not user_id:
@@ -467,10 +460,8 @@ def uploadEventImages(user_id,event_id,files):
 
 
 @app.route('/event/image/delete/traveller', methods=['GET'])
+@require_login_with_nmp
 def traveller_delete_event_image():
-    # Ensure user is logged in
-    if 'loggedin' not in session:
-        return redirect(url_for('login'))
 
     user_id = session.get("user_id")
     if not user_id:
@@ -597,10 +588,8 @@ def admin_delete_event_image():
 
 
 @app.route('/event/edit/traveller', methods=['GET', 'POST'])
+@require_login_with_nmp
 def traveller_edit_event():
-    # Ensure the user is logged in
-    if 'loggedin' not in session:
-        return redirect(url_for('login'))
 
     user_id = session.get("user_id")  # Retrieve the current user ID
     if not user_id:

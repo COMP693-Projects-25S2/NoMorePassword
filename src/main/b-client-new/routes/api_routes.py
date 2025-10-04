@@ -7,8 +7,17 @@ from datetime import datetime
 import os
 import json
 
+# 导入日志系统
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from utils.logger import get_bclient_logger
+
 # Create blueprint for API routes
 api_routes = Blueprint('api_routes', __name__)
+
+# Initialize logger
+logger = get_bclient_logger('api_routes')
 
 # These will be injected when blueprint is registered
 db = None
@@ -43,7 +52,7 @@ def get_user_logout_status():
         if not user_id:
             return jsonify({'error': 'user_id parameter is required'}), 400
         
-        print(f"🔍 B-Client: Checking logout status for user: {user_id}")
+        logger.info(f"Checking logout status for user: {user_id}")
         
         # Query user_accounts table for logout status
         user_account = UserAccount.query.filter_by(
@@ -53,16 +62,16 @@ def get_user_logout_status():
         
         if user_account:
             logout_status = user_account.logout
-            print(f"🔍 B-Client: User {user_id} logout status: {logout_status}")
-            print(f"🔍 B-Client: User account details - user_id: {user_account.user_id}, website: {user_account.website}")
-            print(f"🔍 B-Client: Logout field type: {type(logout_status)}, value: {logout_status}")
+            logger.info(f"User {user_id} logout status: {logout_status}")
+            logger.info(f"User account details - user_id: {user_account.user_id}, website: {user_account.website}")
+            logger.debug(f"Logout field type: {type(logout_status)}, value: {logout_status}")
             return jsonify({
                 'user_id': user_id,
                 'logout': logout_status,
                 'found': True
             })
         else:
-            print(f"⚠️ B-Client: No user account found for user: {user_id}")
+            logger.warning(f"No user account found for user: {user_id}")
             return jsonify({
                 'user_id': user_id,
                 'logout': False,
@@ -70,7 +79,7 @@ def get_user_logout_status():
             })
             
     except Exception as e:
-        print(f"❌ B-Client: Error checking logout status: {e}")
+        logger.error(f"Error checking logout status: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -156,8 +165,8 @@ def get_cookies():
         if cookie:
             # 找到cookie：只返回状态，不立即发送session
             # Session将在WebSocket注册完成后发送
-            print(f"🔍 B-Client: Found cookie for user {user_id}")
-            print(f"🔍 B-Client: Cookie details - username: {cookie.username}, node_id: {cookie.node_id}")
+            logger.info(f"Found cookie for user {user_id}")
+            logger.info(f"Cookie details - username: {cookie.username}, node_id: {cookie.node_id}")
             print(f"🔍 B-Client: Session will be sent after WebSocket registration completes")
             
             return jsonify({

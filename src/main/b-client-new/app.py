@@ -9,6 +9,19 @@ import time
 import random
 import string
 
+# 导入日志系统
+from utils.logger import get_bclient_logger, setup_print_redirect
+
+# 立即设置日志重定向（在模块导入时就生效）
+logger = get_bclient_logger('app')
+print_redirect = setup_print_redirect('app')
+
+# 重定向print到日志
+import builtins
+builtins.print = print_redirect
+
+logger.info("B-Client application module imported")
+
 def safe_close_websocket(websocket, reason="Connection closed"):
     """
     安全关闭WebSocket连接的通用函数
@@ -26,31 +39,31 @@ def safe_close_websocket(websocket, reason="Connection closed"):
                 asyncio.set_event_loop(loop)
                 loop.run_until_complete(websocket.close(code=1000, reason=reason))
                 loop.close()
-                print(f"🔓 B-Client: WebSocket close() called: {reason}")
+                # WebSocket close() called - this is handled by the logging system
                 return True
             except Exception as close_error:
-                print(f"⚠️ B-Client: Error in async close: {close_error}")
+                # Error in async close - this is handled by the logging system
                 # 即使异步关闭失败，也标记为已关闭
                 return True
         else:
-            print(f"⚠️ B-Client: WebSocket has no close method")
+            # WebSocket has no close method - this is handled by the logging system
             return False
     except Exception as e:
-        print(f"❌ B-Client: Error closing WebSocket: {e}")
+        # Error closing WebSocket - this is handled by the logging system
         return False
 try:
     import websockets
     import asyncio
     import threading
 except ImportError:
-    print("⚠️  WebSocket dependencies not available. Install with: pip install websockets")
+    logger.warning("WebSocket dependencies not available. Install with: pip install websockets")
     websockets = None
     asyncio = None
     threading = None
 from werkzeug.security import generate_password_hash, check_password_hash
 
 # Import database models
-from models import db, UserCookie, UserAccount, init_db
+from services.models import db, UserCookie, UserAccount, init_db
 
 # Import service modules
 from services.nsn_client import NSNClient
@@ -111,7 +124,7 @@ def get_user_logout_status():
         if not user_id:
             return jsonify({'error': 'user_id parameter is required'}), 400
         
-        print(f"🔍 B-Client: Checking logout status for user: {user_id}")
+        logger.info(f"Checking logout status for user: {user_id}")
         
         # Query user_accounts table for logout status
         user_account = UserAccount.query.filter_by(
@@ -121,16 +134,16 @@ def get_user_logout_status():
         
         if user_account:
             logout_status = user_account.logout
-            print(f"🔍 B-Client: User {user_id} logout status: {logout_status}")
-            print(f"🔍 B-Client: User account details - user_id: {user_account.user_id}, website: {user_account.website}")
-            print(f"🔍 B-Client: Logout field type: {type(logout_status)}, value: {logout_status}")
+            logger.info(f"User {user_id} logout status: {logout_status}")
+            logger.info(f"User account details - user_id: {user_account.user_id}, website: {user_account.website}")
+            logger.info(f"Logout field type: {type(logout_status)}, value: {logout_status}")
             return jsonify({
                 'user_id': user_id,
                 'logout': logout_status,
                 'found': True
             })
         else:
-            print(f"⚠️ B-Client: No user account found for user: {user_id}")
+            logger.warning(f"No user account found for user: {user_id}")
             return jsonify({
                 'user_id': user_id,
                 'logout': False,
@@ -138,7 +151,7 @@ def get_user_logout_status():
             })
             
     except Exception as e:
-        print(f"❌ B-Client: Error checking logout status: {e}")
+        logger.error(f"Error checking logout status: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/stats')
@@ -221,9 +234,9 @@ def get_cookies():
         if cookie:
             # 找到cookie：只返回状态，不立即发送session
             # Session将在WebSocket注册完成后发送
-            print(f"🔍 B-Client: Found cookie for user {user_id}")
-            print(f"🔍 B-Client: Cookie details - username: {cookie.username}, node_id: {cookie.node_id}")
-            print(f"🔍 B-Client: Session will be sent after WebSocket registration completes")
+            logger.info(f"Found cookie for user {user_id}")
+            logger.info(f"Cookie details - username: {cookie.username}, node_id: {cookie.node_id}")
+            logger.info(f"Session will be sent after WebSocket registration completes")
             
             return jsonify({
                 'success': True,
@@ -232,7 +245,7 @@ def get_cookies():
             })
         else:
             # 未找到cookie：返回失败响应
-            print(f"🔍 B-Client: No cookie found for user {user_id}")
+            logger.info(f"No cookie found for user {user_id}")
             return jsonify({
                 'success': False,
                 'has_cookie': False,
@@ -240,7 +253,7 @@ def get_cookies():
             })
             
     except Exception as e:
-        print(f"❌ B-Client: Error querying cookies: {str(e)}")
+        logger.error(f"Error querying cookies: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/cookies', methods=['POST'])
@@ -526,15 +539,15 @@ class NSNClient:
             headers = {'Cookie': session_cookie}
             response = self.session.get(url, headers=headers, timeout=30)
             
-            print(f"🔍 B-Client: Current user API response status: {response.status_code}")
-            print(f"🔍 B-Client: Current user API response content: {response.text[:200] if response.text else 'Empty'}")
+            logger.info(f"Current user API response status: {response.status_code}")
+            logger.info(f"Current user API response content: {response.text[:200] if response.text else 'Empty'}")
             
             if response.status_code == 200:
                 return response.json()
             else:
                 return {'success': False, 'error': f'HTTP {response.status_code}'}
         except Exception as e:
-            print(f"❌ B-Client: get_current_user error: {e}")
+            logger.error(f"get_current_user error: {e}")
             return {'success': False, 'error': str(e)}
     
     def get_current_user_from_session(self):
@@ -543,15 +556,15 @@ class NSNClient:
             url = f"{self.base_url}/api/current-user"
             response = self.session.get(url, timeout=5)
             
-            print(f"🔍 B-Client: Current user API (from session) response status: {response.status_code}")
-            print(f"🔍 B-Client: Current user API (from session) response content: {response.text[:200] if response.text else 'Empty'}")
+            logger.info(f"Current user API (from session) response status: {response.status_code}")
+            logger.info(f"Current user API (from session) response content: {response.text[:200] if response.text else 'Empty'}")
             
             if response.status_code == 200:
                 return response.json()
             else:
                 return {'success': False, 'error': f'HTTP {response.status_code}'}
         except Exception as e:
-            print(f"❌ B-Client: get_current_user_from_session error: {e}")
+            logger.error(f"get_current_user_from_session error: {e}")
             return {'success': False, 'error': str(e)}
     
     def login_with_nmp(self, username, password, nmp_params):
@@ -579,17 +592,17 @@ class NSNClient:
                 })
             
             # Use form-encoded data like original B-Client
-            print(f"🔍 B-Client: Sending login request to NSN: {url}")
-            print(f"🔍 B-Client: Request data keys: {list(data.keys())}")
-            print(f"🔍 B-Client: Username: {data.get('username', 'NOT_SET')}")
-            print(f"🔍 B-Client: Password length: {len(data.get('password', ''))}")
-            print(f"🔍 B-Client: NMP parameters: {[k for k in data.keys() if k.startswith('nmp_')]}")
+            logger.info(f"Sending login request to NSN: {url}")
+            logger.info(f"Request data keys: {list(data.keys())}")
+            logger.info(f"Username: {data.get('username', 'NOT_SET')}")
+            logger.info(f"Password length: {len(data.get('password', ''))}")
+            logger.info(f"NMP parameters: {[k for k in data.keys() if k.startswith('nmp_')]}")
             
             response = self.session.post(url, data=data, timeout=30, allow_redirects=False)
             
-            print(f"🔐 NSN login response status: {response.status_code}")
-            print(f"🔍 B-Client: Response headers: {dict(response.headers)}")
-            print(f"🔍 B-Client: Response content length: {len(response.content) if response.content else 0}")
+            logger.info(f"NSN login response status: {response.status_code}")
+            logger.info(f"Response headers: {dict(response.headers)}")
+            logger.info(f"Response content length: {len(response.content) if response.content else 0}")
             
             # Extract session cookie from response headers
             session_cookie = None
@@ -602,13 +615,13 @@ class NSNClient:
                 session_match = re.search(r'session=([^;]+)', cookies)
                 if session_match:
                     session_cookie = f"session={session_match.group(1)}"
-                    print(f"🍪 Session cookie extracted: {session_cookie}")
+                    logger.info(f"Session cookie extracted: {session_cookie}")
             
             # NSN login success is indicated by 302 redirect or 200 with session cookie
             is_success = response.status_code == 302 or (response.status_code == 200 and session_cookie)
             
             if is_success:
-                print("✅ NSN login successful, getting user info...")
+                logger.info("NSN login successful, getting user info...")
                 
                 # Get user information from NSN using the same session object
                 # This ensures the session cookie is properly maintained
@@ -623,15 +636,15 @@ class NSNClient:
             else:
                 return {'success': False, 'error': f'Login failed with HTTP {response.status_code}'}
         except Exception as e:
-            print(f"❌ NSN login error: {e}")
+            logger.error(f"NSN login error: {e}")
             return {'success': False, 'error': str(e)}
     
     def register_user(self, signup_data, nmp_params=None):
         """Register a new user with NSN and then login to get session"""
         try:
-            print(f"🆕 NSN: ===== REGISTERING NEW USER =====")
-            print(f"🆕 NSN: Signup data: {signup_data}")
-            print(f"🆕 NSN: NMP params: {nmp_params}")
+            logger.info(f"===== REGISTERING NEW USER =====")
+            logger.info(f"Signup data: {signup_data}")
+            logger.info(f"NMP params: {nmp_params}")
             
             # Generate a secure password for NMP registration
             import secrets
@@ -668,7 +681,7 @@ class NSNClient:
                 return ''.join(password)
             
             generated_password = generate_secure_password()
-            print(f"🔐 NSN: Generated secure password for NMP registration: {generated_password}")
+            logger.info(f"Generated secure password for NMP registration: {generated_password}")
             
             # Generate unique username to avoid conflicts
             import secrets
@@ -695,9 +708,9 @@ class NSNClient:
             if len(unique_username) > 20:
                 unique_username = unique_username[:20]
             
-            print(f"🔐 NSN: Generated unique username: {unique_username}")
-            print(f"🔐 NSN: Username length: {len(unique_username)}")
-            print(f"🔐 NSN: Username validation: {'PASS' if re.match(r'^[A-Za-z0-9]+$', unique_username) and len(unique_username) <= 20 else 'FAIL'}")
+            logger.info(f"Generated unique username: {unique_username}")
+            logger.info(f"Username length: {len(unique_username)}")
+            logger.info(f"Username validation: {'PASS' if re.match(r'^[A-Za-z0-9]+$', unique_username) and len(unique_username) <= 20 else 'FAIL'}")
             
             # Prepare registration data
             registration_data = {
@@ -714,40 +727,40 @@ class NSNClient:
             if nmp_params:
                 registration_data.update(nmp_params)
             
-            print(f"🆕 NSN: Registration data: {registration_data}")
-            print(f"🆕 NSN: ===== CALLING NSN SIGNUP ENDPOINT =====")
-            print(f"🆕 NSN: Signup URL: {self.base_url}/signup")
-            print(f"🆕 NSN: Request method: POST")
-            print(f"🆕 NSN: Request data keys: {list(registration_data.keys())}")
-            print(f"🆕 NSN: NMP parameters included: {bool(nmp_params)}")
-            print(f"🆕 NSN: ===== END CALLING NSN SIGNUP ENDPOINT =====")
+            logger.info(f"Registration data: {registration_data}")
+            logger.info(f"===== CALLING NSN SIGNUP ENDPOINT =====")
+            logger.info(f"Signup URL: {self.base_url}/signup")
+            logger.info(f"Request method: POST")
+            logger.info(f"Request data keys: {list(registration_data.keys())}")
+            logger.info(f"NMP parameters included: {bool(nmp_params)}")
+            logger.info(f"===== END CALLING NSN SIGNUP ENDPOINT =====")
             
             # Call NSN signup endpoint (without B-Client headers to get normal HTML response)
             signup_url = f"{self.base_url}/signup"
             
-            print(f"🆕 NSN: ===== CALLING NSN SIGNUP ENDPOINT =====")
-            print(f"🆕 NSN: Signup URL: {signup_url}")
-            print(f"🆕 NSN: Username: {unique_username}")
-            print(f"🆕 NSN: Password: {generated_password[:3]}...")
-            print(f"🆕 NSN: ===== END CALLING NSN SIGNUP ENDPOINT =====")
+            logger.info(f"===== CALLING NSN SIGNUP ENDPOINT =====")
+            logger.info(f"Signup URL: {signup_url}")
+            logger.info(f"Username: {unique_username}")
+            logger.info(f"Password: {generated_password[:3]}...")
+            logger.info(f"===== END CALLING NSN SIGNUP ENDPOINT =====")
             
             # Call NSN signup endpoint (fire and forget - don't wait for response)
             try:
                 response = self.session.post(signup_url, data=registration_data, timeout=5, allow_redirects=False)
-                print(f"🆕 NSN: Registration request sent (status: {response.status_code})")
+                logger.info(f"Registration request sent (status: {response.status_code})")
             except Exception as e:
-                print(f"⚠️ NSN: Registration request failed (expected): {e}")
+                logger.warning(f"Registration request failed (expected): {e}")
             
             # Assume registration is successful, proceed immediately
-            print("✅ NSN: Assuming registration successful, proceeding with login...")
+            logger.info("Assuming registration successful, proceeding with login...")
             
             # Now login with the registered user credentials to get session
             username = unique_username  # Use the unique username
             password = generated_password  # Use the generated password
             
-            print(f"🔐 NSN: Attempting to login with username: {username}")
-            print(f"🔐 NSN: Login password length: {len(password)}")
-            print(f"🔐 NSN: Login password preview: {password[:3]}...")
+            logger.info(f"Attempting to login with username: {username}")
+            logger.info(f"Login password length: {len(password)}")
+            logger.info(f"Login password preview: {password[:3]}...")
             
             # Prepare login data
             login_data = {
@@ -763,8 +776,8 @@ class NSNClient:
             login_url = f"{self.base_url}/login"
             login_response = self.session.post(login_url, data=login_data, timeout=30, allow_redirects=False)
             
-            print(f"🔐 NSN: Login response status: {login_response.status_code}")
-            print(f"🔐 NSN: Login response headers: {dict(login_response.headers)}")
+            logger.info(f"Login response status: {login_response.status_code}")
+            logger.info(f"Login response headers: {dict(login_response.headers)}")
             
             # Extract session cookie from login response
             session_cookie = None
@@ -777,16 +790,16 @@ class NSNClient:
                 session_match = re.search(r'session=([^;]+)', cookies)
                 if session_match:
                     session_cookie = f"session={session_match.group(1)}"
-                    print(f"🍪 NSN: Session cookie extracted from login: {session_cookie[:50]}...")
+                    logger.info(f"Session cookie extracted from login: {session_cookie[:50]}...")
             
             # Check if login was successful (302 redirect or 200 with session cookie)
             if login_response.status_code == 302 or (login_response.status_code == 200 and session_cookie):
-                print("✅ NSN: Login successful after registration")
+                logger.info("Login successful after registration")
                 
                 # Get user information to confirm login
                 user_info = self.get_current_user(session_cookie)
                 if user_info.get('success'):
-                        print(f"✅ NSN: User info confirmed: {user_info.get('username')} (ID: {user_info.get('user_id')})")
+                        logger.info(f"User info confirmed: {user_info.get('username')} (ID: {user_info.get('user_id')})")
                         
                         return {
                             'success': True,
@@ -797,7 +810,7 @@ class NSNClient:
                             'unique_username': unique_username
                         }
                 else:
-                    print(f"⚠️ NSN: Login successful but user info retrieval failed: {user_info.get('error')}")
+                    logger.warning(f"Login successful but user info retrieval failed: {user_info.get('error')}")
                     return {
                         'success': True,
                         'session_cookie': session_cookie,
@@ -807,14 +820,14 @@ class NSNClient:
                         'unique_username': unique_username
                     }
             else:
-                print(f"❌ NSN: Login failed after registration with status {login_response.status_code}")
-                print(f"❌ NSN: Login response text: {login_response.text[:500]}...")
+                logger.error(f"Login failed after registration with status {login_response.status_code}")
+                logger.error(f"Login response text: {login_response.text[:500]}...")
                 return {'success': False, 'error': f'Signup to website failed: Login failed with HTTP {login_response.status_code}'}
                 
         except Exception as e:
-            print(f"❌ NSN: Registration error: {e}")
+            logger.error(f"Registration error: {e}")
             import traceback
-            traceback.print_exc()
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return {'success': False, 'error': str(e)}
 
 # Initialize NSN client
@@ -927,9 +940,9 @@ def nsn_login():
                     db.session.commit()
                     
                     result['session_data'] = session_data
-                    print(f"✅ Stored NSN session for user: {username}")
+                    logger.info(f"Stored NSN session for user: {username}")
                 except Exception as e:
-                    print(f"⚠️  Failed to store session: {e}")
+                    logger.warning(f"Failed to store session: {e}")
         
         return jsonify(result)
     except Exception as e:
@@ -1159,17 +1172,21 @@ def websocket_check_user():
         if not user_id:
             return jsonify({'success': False, 'error': 'user_id is required'}), 400
         
-        print(f"🔍 B-Client: Checking WebSocket connection for user_id: {user_id}")
+        logger.info(f"Checking WebSocket connection for user_id: {user_id}")
         
         # Check if user exists in user_connections pool
         user_connected = user_id in c_client_ws.user_connections
-        websocket_url = f"ws://127.0.0.1:8766"  # B-Client WebSocket URL
+        
+        # Get WebSocket URL from configuration
+        websocket_host = c_client_ws.config.get('server_host', '127.0.0.1')
+        websocket_port = c_client_ws.config.get('server_port', 8766)
+        websocket_url = f"ws://{websocket_host}:{websocket_port}"
         
         if user_connected:
             connections = c_client_ws.user_connections.get(user_id, [])
-            print(f"🔍 B-Client: User {user_id} is connected with {len(connections)} connections")
+            logger.info(f"User {user_id} is connected with {len(connections)} connections")
         else:
-            print(f"🔍 B-Client: User {user_id} is not connected to WebSocket")
+            logger.info(f"User {user_id} is not connected to WebSocket")
         
         return jsonify({
             'success': True,
@@ -1185,24 +1202,24 @@ def websocket_check_user():
 # This is the core business logic endpoint that handles signup/login integration
 
         import traceback
-        traceback.print_exc()
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 def save_cookie_to_db(user_id, username, raw_session_cookie, node_id, auto_refresh, nsn_user_id=None, nsn_username=None):
     """Save preprocessed session cookie to user_cookies table"""
     try:
-        print(f"💾 B-Client: ===== SAVING COOKIE TO DATABASE =====")
-        print(f"💾 B-Client: User ID: {user_id}")
-        print(f"💾 B-Client: Username: {username}")
-        print(f"💾 B-Client: Node ID: {node_id}")
-        print(f"💾 B-Client: Auto refresh: {auto_refresh}")
-        print(f"💾 B-Client: NSN User ID: {nsn_user_id}")
-        print(f"💾 B-Client: NSN Username: {nsn_username}")
-        print(f"💾 B-Client: Raw session cookie length: {len(raw_session_cookie) if raw_session_cookie else 0}")
-        print(f"💾 B-Client: Raw session cookie preview: {raw_session_cookie[:100] if raw_session_cookie else 'None'}...")
+        logger.info(f"===== SAVING COOKIE TO DATABASE =====")
+        logger.info(f"User ID: {user_id}")
+        logger.info(f"Username: {username}")
+        logger.info(f"Node ID: {node_id}")
+        logger.info(f"Auto refresh: {auto_refresh}")
+        logger.info(f"NSN User ID: {nsn_user_id}")
+        logger.info(f"NSN Username: {nsn_username}")
+        logger.info(f"Raw session cookie length: {len(raw_session_cookie) if raw_session_cookie else 0}")
+        logger.info(f"Raw session cookie preview: {raw_session_cookie[:100] if raw_session_cookie else 'None'}...")
         
         # 预处理 session 数据为 JSON 格式
-        print(f"💾 B-Client: ===== PREPROCESSING SESSION DATA =====")
+        logger.info(f"===== PREPROCESSING SESSION DATA =====")
         session_data_json = {
             'loggedin': True,
             'user_id': nsn_user_id or user_id,  # Use NMP user_id as fallback
@@ -1216,16 +1233,16 @@ def save_cookie_to_db(user_id, username, raw_session_cookie, node_id, auto_refre
         
         # 编码为 JSON 字符串
         processed_cookie = json.dumps(session_data_json)
-        print(f"💾 B-Client: Preprocessed session data: {processed_cookie}")
-        print(f"💾 B-Client: Preprocessed cookie length: {len(processed_cookie)}")
+        logger.info(f"Preprocessed session data: {processed_cookie}")
+        logger.info(f"Preprocessed cookie length: {len(processed_cookie)}")
         
         # 删除现有记录
-        print(f"💾 B-Client: Deleting existing cookie records...")
+        logger.info(f"Deleting existing cookie records...")
         deleted_count = UserCookie.query.filter_by(user_id=user_id, username=username).delete()
-        print(f"💾 B-Client: Deleted {deleted_count} existing cookie records")
+        logger.info(f"Deleted {deleted_count} existing cookie records")
         
         # 创建新记录（保存预处理后的 JSON 字符串）
-        print(f"💾 B-Client: Creating new cookie record with preprocessed data...")
+        logger.info(f"Creating new cookie record with preprocessed data...")
         user_cookie = UserCookie(
             user_id=user_id,
             username=username,
@@ -1234,45 +1251,45 @@ def save_cookie_to_db(user_id, username, raw_session_cookie, node_id, auto_refre
             auto_refresh=auto_refresh,
             refresh_time=datetime.utcnow()
         )
-        print(f"💾 B-Client: Cookie record created: {user_cookie}")
+        logger.info(f"Cookie record created: {user_cookie}")
         
-        print(f"💾 B-Client: Adding cookie record to session...")
+        logger.info(f"Adding cookie record to session...")
         db.session.add(user_cookie)
         
-        print(f"💾 B-Client: Committing transaction...")
+        logger.info(f"Committing transaction...")
         db.session.commit()
-        print(f"✅ B-Client: Cookie saved to database successfully for user {user_id}")
-        print(f"💾 B-Client: ===== END SAVING COOKIE TO DATABASE =====")
+        logger.info(f"Cookie saved to database successfully for user {user_id}")
+        logger.info(f"===== END SAVING COOKIE TO DATABASE =====")
         
     except Exception as e:
-        print(f"❌ B-Client: Failed to save cookie to database: {e}")
-        print(f"💾 B-Client: Rolling back transaction...")
+        logger.error(f"Failed to save cookie to database: {e}")
+        logger.info(f"Rolling back transaction...")
         db.session.rollback()
         import traceback
-        traceback.print_exc()
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise e
 
 def save_account_to_db(user_id, username, account, password, account_data):
     """Save account information to user_accounts table"""
     try:
-        print(f"💾 B-Client: ===== SAVING ACCOUNT TO DATABASE =====")
-        print(f"💾 B-Client: User ID: {user_id}")
-        print(f"💾 B-Client: Username: {username}")
-        print(f"💾 B-Client: Account: {account}")
-        print(f"💾 B-Client: Password length: {len(password) if password else 0}")
-        print(f"💾 B-Client: Account data: {account_data}")
+        logger.info(f"===== SAVING ACCOUNT TO DATABASE =====")
+        logger.info(f"User ID: {user_id}")
+        logger.info(f"Username: {username}")
+        logger.info(f"Account: {account}")
+        logger.info(f"Password length: {len(password) if password else 0}")
+        logger.info(f"Account data: {account_data}")
         
         # 删除现有记录
-        print(f"💾 B-Client: Deleting existing account records...")
+        logger.info(f"Deleting existing account records...")
         deleted_count = UserAccount.query.filter_by(
             user_id=user_id, 
             username=username, 
             website='nsn'
         ).delete()
-        print(f"💾 B-Client: Deleted {deleted_count} existing account records")
+        logger.info(f"Deleted {deleted_count} existing account records")
         
         # 创建新记录
-        print(f"💾 B-Client: Creating new account record...")
+        logger.info(f"Creating new account record...")
         user_account = UserAccount(
             user_id=user_id,
             username=username,
@@ -1287,37 +1304,37 @@ def save_account_to_db(user_id, username, account, password, account_data):
             auto_generated=True,
             logout=False  # Reset logout status for new registration
         )
-        print(f"💾 B-Client: Account record created: {user_account}")
+        logger.info(f"Account record created: {user_account}")
         
-        print(f"💾 B-Client: Adding account record to session...")
+        logger.info(f"Adding account record to session...")
         db.session.add(user_account)
         
-        print(f"💾 B-Client: Committing transaction...")
+        logger.info(f"Committing transaction...")
         db.session.commit()
-        print(f"✅ B-Client: Account saved to database successfully for user {user_id}")
-        print(f"💾 B-Client: ===== END SAVING ACCOUNT TO DATABASE =====")
+        logger.info(f"Account saved to database successfully for user {user_id}")
+        logger.info(f"===== END SAVING ACCOUNT TO DATABASE =====")
         
     except Exception as e:
-        print(f"❌ B-Client: Failed to save account to database: {e}")
-        print(f"💾 B-Client: Rolling back transaction...")
+        logger.error(f"Failed to save account to database: {e}")
+        logger.info(f"Rolling back transaction...")
         db.session.rollback()
         import traceback
-        traceback.print_exc()
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise e
 
 async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=None, nsn_username=None, website_root_path=None, website_name=None, session_partition=None, max_retries=3, reset_logout_status=False):
     """Send preprocessed session data to C-Client via WebSocket with feedback and retry"""
     try:
-        print(f"📤 B-Client: ===== SENDING SESSION TO C-CLIENT WITH FEEDBACK =====")
-        print(f"📤 B-Client: User ID: {user_id}")
-        print(f"📤 B-Client: Max retries: {max_retries}")
-        print(f"📤 B-Client: Reset logout status: {reset_logout_status}")
-        print(f"📤 B-Client: Processed session cookie length: {len(processed_session_cookie) if processed_session_cookie else 0}")
-        print(f"📤 B-Client: Processed session cookie: {processed_session_cookie}")
+        logger.info(f"===== SENDING SESSION TO C-CLIENT WITH FEEDBACK =====")
+        logger.info(f"User ID: {user_id}")
+        logger.info(f"Max retries: {max_retries}")
+        logger.info(f"Reset logout status: {reset_logout_status}")
+        logger.info(f"Processed session cookie length: {len(processed_session_cookie) if processed_session_cookie else 0}")
+        logger.info(f"Processed session cookie: {processed_session_cookie}")
         
         # Reset logout status if requested (for manual login triggered session sends)
         if reset_logout_status:
-            print(f"🔄 B-Client: ===== RESETTING LOGOUT STATUS FOR SESSION SEND =====")
+            logger.info(f"===== RESETTING LOGOUT STATUS FOR SESSION SEND =====")
             try:
                 with app.app_context():
                     user_account = UserAccount.query.filter_by(
@@ -1326,34 +1343,35 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                     ).first()
                     
                     if user_account:
-                        print(f"🔄 B-Client: Found user account, resetting logout status from {user_account.logout} to False")
+                        logger.info(f"Found user account, resetting logout status from {user_account.logout} to False")
                         user_account.logout = False
                         db.session.commit()
-                        print(f"✅ B-Client: Logout status reset successfully")
+                        logger.info(f"Logout status reset successfully")
                     else:
-                        print(f"⚠️ B-Client: No user account found for user {user_id}")
+                        logger.warning(f"No user account found for user {user_id}")
             except Exception as e:
-                print(f"❌ B-Client: Error resetting logout status: {e}")
+                logger.error(f"Error resetting logout status: {e}")
         
         if not c_client_ws:
-            print(f"⚠️ B-Client: WebSocket client not available")
-            print(f"📤 B-Client: ===== END SENDING SESSION: NO WEBSOCKET CLIENT =====")
+            logger.warning(f"WebSocket client not available")
+            logger.info(f"===== END SENDING SESSION: NO WEBSOCKET CLIENT =====")
             return False
             
-        print(f"📤 B-Client: WebSocket client available: {c_client_ws}")
-        print(f"📤 B-Client: User connections: {c_client_ws.user_connections}")
+        logger.info(f"WebSocket client available: {c_client_ws}")
+        logger.info(f"User connections: {c_client_ws.user_connections}")
         
         # 查找该用户的WebSocket连接
         if user_id in c_client_ws.user_connections:
             connections = c_client_ws.user_connections[user_id]
-            print(f"🔍 B-Client: Found {len(connections)} connections for user {user_id}")
+            logger.info(f"Found {len(connections)} connections for user {user_id}")
             
             # 尝试发送session数据，支持重试
             for attempt in range(max_retries):
-                print(f"🔄 B-Client: ===== SESSION SEND ATTEMPT {attempt + 1}/{max_retries} =====")
+                logger.info(f"===== SESSION SEND ATTEMPT {attempt + 1}/{max_retries} =====")
                 
                 success_count = 0
                 feedback_received = {}
+                successful_connections = []  # Track actually successful connections
                 
                 # 设置feedback跟踪
                 for websocket in connections:
@@ -1363,16 +1381,16 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                 # 发送session数据给所有该用户的连接
                 for i, websocket in enumerate(connections):
                     try:
-                        print(f"📤 B-Client: Checking connection {i+1}/{len(connections)} (attempt {attempt + 1})")
+                        logger.info(f"Checking connection {i+1}/{len(connections)} (attempt {attempt + 1})")
                         
                         # 检查连接是否仍然有效 - 优先检查我们的标记
                         if hasattr(websocket, '_closed_by_logout') and websocket._closed_by_logout:
-                            print(f"⚠️ B-Client: Connection {i+1} was closed by logout, skipping")
+                            logger.warning(f"Connection {i+1} was closed by logout, skipping")
                             continue
                         
                         # 检查WebSocket的closed属性
                         if hasattr(websocket, 'closed') and websocket.closed:
-                            print(f"⚠️ B-Client: Connection {i+1} is closed (closed=True), skipping")
+                            logger.warning(f"Connection {i+1} is closed (closed=True), skipping")
                             continue
                         
                         # 检查连接状态 - 更严格的检查
@@ -1382,12 +1400,12 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                             
                             # 检查状态值（3 = CLOSED, 2 = CLOSING）
                             if state_value in [2, 3] or state_name in ['CLOSED', 'CLOSING']:
-                                print(f"⚠️ B-Client: Connection {i+1} is in {state_name} state (value: {state_value}), skipping")
+                                logger.warning(f"Connection {i+1} is in {state_name} state (value: {state_value}), skipping")
                                 continue
                         
                         # 检查close_code - 如果设置了close_code，说明连接已经关闭
                         if hasattr(websocket, 'close_code') and websocket.close_code is not None:
-                            print(f"⚠️ B-Client: Connection {i+1} has close_code {websocket.close_code}, skipping")
+                            logger.warning(f"Connection {i+1} has close_code {websocket.close_code}, skipping")
                             continue
                         
                         # 尝试发送测试消息来验证连接是否真的有效
@@ -1395,12 +1413,12 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                             # 发送一个简单的ping消息来测试连接
                             test_message = {'type': 'ping', 'timestamp': int(time.time() * 1000)}
                             await websocket.send(json.dumps(test_message))
-                            print(f"✅ B-Client: Connection {i+1} ping successful, connection is valid")
+                            logger.info(f"Connection {i+1} ping successful, connection is valid")
                         except Exception as ping_error:
-                            print(f"⚠️ B-Client: Connection {i+1} ping failed: {ping_error}, skipping")
+                            logger.warning(f"Connection {i+1} ping failed: {ping_error}, skipping")
                             continue
                         
-                        print(f"📤 B-Client: Connection {i+1} is valid, sending session")
+                        logger.info(f"Connection {i+1} is valid, sending session")
                         
                         # 从cookie中提取NSN用户信息
                         nsn_user_id_from_cookie = None
@@ -1410,9 +1428,9 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                             cookie_data = json.loads(processed_session_cookie)
                             nsn_user_id_from_cookie = cookie_data.get('user_id')
                             nsn_username_from_cookie = cookie_data.get('username')
-                            print(f"🔍 B-Client: Extracted from cookie - nsn_user_id: {nsn_user_id_from_cookie}, nsn_username: {nsn_username_from_cookie}")
+                            logger.info(f"Extracted from cookie - nsn_user_id: {nsn_user_id_from_cookie}, nsn_username: {nsn_username_from_cookie}")
                         except Exception as e:
-                            print(f"⚠️ B-Client: Failed to parse cookie data: {e}")
+                            logger.warning(f"Failed to parse cookie data: {e}")
                             # 使用传入的参数作为fallback
                             nsn_user_id_from_cookie = nsn_user_id
                             nsn_username_from_cookie = nsn_username
@@ -1449,23 +1467,29 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                             'timestamp': datetime.utcnow().isoformat()
                         }
                         
-                        # Check if WebSocket connection is still open
-                        try:
-                            # For websockets library, check if connection is closed differently
-                            if hasattr(websocket, 'closed') and websocket.closed:
-                                print(f"⚠️ B-Client: WebSocket connection {i+1} is closed, skipping...")
+                        # Check if WebSocket connection is still open using centralized validation
+                        if hasattr(c_client_ws, 'is_connection_valid'):
+                            if not c_client_ws.is_connection_valid(websocket):
+                                logger.warning(f"WebSocket connection {i+1} is invalid, skipping...")
                                 continue
-                        except AttributeError:
-                            # ServerConnection doesn't have 'closed' attribute, try to send anyway
-                            pass
+                        else:
+                            # Fallback to simple check if centralized validation is not available
+                            try:
+                                if hasattr(websocket, 'closed') and websocket.closed:
+                                    logger.warning(f"WebSocket connection {i+1} is closed, skipping...")
+                                    continue
+                            except AttributeError:
+                                # ServerConnection doesn't have 'closed' attribute, try to send anyway
+                                pass
                         
                         message_json = json.dumps(message)
                         await websocket.send(message_json)
-                        print(f"✅ B-Client: Session data sent to C-Client connection {i+1} for user {user_id}")
+                        logger.info(f"Session data sent to C-Client connection {i+1} for user {user_id}")
                         success_count += 1
+                        successful_connections.append(websocket)  # Track this successful connection
                         
                     except websockets.exceptions.ConnectionClosed:
-                        print(f"⚠️ B-Client: WebSocket connection {i+1} is closed, removing from pool...")
+                        logger.warning(f"WebSocket connection {i+1} is closed, removing from pool...")
                         # Remove closed connection from pool
                         if user_id in c_client_ws.user_connections:
                             c_client_ws.user_connections[user_id] = [
@@ -1474,19 +1498,18 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                             ]
                         continue
                     except Exception as e:
-                        print(f"❌ B-Client: Failed to send session to C-Client connection {i+1}: {e}")
+                        logger.error(f"Failed to send session to C-Client connection {i+1}: {e}")
                         # Don't print full traceback for connection errors
                         if "ConnectionClosed" not in str(e):
                             import traceback
-                            traceback.print_exc()
+                            logger.error(f"Traceback: {traceback.format_exc()}")
                 
                 if success_count == 0:
-                    print(f"❌ B-Client: Failed to send to any connections on attempt {attempt + 1}")
+                    logger.error(f"Failed to send to any connections on attempt {attempt + 1}")
                     continue
                 
-                # 等待feedback - 只等待实际发送成功的连接
-                successful_connections = [conn for i, conn in enumerate(connections) if i < success_count]
-                print(f"⏳ B-Client: Waiting for session feedback from {len(successful_connections)} successful connections...")
+                # 等待feedback - 只等待实际发送成功的连接（已经在上面跟踪）
+                logger.info(f"Waiting for session feedback from {len(successful_connections)} successful connections...")
                 import asyncio
                 start_time = asyncio.get_event_loop().time()
                 timeout = 30  # 30秒超时
@@ -1496,21 +1519,21 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                 
                 while asyncio.get_event_loop().time() - start_time < timeout:
                     if all(successful_feedback_received.values()):
-                        print(f"✅ B-Client: All session feedback received for user {user_id} on attempt {attempt + 1}")
+                        logger.info(f"All session feedback received for user {user_id} on attempt {attempt + 1}")
                         # 清理feedback跟踪
                         for websocket in successful_connections:
                             if hasattr(websocket, '_session_feedback_tracking'):
                                 delattr(websocket, '_session_feedback_tracking')
                         
-                        print(f"📤 B-Client: ===== END SENDING SESSION: SUCCESS =====")
+                        logger.info(f"===== END SENDING SESSION: SUCCESS =====")
                         return True
                     
                     await asyncio.sleep(0.5)
                 else:
                     # 超时
                     missing_feedback = [ws for ws, received in successful_feedback_received.items() if not received]
-                    print(f"⚠️ B-Client: Session feedback timeout on attempt {attempt + 1}")
-                    print(f"   Missing feedback from {len(missing_feedback)} connections")
+                    logger.warning(f"Session feedback timeout on attempt {attempt + 1}")
+                    logger.warning(f"   Missing feedback from {len(missing_feedback)} connections")
                     
                     # 清理feedback跟踪
                     for websocket in successful_connections:
@@ -1518,26 +1541,26 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                             delattr(websocket, '_session_feedback_tracking')
                     
                     if attempt < max_retries - 1:
-                        print(f"🔄 B-Client: Retrying session send... ({attempt + 2}/{max_retries})")
+                        logger.info(f"Retrying session send... ({attempt + 2}/{max_retries})")
                         await asyncio.sleep(2)  # 等待2秒后重试
                         continue
                     else:
-                        print(f"❌ B-Client: Max retries reached, giving up")
+                        logger.error(f"Max retries reached, giving up")
                         break
             
-            print(f"📤 B-Client: ===== END SENDING SESSION: FAILED AFTER {max_retries} ATTEMPTS =====")
+            logger.error(f"===== END SENDING SESSION: FAILED AFTER {max_retries} ATTEMPTS =====")
             return False
         else:
-            print(f"⚠️ B-Client: No WebSocket connections found for user {user_id}")
-            print(f"📤 B-Client: Available user connections: {list(c_client_ws.user_connections.keys())}")
-            print(f"📤 B-Client: ===== END SENDING SESSION: NO CONNECTIONS =====")
+            logger.warning(f"No WebSocket connections found for user {user_id}")
+            logger.info(f"Available user connections: {list(c_client_ws.user_connections.keys())}")
+            logger.info(f"===== END SENDING SESSION: NO CONNECTIONS =====")
             return False
             
     except Exception as e:
-        print(f"❌ B-Client: Error sending session to C-Client: {e}")
+        logger.error(f"Error sending session to C-Client: {e}")
         import traceback
-        traceback.print_exc()
-        print(f"📤 B-Client: ===== END SENDING SESSION: ERROR =====")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        logger.error(f"===== END SENDING SESSION: ERROR =====")
         return False
 
 
@@ -1549,24 +1572,34 @@ init_bind_routes(db, UserCookie, UserAccount, nsn_client, c_client_ws,
                  save_cookie_to_db, save_account_to_db, send_session_to_client)
 
 # Initialize node manager for node management system
-print("=" * 80)
-print("🔧 Initializing NodeManager for node management system...")
-from nodeManager import NodeManager
+logger.info("=" * 80)
+logger.info("Initializing NodeManager for node management system...")
+from services.nodeManager import NodeManager
 node_manager = NodeManager()
-print(f"✅ NodeManager instance created: {node_manager}")
-print("🔧 Registering node management routes...")
+logger.info(f"NodeManager instance created: {node_manager}")
+logger.info("Registering node management routes...")
 init_node_management_routes(node_manager)
-print("✅ Node management routes registered")
+logger.info("Node management routes registered")
 
 # Inject NodeManager into WebSocket client for C-Client registration
-print("🔧 Injecting NodeManager into WebSocket client...")
+logger.info("Injecting NodeManager into WebSocket client...")
 c_client_ws.node_manager = node_manager
-print(f"✅ NodeManager injected into c_client_ws")
-print(f"   c_client_ws.node_manager = {c_client_ws.node_manager}")
-print("=" * 80)
+logger.info(f"NodeManager injected into c_client_ws")
+logger.info(f"   c_client_ws.node_manager = {c_client_ws.node_manager}")
+logger.info("=" * 80)
 
 
 if __name__ == '__main__':
+    logger.info("B-Client application starting...")
+    
     with app.app_context():
         db.create_all()
+        logger.info("Database initialized successfully")
+    
+    logger.info("Starting Flask server on 0.0.0.0:3000")
+    
+    # 配置Flask日志级别，减少控制台输出
+    import logging
+    logging.getLogger('werkzeug').setLevel(logging.WARNING)
+    
     app.run(debug=True, host='0.0.0.0', port=3000)

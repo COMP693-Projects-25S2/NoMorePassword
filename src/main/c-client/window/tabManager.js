@@ -1,6 +1,9 @@
 const { BrowserView } = require('electron');
 const path = require('path');
 
+// 导入日志系统
+const { getCClientLogger } = require('../utils/logger');
+
 /**
  * Unified Tab-BrowserView Manager
  * Ensures Tab UI and BrowserView are always synchronized
@@ -8,6 +11,9 @@ const path = require('path');
 class TabManager {
     constructor(electronApp) {
         try {
+            // 初始化日志系统
+            this.logger = getCClientLogger('tabmanager');
+
             // Store reference to ElectronApp instance for sendToWindow functionality
             this.electronApp = electronApp;
             this.mainWindow = null; // Will be set later when main window is available
@@ -352,12 +358,27 @@ class TabManager {
                 console.log(`🎯 TabManager: did-finish-load event for tab ${id}`);
                 sendTitle();
 
-                // Check for NSN response after page loads
-                this.detectNSNResponse(browserView, id, 'did-finish-load');
+                // Check for NSN response after page loads (but skip logout pages)
+                const currentURL = browserView.webContents.getURL();
+                if (!currentURL.includes('/logout')) {
+                    console.log(`🔍 TabManager: Non-logout page detected, checking for NSN response...`);
+                    this.detectNSNResponse(browserView, id, 'did-finish-load');
+                } else {
+                    console.log(`🔍 TabManager: Logout page detected, skipping NSN response detection`);
+                }
             });
             browserView.webContents.on('did-navigate', () => {
                 console.log(`🎯 TabManager: did-navigate event for tab ${id}`);
                 sendTitle();
+
+                // Check for NSN response after navigation (but skip logout pages)
+                const currentURL = browserView.webContents.getURL();
+                if (!currentURL.includes('/logout')) {
+                    console.log(`🔍 TabManager: Non-logout page navigation detected, checking for NSN response...`);
+                    this.detectNSNResponse(browserView, id, 'did-navigate');
+                } else {
+                    console.log(`🔍 TabManager: Logout page navigation detected, skipping NSN response detection`);
+                }
             });
             browserView.webContents.on('did-navigate-in-page', () => {
                 console.log(`🎯 TabManager: did-navigate-in-page event for tab ${id}`);
@@ -419,7 +440,13 @@ class TabManager {
     async closeBrowserView(browserView) {
         try {
             if (browserView && browserView.webContents && !browserView.webContents.isDestroyed()) {
+                // Remove all event listeners before destroying
+                console.log(`🧹 TabManager: Removing event listeners from BrowserView`);
+                browserView.webContents.removeAllListeners();
+
+                // Destroy the webContents
                 browserView.webContents.destroy();
+                console.log(`✅ TabManager: BrowserView destroyed successfully`);
             }
         } catch (error) {
             console.error(`❌ TabManager: Error closing BrowserView:`, error);
@@ -1511,24 +1538,12 @@ class TabManager {
                 })()
             `);
 
-            console.log(`🔍 TabManager: ===== JAVASCRIPT EXECUTION COMPLETED (${trigger}) =====`);
-            console.log(`🔍 TabManager: Response data type:`, typeof responseData);
-            console.log(`🔍 TabManager: Response data:`, responseData);
-            console.log(`🔍 TabManager: Response data is null:`, responseData === null);
-            console.log(`🔍 TabManager: Response data is undefined:`, responseData === undefined);
-
             if (responseData && responseData.action) {
-                console.log(`🔍 TabManager: ===== PROCESSING NSN RESPONSE (${trigger}) =====`);
-                console.log(`🔍 TabManager: Action:`, responseData.action);
-                console.log(`🔍 TabManager: WebSocket URL:`, responseData.websocket_url);
-                console.log(`🔍 TabManager: User ID:`, responseData.user_id);
-                console.log(`🔍 TabManager: Username:`, responseData.username);
-
+                console.log(`🔍 TabManager: NSN response detected (${trigger}): ${responseData.action}`);
                 // Process the NSN response
                 await this.processNSNResponse(responseData, id, trigger);
             } else {
-                console.log(`🔍 TabManager: ===== NO NSN RESPONSE DATA (${trigger}) =====`);
-                console.log(`🔍 TabManager: No response data or no action field found`);
+                console.log(`🔍 TabManager: No NSN response data (${trigger})`);
             }
 
         } catch (error) {
@@ -1552,32 +1567,40 @@ class TabManager {
             console.log(`🔍 TabManager: User ID:`, responseData.user_id);
             console.log(`🔍 TabManager: Username:`, responseData.username);
 
+            // Check if WebSocket is already connected to avoid duplicate connections
             if (responseData.action === 'connect_websocket') {
-                console.log(`🔌 TabManager: Received WebSocket connection request from NSN`);
-                console.log(`   WebSocket URL: ${responseData.websocket_url}`);
-                console.log(`   User ID: ${responseData.user_id}`);
-                console.log(`   Message: ${responseData.message}`);
+                if (this.electronApp && this.electronApp.webSocketClient) {
+                    const wsClient = this.electronApp.webSocketClient;
+
+                    // More intelligent connection check: verify both status flags AND actual WebSocket state
+                    const hasValidWebSocket = wsClient.websocket && wsClient.websocket.readyState === 1; // WebSocket.OPEN
+                    const hasValidStatus = wsClient.isConnected && wsClient.isRegistered;
+
+                    // Only skip if both status and actual WebSocket are valid
+                    const isActuallyConnected = hasValidStatus && hasValidWebSocket;
+
+                    if (isActuallyConnected) {
+                        console.log(`🔄 TabManager: WebSocket already connected, skipping`);
+                        return;
+                    } else {
+                        console.log(`🔄 TabManager: WebSocket connection needed`);
+                    }
+                }
+            }
+
+            if (responseData.action === 'connect_websocket') {
+                console.log(`🔌 TabManager: Connecting to WebSocket: ${responseData.websocket_url}`);
 
                 if (responseData.websocket_url) {
-                    // Send IPC message to trigger WebSocket connection
-                    console.log(`🔌 TabManager: Sending process-nsn-response IPC message`);
-
-                    // Call the IPC handler directly through the IpcHandlers instance
                     try {
-                        console.log(`🔍 TabManager: Checking electronApp availability...`);
-                        console.log(`🔍 TabManager: this.electronApp:`, !!this.electronApp);
-                        console.log(`🔍 TabManager: this.electronApp.ipcHandlers:`, !!this.electronApp?.ipcHandlers);
-
                         if (this.electronApp && this.electronApp.ipcHandlers) {
-                            // Call the handler method directly with responseData
-                            console.log(`🔍 TabManager: Calling processNSNResponse with data:`, responseData);
                             const result = await this.electronApp.ipcHandlers.processNSNResponse(responseData);
-                            console.log(`✅ TabManager: IPC handler result:`, result);
+                            console.log(`✅ TabManager: WebSocket connection result:`, result.success ? 'Success' : 'Failed');
                         } else {
                             console.error(`❌ TabManager: IpcHandlers not available`);
                         }
                     } catch (error) {
-                        console.error(`❌ TabManager: Error calling IPC handler:`, error);
+                        console.error(`❌ TabManager: Error connecting to WebSocket:`, error);
                         // Don't let WebSocket errors crash the application
                         console.log(`⚠️ TabManager: WebSocket connection failed, but continuing normal operation`);
                     }

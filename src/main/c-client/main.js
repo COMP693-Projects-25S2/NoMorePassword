@@ -11,8 +11,23 @@ const CClientApiServer = require('./api/cClientApiServer');
 const CClientWebSocketClient = require('./websocket/cClientWebSocketClient');
 const BClientConfigModal = require('./config/bClientConfigModal');
 
+// 导入日志系统
+const { getCClientLogger, setupConsoleRedirect } = require('./utils/logger');
+
+// 立即设置console重定向（在模块导入时就生效）
+const appLogger = getCClientLogger('app');
+const consoleRedirect = setupConsoleRedirect('app');
+
+// 重写全局console方法
+Object.assign(console, consoleRedirect);
+
+appLogger.info("C-Client application module imported");
+
 class ElectronApp {
     constructor() {
+        // 初始化日志系统
+        this.logger = getCClientLogger('app');
+
         // Get C-Client ID from environment variable or generate one
         this.clientId = process.env.C_CLIENT_ID || `c-client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         this.portManager = new PortManager();
@@ -520,7 +535,8 @@ class ElectronApp {
                                     initialTitle = currentTitle;
                                 }
 
-                                const record = await this.historyManager.recordVisit(url, viewId);
+                                // 使用新的recordPageVisitWithContent方法记录访问并提取内容
+                                const record = await this.historyManager.recordPageVisitWithContent(url, viewId, contents);
                                 if (record) {
                                     if (initialTitle !== 'Loading...') {
                                         this.historyManager.updateRecordTitle(record, initialTitle);
@@ -541,7 +557,7 @@ class ElectronApp {
                 }
             });
 
-            contents.on('did-finish-load', () => {
+            contents.on('did-finish-load', async () => {
                 try {
                     if (contents.isDestroyed()) return;
 
@@ -556,7 +572,24 @@ class ElectronApp {
                     if (url && this.historyManager) {
                         const viewId = this.getViewIdFromWebContents(contents);
                         if (viewId) {
+                            // 更新标题
                             this.updateRecordTitle(url, viewId, title);
+
+                            // 页面加载完成后，再次提取更完整的内容信息
+                            try {
+                                const PageContentExtractor = require('./utils/pageContentExtractor');
+                                const pageContent = await PageContentExtractor.extractNSNContent(contents, url);
+
+                                // 获取最近的访问记录
+                                const recentRecord = this.historyManager.getRecentRecordByViewId(viewId);
+                                if (recentRecord) {
+                                    // 更新描述为更完整的页面内容
+                                    this.historyManager.updateRecordDescription(recentRecord, JSON.stringify(pageContent));
+                                    console.log(`✅ Main: Updated page content after did-finish-load for visit ID: ${recentRecord.id}`);
+                                }
+                            } catch (error) {
+                                console.error('❌ Main: Error extracting content on did-finish-load:', error);
+                            }
                         }
                     }
                 } catch (error) {

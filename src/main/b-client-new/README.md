@@ -73,11 +73,7 @@ Enterprise-level client for NoMorePassword Backend Service, rebuilt using Flask 
 - `create_time` (TIMESTAMP)
 
 ### domain_nodes
-- `domain_id` (VARCHAR(50), Primary Key)
-- `node_id` (VARCHAR(50))
-- `ip_address` (VARCHAR(20))
-- `port` (INTEGER)
-- `refresh_time` (TIMESTAMP)
+**Note: This table has been removed. Domain information is now managed by NodeManager connection pools in memory.**
 
 ## Configuration
 

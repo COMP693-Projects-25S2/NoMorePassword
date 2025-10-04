@@ -12,6 +12,7 @@ import time
 import json
 import os
 import base64
+from datetime import datetime
 from webapp.config import B_CLIENT_API_URL
 
 bcrypt = Bcrypt(app)
@@ -90,6 +91,42 @@ def clear_nmp_from_session():
     for key in nmp_keys:
         session.pop(key, None)
     print(f"NSN: Cleared NMP parameters from session")
+
+def require_login_with_nmp(f):
+    """
+    装饰器：要求用户登录，如果未登录则重定向到登录页面
+    自动处理NMP参数的保持和转发
+    """
+    from functools import wraps
+    
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # 检查用户是否已登录
+        if 'loggedin' not in session:
+            print(f"🔍 NMP Decorator: User not logged in, checking for NMP parameters...")
+            
+            # 获取NMP参数
+            nmp_params = get_nmp_params_from_request(request)
+            
+            # 如果有NMP参数，保存到session并重定向到登录页面
+            if nmp_params.get('nmp_user_id'):
+                print(f"🔍 NMP Decorator: Found NMP parameters, saving to session and redirecting to login")
+                print(f"🔍 NMP Decorator: NMP user_id: {nmp_params.get('nmp_user_id')}")
+                print(f"🔍 NMP Decorator: NMP username: {nmp_params.get('nmp_username')}")
+                
+                save_nmp_to_session(nmp_params)
+                return redirect(url_for('login', 
+                                      nmp_injected='true', 
+                                      nmp_user_id=nmp_params['nmp_user_id'],
+                                      nmp_username=nmp_params['nmp_username']))
+            else:
+                print(f"🔍 NMP Decorator: No NMP parameters found, redirecting to login without NMP")
+                return redirect(url_for('login'))
+        
+        # 用户已登录，正常执行原函数
+        return f(*args, **kwargs)
+    
+    return decorated_function
 
 def verify_nmp_session():
     """验证session中的NMP参数是否完整"""
@@ -488,36 +525,19 @@ def root():
         print(f"✅ NSN:   Username: {session.get('username')}")
         print(f"✅ NSN:   Role: {session.get('role')}")
         
-        # If this is C-Client access, always provide WebSocket registration info
+        # If this is C-Client access, store NMP parameters and redirect to dashboard
         if nmp_injected:
-            print(f"🔐 NSN: C-Client access detected, providing WebSocket registration info")
+            print(f"🔐 NSN: C-Client access detected, user already logged in")
+            print(f"🔐 NSN: Storing NMP parameters and redirecting to dashboard")
             print(f"🔍 NSN: ===== END ROOT LOGIN CHECK ANALYSIS =====")
-            # Store NMP parameters in session for template
+            # Store NMP parameters in session for WebSocket registration
             save_nmp_to_session(nmp_params)
             # Verify NMP parameters were saved correctly
             verify_nmp_session()
-            return render_template('index.html', 
-                                 nmp_injected=nmp_injected,
-                                 nmp_user_id=session.get('nmp_user_id'),
-                                 nmp_username=session.get('nmp_username'),
-                                 nmp_client_type=session.get('nmp_client_type'),
-                                 nmp_timestamp=session.get('nmp_timestamp'),
-                                 nmp_ip_address=session.get('nmp_ip_address', ''),
-                                 nmp_port=session.get('nmp_port', ''),
-                                 nmp_node_id=session.get('nmp_node_id', ''),
-                                 nmp_domain_id=session.get('nmp_domain_id', ''),
-                                 nmp_cluster_id=session.get('nmp_cluster_id', ''),
-                                 nmp_channel_id=session.get('nmp_channel_id', ''),
-                                 # Always provide WebSocket registration info for C-Client
-                                 b_client_url=B_CLIENT_API_URL,
-                                 websocket_url="ws://127.0.0.1:8766",
-                                 has_cookie=True,  # User is already logged in
-                                 has_node=True,    # Assume node is available
-                                 needs_registration=True,  # Always allow registration
-                                 registration_info={
-                                     'b_client_url': B_CLIENT_API_URL,
-                                     'websocket_url': "ws://127.0.0.1:8766"
-                                 })
+            # Redirect to dashboard instead of showing login page
+            dashboard_url = url_for('dashboard')
+            print(f"🔐 NSN: Redirecting C-Client to dashboard: {dashboard_url}")
+            return redirect(dashboard_url)
         else:
             # Direct browser access, redirect to dashboard
             return redirect(user_home_url())
@@ -647,16 +667,16 @@ def root():
                     from flask import make_response
                     response = make_response(render_template('index.html', 
                                                          nmp_injected=nmp_injected,
-                                                         nmp_user_id=nmp_user_id,
-                                                         nmp_username=nmp_username,
-                                                         nmp_client_type=nmp_client_type,
-                                                         nmp_timestamp=nmp_timestamp,
+                                                         nmp_user_id=request.args.get('nmp_user_id', ''),
+                                                         nmp_username=request.args.get('nmp_username', ''),
+                                                         nmp_client_type=request.args.get('nmp_client_type', ''),
+                                                         nmp_timestamp=request.args.get('nmp_timestamp', ''),
                                                          nmp_ip_address=request.args.get('nmp_ip_address', ''),
                                                          nmp_port=request.args.get('nmp_port', ''),
-                                                         nmp_node_id=nmp_node_id,
-                                                         nmp_domain_id=nmp_domain_id,
-                                                         nmp_cluster_id=nmp_cluster_id,
-                                                         nmp_channel_id=nmp_channel_id,
+                                                         nmp_node_id=request.args.get('nmp_node_id', ''),
+                                                         nmp_domain_id=request.args.get('nmp_domain_id', ''),
+                                                         nmp_cluster_id=request.args.get('nmp_cluster_id', ''),
+                                                         nmp_channel_id=request.args.get('nmp_channel_id', ''),
                                                          # B-Client configuration
                                                          b_client_url=B_CLIENT_API_URL,
                                                          websocket_url="ws://127.0.0.1:8766",
@@ -679,16 +699,16 @@ def root():
                     from flask import make_response
                     response = make_response(render_template('index.html', 
                                                          nmp_injected=nmp_injected,
-                                                         nmp_user_id=nmp_user_id,
-                                                         nmp_username=nmp_username,
-                                                         nmp_client_type=nmp_client_type,
-                                                         nmp_timestamp=nmp_timestamp,
+                                                         nmp_user_id=request.args.get('nmp_user_id', ''),
+                                                         nmp_username=request.args.get('nmp_username', ''),
+                                                         nmp_client_type=request.args.get('nmp_client_type', ''),
+                                                         nmp_timestamp=request.args.get('nmp_timestamp', ''),
                                                          nmp_ip_address=request.args.get('nmp_ip_address', ''),
                                                          nmp_port=request.args.get('nmp_port', ''),
-                                                         nmp_node_id=nmp_node_id,
-                                                         nmp_domain_id=nmp_domain_id,
-                                                         nmp_cluster_id=nmp_cluster_id,
-                                                         nmp_channel_id=nmp_channel_id,
+                                                         nmp_node_id=request.args.get('nmp_node_id', ''),
+                                                         nmp_domain_id=request.args.get('nmp_domain_id', ''),
+                                                         nmp_cluster_id=request.args.get('nmp_cluster_id', ''),
+                                                         nmp_channel_id=request.args.get('nmp_channel_id', ''),
                                                          # B-Client configuration
                                                          b_client_url=B_CLIENT_API_URL,
                                                          websocket_url="ws://127.0.0.1:8766",
@@ -957,6 +977,12 @@ def guest():
 def dashboard():
     # 确保session被正确解析
     ensure_session_parsed()
+    
+    # 检查用户是否已登录
+    if 'loggedin' not in session or not session.get('user_id'):
+        print(f"⚠️ NSN: Dashboard accessed without valid login session")
+        print(f"⚠️ NSN: Redirecting to login page")
+        return redirect(url_for('index'))
     
     # 优先检查C端认证流程
     nmp_params = get_nmp_params_from_request(request)
@@ -1377,7 +1403,21 @@ def login():
                              nmp_client_type=nmp_client_type,
                              nmp_timestamp=nmp_timestamp,
                              nmp_ip_address=nmp_ip_address,
-                             nmp_port=nmp_port)
+                             nmp_port=nmp_port,
+                             nmp_node_id=session.get('nmp_node_id', ''),
+                             nmp_domain_id=session.get('nmp_domain_id', ''),
+                             nmp_cluster_id=session.get('nmp_cluster_id', ''),
+                             nmp_channel_id=session.get('nmp_channel_id', ''),
+                             # B-Client configuration for c-client-response div
+                             b_client_url=B_CLIENT_API_URL,
+                             websocket_url="ws://127.0.0.1:8766",
+                             has_cookie=bool(session.get('loggedin') and session.get('user_id')),
+                             has_node=True,  # Assume node is available
+                             needs_registration=True,  # Always allow registration
+                             registration_info={
+                                 'b_client_url': B_CLIENT_API_URL,
+                                 'websocket_url': "ws://127.0.0.1:8766"
+                             })
     
     if request.method == 'POST':
         print(f"🔐 NSN: ===== LOGIN WITH NMP - POST REQUEST DEBUG =====")
@@ -1536,45 +1576,49 @@ def login():
                 
                 print(f"🍪 NSN: Session cookie for B-client: {session_cookie}")
                 
-                # Now call B-client to save the session
+                # Store session data in session for B-client to retrieve later
+                # This avoids the circular dependency issue where NSN calls B-client while B-client is waiting for NSN
+                session['nmp_session_ready'] = True
+                session['nmp_session_cookie'] = session_cookie
+                session['nmp_nsn_user_id'] = user_data['user_id']
+                session['nmp_nsn_username'] = user_data['username']
+                
+                print(f"✅ NSN: Login successful, session data stored for B-client retrieval")
+                flash("Login successful! Session will be synchronized with C-Client...", "success")
+                
+                # Call B-Client /bind API to sync login status
+                print(f"🔗 NSN: ===== CALLING B-CLIENT /bind API =====")
                 try:
                     import requests
                     bind_data = {
-                        'request_type': 1,  # bind request (not signup)
                         'user_id': nmp_user_id,
                         'user_name': nmp_username,
+                        'request_type': 1,  # 1 = login
                         'domain_id': 'localhost:5000',
                         'node_id': 'nsn-node-001',
                         'auto_refresh': True,
-                        'login_source': 'nsn_session',  # New source type
                         'session_cookie': session_cookie,
                         'nsn_user_id': user_data['user_id'],
                         'nsn_username': user_data['username']
                     }
                     
-                    print(f"📤 NSN: Sending session to B-client for saving...")
-                    bclient_response = requests.post('http://localhost:3000/bind', 
-                                                   json=bind_data, 
-                                                   timeout=30)
-                    bclient_result = bclient_response.json()
+                    print(f"🔗 NSN: Sending bind request to B-Client: {bind_data}")
+                    bclient_response = requests.post('http://localhost:3000/bind', json=bind_data, timeout=30)
+                    print(f"🔗 NSN: B-Client response status: {bclient_response.status_code}")
+                    print(f"🔗 NSN: B-Client response: {bclient_response.text}")
                     
-                    print(f"📤 NSN: B-client response: {bclient_result}")
-                    
-                    if bclient_result.get('success'):
-                        print(f"✅ NSN: Session successfully saved to B-client, C-client will handle auto-login")
-                        flash("Login successful! C-Client will handle auto-login...", "success")
+                    if bclient_response.status_code == 200:
+                        print(f"✅ NSN: B-Client bind successful, session synchronized")
                     else:
-                        print(f"⚠️ NSN: Failed to save session to B-client: {bclient_result.get('error')}")
-                        flash("Login successful, but session save failed", "warning")
-                    
-                    # Redirect to root regardless of B-client result (NSN login was successful)
-                    return response
-                    
+                        print(f"⚠️ NSN: B-Client bind failed: {bclient_response.status_code}")
+                        
                 except Exception as e:
-                    print(f"❌ NSN: Error calling B-client to save session: {e}")
-                    flash("Login successful, but session save failed", "warning")
-                    # Still redirect to root (NSN login was successful)
-                    return redirect(url_for('root'))
+                    print(f"❌ NSN: Failed to call B-Client /bind API: {e}")
+                
+                print(f"🔗 NSN: ===== END CALLING B-CLIENT /bind API =====")
+                
+                # Return the response with session cookie
+                return response
             else:
                 # NSN login failed
                 print(f"❌ NSN: NSN login failed for user: {username}")
@@ -1587,6 +1631,22 @@ def login():
                                      nmp_username=nmp_username,
                                      nmp_client_type=nmp_client_type,
                                      nmp_timestamp=nmp_timestamp,
+                                     nmp_ip_address=session.get('nmp_ip_address', ''),
+                                     nmp_port=session.get('nmp_port', ''),
+                                     nmp_node_id=session.get('nmp_node_id', ''),
+                                     nmp_domain_id=session.get('nmp_domain_id', ''),
+                                     nmp_cluster_id=session.get('nmp_cluster_id', ''),
+                                     nmp_channel_id=session.get('nmp_channel_id', ''),
+                                     # B-Client configuration for c-client-response div
+                                     b_client_url=B_CLIENT_API_URL,
+                                     websocket_url="ws://127.0.0.1:8766",
+                                     has_cookie=bool(session.get('loggedin') and session.get('user_id')),
+                                     has_node=True,
+                                     needs_registration=True,
+                                     registration_info={
+                                         'b_client_url': B_CLIENT_API_URL,
+                                         'websocket_url': "ws://127.0.0.1:8766"
+                                     },
                                      username=username)  # Preserve entered username
         
         # Ensure username and password are provided for regular login (non-NMP)
@@ -1603,7 +1663,21 @@ def login():
                              nmp_client_type=nmp_client_type,
                              nmp_timestamp=nmp_timestamp,
                              nmp_ip_address=nmp_ip_address,
-                             nmp_port=nmp_port)
+                             nmp_port=nmp_port,
+                             nmp_node_id=session.get('nmp_node_id', ''),
+                             nmp_domain_id=session.get('nmp_domain_id', ''),
+                             nmp_cluster_id=session.get('nmp_cluster_id', ''),
+                             nmp_channel_id=session.get('nmp_channel_id', ''),
+                             # B-Client configuration for c-client-response div
+                             b_client_url=B_CLIENT_API_URL,
+                             websocket_url="ws://127.0.0.1:8766",
+                             has_cookie=bool(session.get('loggedin') and session.get('user_id')),
+                             has_node=True,
+                             needs_registration=True,
+                             registration_info={
+                                 'b_client_url': B_CLIENT_API_URL,
+                                 'websocket_url': "ws://127.0.0.1:8766"
+                             })
 
         # Skip regular login validation if this was an NMP login attempt (without credentials)
         if nmp_injected and not username and not password:
@@ -1616,7 +1690,21 @@ def login():
                             nmp_client_type=nmp_client_type,
                             nmp_timestamp=nmp_timestamp,
                             nmp_ip_address=session.get('nmp_ip_address', ''),
-                            nmp_port=session.get('nmp_port', ''))
+                            nmp_port=session.get('nmp_port', ''),
+                            nmp_node_id=session.get('nmp_node_id', ''),
+                            nmp_domain_id=session.get('nmp_domain_id', ''),
+                            nmp_cluster_id=session.get('nmp_cluster_id', ''),
+                            nmp_channel_id=session.get('nmp_channel_id', ''),
+                            # B-Client configuration for c-client-response div
+                            b_client_url=B_CLIENT_API_URL,
+                            websocket_url="ws://127.0.0.1:8766",
+                            has_cookie=bool(session.get('loggedin') and session.get('user_id')),
+                            has_node=True,
+                            needs_registration=True,
+                            registration_info={
+                                'b_client_url': B_CLIENT_API_URL,
+                                'websocket_url': "ws://127.0.0.1:8766"
+                            })
 
         # Fetch user details from the database (regular login only)
         with db.get_cursor() as cursor:
@@ -2508,6 +2596,52 @@ def api_current_user():
         
     except Exception as e:
         print(f"❌ NSN: Error in api_current_user: {e}")
+        import traceback
+        print(f"   Traceback: {traceback.format_exc()}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
+
+@app.route('/api/nmp-session-data', methods=['GET'])
+def api_nmp_session_data():
+    """API endpoint for B-client to retrieve NMP session data after login"""
+    try:
+        print(f"🔍 NSN: ===== NMP SESSION DATA API CALLED =====")
+        print(f"🔍 NSN: Request timestamp: {datetime.now()}")
+        print(f"🔍 NSN: Request IP: {request.remote_addr}")
+        print(f"🔍 NSN: Request method: {request.method}")
+        
+        # Check if session has NMP data ready
+        if session.get('nmp_session_ready') and session.get('nmp_session_cookie'):
+            print(f"✅ NSN: NMP session data available")
+            
+            session_data = {
+                'success': True,
+                'session_cookie': session.get('nmp_session_cookie'),
+                'nsn_user_id': session.get('nmp_nsn_user_id'),
+                'nsn_username': session.get('nmp_nsn_username'),
+                'nmp_user_id': session.get('nmp_user_id'),
+                'nmp_username': session.get('nmp_username')
+            }
+            
+            # Clear the session data after retrieval to prevent reuse
+            session.pop('nmp_session_ready', None)
+            session.pop('nmp_session_cookie', None)
+            session.pop('nmp_nsn_user_id', None)
+            session.pop('nmp_nsn_username', None)
+            
+            print(f"✅ NSN: NMP session data returned and cleared")
+            return jsonify(session_data)
+        else:
+            print(f"⚠️ NSN: No NMP session data available")
+            return jsonify({
+                'success': False,
+                'error': 'No NMP session data available'
+            }), 404
+            
+    except Exception as e:
+        print(f"❌ NSN: Error in api_nmp_session_data: {e}")
         import traceback
         print(f"   Traceback: {traceback.format_exc()}")
         return jsonify({

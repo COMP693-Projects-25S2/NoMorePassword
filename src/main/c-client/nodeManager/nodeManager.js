@@ -1,16 +1,22 @@
 const { v4: uuidv4 } = require('uuid');
 const DatabaseManager = require('../sqlite/databaseManager');
 
+// 导入日志系统
+const { getCClientLogger } = require('../utils/logger');
+
 /**
  * NodeManager - Complete node management functionality
  * Handles all node registration and management operations
  */
 class NodeManager {
     constructor() {
+        // 初始化日志系统
+        this.logger = getCClientLogger('nodemanager');
+
         this.currentUser = null;
         this.clientId = uuidv4(); // Generate unique client ID on startup
         this.websocketClient = null; // Will be set by external code
-        console.log(`🆔 NodeManager: Generated client ID: ${this.clientId}`);
+        this.logger.info(`Generated client ID: ${this.clientId}`);
     }
 
     setCurrentUser(user) {

@@ -52,37 +52,8 @@ function createTab(url = 'about:blank') {
 function createHistoryTab() {
     window.electronAPI.createHistoryTab().then((result) => {
         if (result && result.success) {
-            const { id, title } = result;
-            const tabEl = document.createElement('div');
-            tabEl.className = 'tab history-tab'; // 添加特殊样式类
-            tabEl.dataset.id = id;
-
-            const titleNode = document.createElement('span');
-            titleNode.className = 'title';
-            titleNode.textContent = title || 'History'; // Fallback to 'History' if title is missing
-
-            const closeBtn = document.createElement('span');
-            closeBtn.className = 'close';
-            closeBtn.textContent = '×';
-            closeBtn.onclick = (e) => {
-                e.stopPropagation();
-                closeTab(id);
-            };
-
-            tabEl.appendChild(titleNode);
-            tabEl.appendChild(closeBtn);
-            tabsContainer.appendChild(tabEl);
-
-            tabEl.onclick = () => switchToTab(id);
-
-            tabs[id] = { el: tabEl, title: title || 'History', titleNode, closeBtn, isHistory: true };
-
-            currentTabId = id;
-            activateTab(id);
-
-            // 历史标签页不需要地址栏更新
-            addressBar.value = 'browser://history';
-            console.log('✅ 历史标签页已创建并激活:', id);
+            console.log('✅ 历史标签页创建请求已发送，等待TabManager创建UI:', result.id);
+            // 不在这里手动创建UI，让TabManager通过onTabCreated事件统一管理
         } else {
             console.error('❌ 创建历史标签页失败:', result?.error || 'Unknown error');
             alert('Failed to create history tab: ' + (result?.error || 'Unknown error'));
@@ -307,7 +278,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 创建标签页元素
         const tabEl = document.createElement('div');
-        tabEl.className = 'tab';
+
+        // 检查是否是历史标签页，添加特殊样式类
+        if (metadata && metadata.isHistory) {
+            tabEl.className = 'tab history-tab';
+        } else {
+            tabEl.className = 'tab';
+        }
+
         tabEl.dataset.id = id;
 
         const titleNode = document.createElement('span');
@@ -328,7 +306,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         tabEl.onclick = () => switchToTab(id);
 
+        // 保存历史标签页的特殊标记
         tabs[id] = { el: tabEl, title: title || 'Loading...', titleNode, closeBtn, metadata };
+
+        // 如果是历史标签页，设置地址栏
+        if (metadata && metadata.isHistory) {
+            addressBar.value = 'browser://history';
+        }
 
         // 不要在这里自动激活tab，让TabManager统一管理激活状态
         // TabManager会通过tab-switched事件来通知激活状态

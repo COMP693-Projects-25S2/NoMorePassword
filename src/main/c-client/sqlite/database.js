@@ -113,6 +113,24 @@ db.exec(`
     )
 `);
 
+// Create table: sync_data
+db.exec(`
+    CREATE TABLE IF NOT EXISTS sync_data (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id     VARCHAR(50),
+        username    TEXT,
+        activity_type VARCHAR(50),
+        url         TEXT,
+        title       TEXT,
+        description TEXT,
+        start_time  INTEGER,
+        end_time    INTEGER,
+        duration    INTEGER,
+        created_at  INTEGER DEFAULT (strftime('%s', 'now')),
+        updated_at  INTEGER DEFAULT (strftime('%s', 'now'))
+    )
+`);
+
 // Disable foreign key constraints for simpler data management
 db.pragma('foreign_keys = OFF');
 

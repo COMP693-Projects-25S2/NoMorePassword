@@ -4,6 +4,15 @@ Handles WebSocket server startup and management
 """
 import threading
 
+# 导入日志系统
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from utils.logger import get_bclient_logger
+
+# Initialize logger
+logger = get_bclient_logger('websocket_server')
+
 # These will be injected when initialized
 websockets = None
 asyncio = None
@@ -26,15 +35,15 @@ def start_websocket_server():
     global websocket_server_started
     
     if websocket_server_started:
-        print("⚠️  WebSocket server already started, skipping...")
+        logger.warning("WebSocket server already started, skipping...")
         return
         
     if not websockets or not asyncio or not threading:
-        print("⚠️  WebSocket functionality disabled - dependencies not available")
+        logger.warning("WebSocket functionality disabled - dependencies not available")
         return
         
     if not c_client_ws.config.get('enabled', True):
-        print("⚠️  WebSocket server disabled in config")
+        logger.warning("WebSocket server disabled in config")
         return
         
     def run_websocket_server():
@@ -44,18 +53,18 @@ def start_websocket_server():
             # B-Client 作为服务器，使用配置的地址和端口
             host = c_client_ws.config.get('server_host', '0.0.0.0')
             port = c_client_ws.config.get('server_port', 8766)
-            print(f"🔌 B-Client: Starting WebSocket server on {host}:{port}")
+            logger.info(f"Starting WebSocket server on {host}:{port}")
             
             # Start the server and keep it running
             server = loop.run_until_complete(c_client_ws.start_server(host=host, port=port))
             if server:
-                print(f"✅ B-Client: WebSocket server started successfully on {host}:{port}")
+                logger.info(f"WebSocket server started successfully on {host}:{port}")
                 # Keep the server running
                 loop.run_forever()
             else:
-                print(f"❌ B-Client: Failed to start WebSocket server")
+                logger.error(f"Failed to start WebSocket server")
         except Exception as e:
-            print(f"❌ B-Client: WebSocket server error: {e}")
+            logger.error(f"WebSocket server error: {e}")
             import traceback
             traceback.print_exc()
     

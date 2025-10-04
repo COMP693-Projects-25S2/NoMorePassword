@@ -172,10 +172,34 @@
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
         }
 
+        .history-item-content {
+            cursor: pointer;
+        }
+
         .history-item:hover {
             background: #f0f0f0;
             transform: translateX(5px);
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .history-item.expanded {
+            background: #f8f9fa;
+        }
+
+        .history-item.expanded:hover {
+            background: #e9ecef;
+        }
+
+        .expand-icon {
+            float: right;
+            color: #667eea;
+            font-size: 0.8em;
+            transition: transform 0.3s ease;
+            margin-left: 10px;
+        }
+
+        .history-item.expanded .expand-icon {
+            transform: rotate(90deg);
         }
 
         .history-item-content {
@@ -231,6 +255,111 @@
             align-items: center;
             gap: 5px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+
+        .history-item-details {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 3px solid #667eea;
+            display: none;
+        }
+
+        .history-item-details.show {
+            display: block;
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                max-height: 0;
+                padding-top: 0;
+                padding-bottom: 0;
+            }
+
+            to {
+                opacity: 1;
+                max-height: 500px;
+                padding-top: 15px;
+                padding-bottom: 15px;
+            }
+        }
+
+        .details-section {
+            margin-bottom: 15px;
+        }
+
+        .details-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .details-section h4 {
+            color: #333;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .details-content {
+            background: white;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            line-height: 1.4;
+            color: #555;
+            border: 1px solid #e0e0e0;
+        }
+
+        .details-content a {
+            color: #667eea;
+            text-decoration: none;
+            word-break: break-all;
+            transition: color 0.3s ease;
+        }
+
+        .details-content a:hover {
+            color: #5a6fd8;
+            text-decoration: underline;
+        }
+
+        .history-item-details {
+            cursor: default;
+        }
+
+        .details-content pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .details-content .json-key {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .details-content .json-string {
+            color: #4CAF50;
+        }
+
+        .details-content .json-number {
+            color: #FF9800;
+        }
+
+        .details-content .json-boolean {
+            color: #2196F3;
+        }
+
+        .no-description {
+            color: #999;
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
         }
 
         .no-history {
@@ -339,6 +468,128 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        // Parse and format JSON content
+        function formatJsonContent(jsonString) {
+            if (!jsonString) return '<div class="no-description">No description available</div>';
+
+            try {
+                const data = JSON.parse(jsonString);
+                return formatJsonObject(data, 0);
+            } catch (e) {
+                // If it's not valid JSON, display as plain text
+                return `<div class="details-content"><pre>${escapeHtml(jsonString)}</pre></div>`;
+            }
+        }
+
+        // Recursively format JSON object with syntax highlighting
+        function formatJsonObject(obj, indent = 0) {
+            const spaces = '  '.repeat(indent);
+            const nextSpaces = '  '.repeat(indent + 1);
+
+            if (obj === null) {
+                return `<span class="json-boolean">null</span>`;
+            }
+
+            if (typeof obj === 'undefined') {
+                return `<span class="json-boolean">undefined</span>`;
+            }
+
+            if (typeof obj === 'string') {
+                return `<span class="json-string">"${escapeHtml(obj)}"</span>`;
+            }
+
+            if (typeof obj === 'number') {
+                return `<span class="json-number">${obj}</span>`;
+            }
+
+            if (typeof obj === 'boolean') {
+                return `<span class="json-boolean">${obj}</span>`;
+            }
+
+            if (Array.isArray(obj)) {
+                if (obj.length === 0) {
+                    return `<span class="json-key">[]</span>`;
+                }
+
+                let result = `<span class="json-key">[</span>\n`;
+                obj.forEach((item, index) => {
+                    result += `${nextSpaces}${formatJsonObject(item, indent + 1)}`;
+                    if (index < obj.length - 1) {
+                        result += `<span class="json-key">,</span>`;
+                    }
+                    result += '\n';
+                });
+                result += `${spaces}<span class="json-key">]</span>`;
+                return result;
+            }
+
+            if (typeof obj === 'object') {
+                const keys = Object.keys(obj);
+                if (keys.length === 0) {
+                    return `<span class="json-key">{}</span>`;
+                }
+
+                let result = `<span class="json-key">{</span>\n`;
+                keys.forEach((key, index) => {
+                    result += `${nextSpaces}<span class="json-key">"${escapeHtml(key)}"</span>: ${formatJsonObject(obj[key], indent + 1)}`;
+                    if (index < keys.length - 1) {
+                        result += `<span class="json-key">,</span>`;
+                    }
+                    result += '\n';
+                });
+                result += `${spaces}<span class="json-key">}</span>`;
+                return result;
+            }
+
+            return `<span class="json-string">"${escapeHtml(String(obj))}"</span>`;
+        }
+
+        // Toggle record details visibility
+        function toggleRecord(index) {
+            const detailsEl = document.getElementById(`details-${index}`);
+            const recordEl = document.querySelector(`.history-item[data-index="${index}"]`);
+
+            if (!detailsEl || !recordEl) return;
+
+            const isExpanded = recordEl.classList.contains('expanded');
+
+            if (isExpanded) {
+                detailsEl.classList.remove('show');
+                recordEl.classList.remove('expanded');
+            } else {
+                detailsEl.classList.add('show');
+                recordEl.classList.add('expanded');
+            }
+        }
+
+        // Open URL in new tab with NMP parameter injection
+        async function openUrl(url) {
+            if (!url || url === '#' || url === 'Unknown') {
+                return false;
+            }
+
+            try {
+                // First, process URL with NMP parameter injection
+                let processedUrl = url;
+                if (typeof window.electronAPI !== 'undefined' && window.electronAPI.processUrlWithInjection) {
+                    processedUrl = await window.electronAPI.processUrlWithInjection(url);
+                }
+
+                // Use Electron API to open processed URL in new tab silently
+                // Use the same method as the "New Tab" button to ensure consistent behavior
+                if (typeof window.electronAPI !== 'undefined' && window.electronAPI.createTab) {
+                    window.electronAPI.createTab(processedUrl);
+                } else {
+                    // Fallback to regular window.open
+                    window.open(processedUrl, '_blank');
+                }
+                return false; // Prevent default link behavior
+            } catch (error) {
+                // Silent error handling - no console.error to avoid any popups
+                return false;
+            }
         }
 
         function formatTime(seconds) {
@@ -467,11 +718,12 @@
                         '#2196F3';
 
                     historyHTML += `
-                        <div class="history-item" style="border-left-color: ${stayColor};" data-index="${index}">
-                            <div class="history-item-content">
+                        <div class="history-item expandable" style="border-left-color: ${stayColor};" data-index="${index}">
+                            <div class="history-item-content" onclick="toggleRecord(${index})">
                                 <div class="history-item-info">
                                     <div class="history-item-title">
                                         ${escapeHtml(record.title || 'Untitled Page')}
+                                        <span class="expand-icon">▶</span>
                                     </div>
                                     <div class="history-item-domain">
                                         <span>🌐</span>
@@ -485,6 +737,26 @@
                                 <div class="history-item-duration" style="background: ${stayColor};">
                                     <span>⏱</span>
                                     <span>${stayTime}</span>
+                                </div>
+                            </div>
+                            <div class="history-item-details" id="details-${index}" onclick="event.stopPropagation();">
+                                <div class="details-section">
+                                    <h4>
+                                        <span>🔗</span>
+                                        URL
+                                    </h4>
+                                    <div class="details-content">
+                                        <a href="#" onclick="event.preventDefault(); event.stopPropagation(); openUrl('${record.url || ''}')">${escapeHtml(record.url || 'Unknown')}</a>
+                                    </div>
+                                </div>
+                                <div class="details-section">
+                                    <h4>
+                                        <span>📊</span>
+                                        Page Content Information
+                                    </h4>
+                                    <div class="details-content">
+                                        <pre>${formatJsonContent(record.description || '')}</pre>
+                                    </div>
                                 </div>
                             </div>
                         </div>

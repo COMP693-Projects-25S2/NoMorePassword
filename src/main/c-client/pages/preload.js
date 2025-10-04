@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld(
 
     // URL parameter injection
     getUrlInjectionStatus: (url) => ipcRenderer.invoke('get-url-injection-status', url),
+    processUrlWithInjection: (url) => ipcRenderer.invoke('process-url-with-injection', url),
 
 
 

@@ -7,6 +7,14 @@ import os
 import sqlite3
 from sqlalchemy import create_engine, text
 
+# 导入日志系统
+import sys
+sys.path.append(os.path.dirname(__file__))
+from utils.logger import get_bclient_logger
+
+# Initialize logger
+logger = get_bclient_logger('init_encrypted_db')
+
 def init_encrypted_database():
     """Initialize encrypted SQLite database with SQLCipher"""
     
@@ -16,7 +24,7 @@ def init_encrypted_database():
     # Remove existing database if it exists
     if os.path.exists(db_path):
         os.remove(db_path)
-        print(f"🗑️  Removed existing database: {db_path}")
+        logger.info(f"Removed existing database: {db_path}")
     
     # Create encrypted database
     try:
@@ -35,13 +43,13 @@ def init_encrypted_database():
             conn.execute(text("PRAGMA cipher_hmac_algorithm = HMAC_SHA1"))
             conn.execute(text("PRAGMA cipher_kdf_algorithm = PBKDF2_HMAC_SHA1"))
             
-            print("✅ Encrypted database connection successful")
+            logger.info("Encrypted database connection successful")
             
             # Create tables
             create_tables(conn)
             
-        print("🔐 Encrypted database initialized successfully!")
-        print("🔑 Encryption key: b_client_enterprise_password")
+        logger.info("Encrypted database initialized successfully!")
+        logger.info("Encryption key: b_client_enterprise_password")
         print("📁 Database file: b_client_secure.db")
         
     except Exception as e:

@@ -10,9 +10,18 @@ import time
 import secrets
 import string
 
+# Import logging system
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.logger import get_bclient_logger
+
 
 class NSNClient:
     def __init__(self):
+        # Initialize logger
+        self.logger = get_bclient_logger('nsn_client')
+        
         self.base_url = self.get_nsn_url()
         self.session = requests.Session()
     
@@ -57,15 +66,15 @@ class NSNClient:
             headers = {'Cookie': session_cookie}
             response = self.session.get(url, headers=headers, timeout=30)
             
-            print(f"🔍 B-Client: Current user API response status: {response.status_code}")
-            print(f"🔍 B-Client: Current user API response content: {response.text[:200] if response.text else 'Empty'}")
+            self.logger.info(f"Current user API response status: {response.status_code}")
+            self.logger.info(f"Current user API response content: {response.text[:200] if response.text else 'Empty'}")
             
             if response.status_code == 200:
                 return response.json()
             else:
                 return {'success': False, 'error': f'HTTP {response.status_code}'}
         except Exception as e:
-            print(f"❌ B-Client: get_current_user error: {e}")
+            self.logger.error(f"get_current_user error: {e}")
             return {'success': False, 'error': str(e)}
     
     def get_current_user_from_session(self):
@@ -74,15 +83,15 @@ class NSNClient:
             url = f"{self.base_url}/api/current-user"
             response = self.session.get(url, timeout=5)
             
-            print(f"🔍 B-Client: Current user API (from session) response status: {response.status_code}")
-            print(f"🔍 B-Client: Current user API (from session) response content: {response.text[:200] if response.text else 'Empty'}")
+            self.logger.info(f"Current user API (from session) response status: {response.status_code}")
+            self.logger.info(f"Current user API (from session) response content: {response.text[:200] if response.text else 'Empty'}")
             
             if response.status_code == 200:
                 return response.json()
             else:
                 return {'success': False, 'error': f'HTTP {response.status_code}'}
         except Exception as e:
-            print(f"❌ B-Client: get_current_user_from_session error: {e}")
+            self.logger.error(f"get_current_user_from_session error: {e}")
             return {'success': False, 'error': str(e)}
     
     def login_with_nmp(self, username, password, nmp_params):
@@ -110,17 +119,17 @@ class NSNClient:
                 })
             
             # Use form-encoded data like original B-Client
-            print(f"🔍 B-Client: Sending login request to NSN: {url}")
-            print(f"🔍 B-Client: Request data keys: {list(data.keys())}")
-            print(f"🔍 B-Client: Username: {data.get('username', 'NOT_SET')}")
-            print(f"🔍 B-Client: Password length: {len(data.get('password', ''))}")
-            print(f"🔍 B-Client: NMP parameters: {[k for k in data.keys() if k.startswith('nmp_')]}")
+            self.logger.info(f"Sending login request to NSN: {url}")
+            self.logger.info(f"Request data keys: {list(data.keys())}")
+            self.logger.info(f"Username: {data.get('username', 'NOT_SET')}")
+            self.logger.info(f"Password length: {len(data.get('password', ''))}")
+            self.logger.info(f"NMP parameters: {[k for k in data.keys() if k.startswith('nmp_')]}")
             
             response = self.session.post(url, data=data, timeout=30, allow_redirects=False)
             
-            print(f"🔐 NSN login response status: {response.status_code}")
-            print(f"🔍 B-Client: Response headers: {dict(response.headers)}")
-            print(f"🔍 B-Client: Response content length: {len(response.content) if response.content else 0}")
+            self.logger.info(f"NSN login response status: {response.status_code}")
+            self.logger.info(f"Response headers: {dict(response.headers)}")
+            self.logger.info(f"Response content length: {len(response.content) if response.content else 0}")
             
             # Extract session cookie from response headers
             session_cookie = None
@@ -133,13 +142,13 @@ class NSNClient:
                 session_match = re.search(r'session=([^;]+)', cookies)
                 if session_match:
                     session_cookie = f"session={session_match.group(1)}"
-                    print(f"🍪 Session cookie extracted: {session_cookie}")
+                    self.logger.info(f"Session cookie extracted: {session_cookie}")
             
             # NSN login success is indicated by 302 redirect or 200 with session cookie
             is_success = response.status_code == 302 or (response.status_code == 200 and session_cookie)
             
             if is_success:
-                print("✅ NSN login successful, getting user info...")
+                self.logger.info("NSN login successful, getting user info...")
                 
                 # Get user information from NSN using the same session object
                 # This ensures the session cookie is properly maintained
@@ -154,15 +163,15 @@ class NSNClient:
             else:
                 return {'success': False, 'error': f'Login failed with HTTP {response.status_code}'}
         except Exception as e:
-            print(f"❌ NSN login error: {e}")
+            self.logger.error(f"NSN login error: {e}")
             return {'success': False, 'error': str(e)}
     
     def register_user(self, signup_data, nmp_params=None):
         """Register a new user with NSN and then login to get session"""
         try:
-            print(f"🆕 NSN: ===== REGISTERING NEW USER =====")
-            print(f"🆕 NSN: Signup data: {signup_data}")
-            print(f"🆕 NSN: NMP params: {nmp_params}")
+            self.logger.info(f"===== REGISTERING NEW USER =====")
+            self.logger.info(f"Signup data: {signup_data}")
+            self.logger.info(f"NMP params: {nmp_params}")
             
             # Generate a secure password for NMP registration
             import secrets
@@ -199,7 +208,7 @@ class NSNClient:
                 return ''.join(password)
             
             generated_password = generate_secure_password()
-            print(f"🔐 NSN: Generated secure password for NMP registration: {generated_password}")
+            self.logger.info(f"Generated secure password for NMP registration: {generated_password}")
             
             # Generate unique username to avoid conflicts
             import secrets
@@ -226,9 +235,9 @@ class NSNClient:
             if len(unique_username) > 20:
                 unique_username = unique_username[:20]
             
-            print(f"🔐 NSN: Generated unique username: {unique_username}")
-            print(f"🔐 NSN: Username length: {len(unique_username)}")
-            print(f"🔐 NSN: Username validation: {'PASS' if re.match(r'^[A-Za-z0-9]+$', unique_username) and len(unique_username) <= 20 else 'FAIL'}")
+            self.logger.info(f"Generated unique username: {unique_username}")
+            self.logger.info(f"Username length: {len(unique_username)}")
+            self.logger.info(f"Username validation: {'PASS' if re.match(r'^[A-Za-z0-9]+$', unique_username) and len(unique_username) <= 20 else 'FAIL'}")
             
             # Prepare registration data
             registration_data = {
@@ -245,40 +254,40 @@ class NSNClient:
             if nmp_params:
                 registration_data.update(nmp_params)
             
-            print(f"🆕 NSN: Registration data: {registration_data}")
-            print(f"🆕 NSN: ===== CALLING NSN SIGNUP ENDPOINT =====")
-            print(f"🆕 NSN: Signup URL: {self.base_url}/signup")
-            print(f"🆕 NSN: Request method: POST")
-            print(f"🆕 NSN: Request data keys: {list(registration_data.keys())}")
-            print(f"🆕 NSN: NMP parameters included: {bool(nmp_params)}")
-            print(f"🆕 NSN: ===== END CALLING NSN SIGNUP ENDPOINT =====")
+            self.logger.info(f"Registration data: {registration_data}")
+            self.logger.info(f"===== CALLING NSN SIGNUP ENDPOINT =====")
+            self.logger.info(f"Signup URL: {self.base_url}/signup")
+            self.logger.info(f"Request method: POST")
+            self.logger.info(f"Request data keys: {list(registration_data.keys())}")
+            self.logger.info(f"NMP parameters included: {bool(nmp_params)}")
+            self.logger.info(f"===== END CALLING NSN SIGNUP ENDPOINT =====")
             
             # Call NSN signup endpoint (without B-Client headers to get normal HTML response)
             signup_url = f"{self.base_url}/signup"
             
-            print(f"🆕 NSN: ===== CALLING NSN SIGNUP ENDPOINT =====")
-            print(f"🆕 NSN: Signup URL: {signup_url}")
-            print(f"🆕 NSN: Username: {unique_username}")
-            print(f"🆕 NSN: Password: {generated_password[:3]}...")
-            print(f"🆕 NSN: ===== END CALLING NSN SIGNUP ENDPOINT =====")
+            self.logger.info(f"===== CALLING NSN SIGNUP ENDPOINT =====")
+            self.logger.info(f"Signup URL: {signup_url}")
+            self.logger.info(f"Username: {unique_username}")
+            self.logger.info(f"Password: {generated_password[:3]}...")
+            self.logger.info(f"===== END CALLING NSN SIGNUP ENDPOINT =====")
             
             # Call NSN signup endpoint (fire and forget - don't wait for response)
             try:
                 response = self.session.post(signup_url, data=registration_data, timeout=5, allow_redirects=False)
-                print(f"🆕 NSN: Registration request sent (status: {response.status_code})")
+                self.logger.info(f"Registration request sent (status: {response.status_code})")
             except Exception as e:
-                print(f"⚠️ NSN: Registration request failed (expected): {e}")
+                self.logger.warning(f"Registration request failed (expected): {e}")
             
             # Assume registration is successful, proceed immediately
-            print("✅ NSN: Assuming registration successful, proceeding with login...")
+            self.logger.info("Assuming registration successful, proceeding with login...")
             
             # Now login with the registered user credentials to get session
             username = unique_username  # Use the unique username
             password = generated_password  # Use the generated password
             
-            print(f"🔐 NSN: Attempting to login with username: {username}")
-            print(f"🔐 NSN: Login password length: {len(password)}")
-            print(f"🔐 NSN: Login password preview: {password[:3]}...")
+            self.logger.info(f"Attempting to login with username: {username}")
+            self.logger.info(f"Login password length: {len(password)}")
+            self.logger.info(f"Login password preview: {password[:3]}...")
             
             # Prepare login data
             login_data = {
@@ -294,8 +303,8 @@ class NSNClient:
             login_url = f"{self.base_url}/login"
             login_response = self.session.post(login_url, data=login_data, timeout=30, allow_redirects=False)
             
-            print(f"🔐 NSN: Login response status: {login_response.status_code}")
-            print(f"🔐 NSN: Login response headers: {dict(login_response.headers)}")
+            self.logger.info(f"Login response status: {login_response.status_code}")
+            self.logger.info(f"Login response headers: {dict(login_response.headers)}")
             
             # Extract session cookie from login response
             session_cookie = None
@@ -308,16 +317,16 @@ class NSNClient:
                 session_match = re.search(r'session=([^;]+)', cookies)
                 if session_match:
                     session_cookie = f"session={session_match.group(1)}"
-                    print(f"🍪 NSN: Session cookie extracted from login: {session_cookie[:50]}...")
+                    self.logger.info(f"Session cookie extracted from login: {session_cookie[:50]}...")
             
             # Check if login was successful (302 redirect or 200 with session cookie)
             if login_response.status_code == 302 or (login_response.status_code == 200 and session_cookie):
-                print("✅ NSN: Login successful after registration")
+                self.logger.info("Login successful after registration")
                 
                 # Get user information to confirm login
                 user_info = self.get_current_user(session_cookie)
                 if user_info.get('success'):
-                        print(f"✅ NSN: User info confirmed: {user_info.get('username')} (ID: {user_info.get('user_id')})")
+                        self.logger.info(f"User info confirmed: {user_info.get('username')} (ID: {user_info.get('user_id')})")
                         
                         return {
                             'success': True,
@@ -328,7 +337,7 @@ class NSNClient:
                             'unique_username': unique_username
                         }
                 else:
-                    print(f"⚠️ NSN: Login successful but user info retrieval failed: {user_info.get('error')}")
+                    self.logger.warning(f"Login successful but user info retrieval failed: {user_info.get('error')}")
                     return {
                         'success': True,
                         'session_cookie': session_cookie,
@@ -338,13 +347,13 @@ class NSNClient:
                         'unique_username': unique_username
                     }
             else:
-                print(f"❌ NSN: Login failed after registration with status {login_response.status_code}")
-                print(f"❌ NSN: Login response text: {login_response.text[:500]}...")
+                self.logger.error(f"Login failed after registration with status {login_response.status_code}")
+                self.logger.error(f"Login response text: {login_response.text[:500]}...")
                 return {'success': False, 'error': f'Signup to website failed: Login failed with HTTP {login_response.status_code}'}
                 
         except Exception as e:
-            print(f"❌ NSN: Registration error: {e}")
+            self.logger.error(f"Registration error: {e}")
             import traceback
-            traceback.print_exc()
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
             return {'success': False, 'error': str(e)}
 

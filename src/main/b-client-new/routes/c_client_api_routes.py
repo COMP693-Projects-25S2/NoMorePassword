@@ -5,8 +5,17 @@ Handles C-Client WebSocket communication API endpoints
 from flask import Blueprint, request, jsonify
 from datetime import datetime
 
+# 导入日志系统
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from utils.logger import get_bclient_logger
+
 # Create blueprint for C-Client API routes
 c_client_api_routes = Blueprint('c_client_api_routes', __name__)
+
+# Initialize logger
+logger = get_bclient_logger('c_client_api_routes')
 
 # This will be injected when blueprint is registered
 c_client_ws = None
@@ -173,17 +182,21 @@ def websocket_check_user():
         if not user_id:
             return jsonify({'success': False, 'error': 'user_id is required'}), 400
         
-        print(f"🔍 B-Client: Checking WebSocket connection for user_id: {user_id}")
+        logger.info(f"Checking WebSocket connection for user_id: {user_id}")
         
         # Check if user exists in user_connections pool
         user_connected = user_id in c_client_ws.user_connections
-        websocket_url = f"ws://127.0.0.1:8766"  # B-Client WebSocket URL
+        
+        # Get WebSocket URL from configuration
+        websocket_host = c_client_ws.config.get('server_host', '127.0.0.1')
+        websocket_port = c_client_ws.config.get('server_port', 8766)
+        websocket_url = f"ws://{websocket_host}:{websocket_port}"
         
         if user_connected:
             connections = c_client_ws.user_connections.get(user_id, [])
-            print(f"🔍 B-Client: User {user_id} is connected with {len(connections)} connections")
+            logger.info(f"User {user_id} is connected with {len(connections)} connections")
         else:
-            print(f"🔍 B-Client: User {user_id} is not connected to WebSocket")
+            logger.info(f"User {user_id} is not connected to WebSocket")
         
         return jsonify({
             'success': True,
@@ -193,6 +206,6 @@ def websocket_check_user():
         })
     
     except Exception as e:
-        print(f"❌ B-Client: Error checking WebSocket connection: {e}")
+        logger.error(f"Error checking WebSocket connection: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 

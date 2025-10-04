@@ -1,9 +1,15 @@
 const { ipcMain } = require('electron');
 const NetworkConfigManager = require('../config/networkConfigManager');
 
+// 导入日志系统
+const { getCClientLogger } = require('../utils/logger');
+
 // IPC handlers
 class IpcHandlers {
     constructor(viewManager, historyManager, mainWindow = null, clientManager = null, nodeManager = null, startupValidator = null, apiPort = null, webSocketClient = null, tabManager = null, clientId = null) {
+        // 初始化日志系统
+        this.logger = getCClientLogger('ipc');
+        
         this.clientId = clientId; // Store client ID for user-specific operations
         this.viewManager = viewManager;
         this.historyManager = historyManager;
@@ -1731,6 +1737,21 @@ class IpcHandlers {
             } catch (error) {
                 console.error('Failed to get URL injection status:', error);
                 return { success: false, error: error.message };
+            }
+        });
+
+        // Process URL with parameter injection
+        this.safeRegisterHandler('process-url-with-injection', async (_, url) => {
+            try {
+                console.log(`🔧 C-Client IPC: Processing URL with injection: ${url}`);
+                const { getUrlParameterInjector } = require('../utils/urlParameterInjector');
+                const urlInjector = getUrlParameterInjector(this.apiPort);
+                const processedUrl = await urlInjector.processUrl(url, this.clientId);
+                console.log(`🔧 C-Client IPC: URL processing completed: ${url} -> ${processedUrl}`);
+                return processedUrl;
+            } catch (error) {
+                console.error('Failed to process URL with injection:', error);
+                return url; // Return original URL if processing fails
             }
         });
     }

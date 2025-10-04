@@ -2,9 +2,15 @@ const VisitTracker = require('./visitTracker');
 const HistoryDatabase = require('../sqlite/historyDatabase');
 const UserActivityManager = require('./userActivityManager');
 
+// 导入日志系统
+const { getCClientLogger } = require('../utils/logger');
+
 // History Manager - Database version
 class HistoryManager {
     constructor(clientId = null) {
+        // 初始化日志系统
+        this.logger = getCClientLogger('history');
+        
         this.clientId = clientId;
         this.historyDB = new HistoryDatabase();
         this.visitTracker = new VisitTracker();
@@ -104,6 +110,73 @@ class HistoryManager {
             this.visitTracker.updateRecordTitle(record, title);
         } catch (error) {
             console.error('Failed to update record title:', error);
+        }
+    }
+
+    /**
+     * Record page visit and extract detailed content information
+     */
+    async recordPageVisitWithContent(url, viewId, webContents = null) {
+        try {
+            console.log(`🔍 HistoryManager: Recording page visit with content extraction for URL: ${url}`);
+
+            // 获取基础信息
+            const title = webContents ? webContents.getTitle() : 'Loading...';
+
+            // 提取页面内容信息
+            let pageContent = {};
+            if (webContents && !webContents.isDestroyed()) {
+                try {
+                    const PageContentExtractor = require('../utils/pageContentExtractor');
+                    pageContent = await PageContentExtractor.extractNSNContent(webContents, url);
+                    console.log(`✅ HistoryManager: Extracted page content:`, pageContent);
+                } catch (error) {
+                    console.error('❌ HistoryManager: Error extracting page content:', error);
+                    pageContent = { error: error.message, timestamp: Date.now() };
+                }
+            } else {
+                console.log('⚠️ HistoryManager: WebContents not available or destroyed, skipping content extraction');
+                pageContent = { timestamp: Date.now(), note: 'Content extraction skipped - webContents unavailable' };
+            }
+
+            // 记录访问
+            const record = await this.recordVisit(url, viewId);
+            if (record) {
+                console.log(`✅ HistoryManager: Visit recorded with ID: ${record.id}`);
+
+                // 更新标题
+                if (title && title !== 'Loading...') {
+                    this.updateRecordTitle(record, title);
+                }
+
+                // 更新描述为JSON格式的页面内容
+                this.updateRecordDescription(record, JSON.stringify(pageContent));
+
+                console.log(`✅ HistoryManager: Page content saved to description for visit ID: ${record.id}`);
+            } else {
+                console.log('⚠️ HistoryManager: Failed to record visit, skipping content extraction');
+            }
+
+            return record;
+        } catch (error) {
+            console.error('❌ HistoryManager: Error recording page visit with content:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Update record description (for storing JSON content)
+     */
+    updateRecordDescription(record, description) {
+        try {
+            if (this.historyDB && record && record.id) {
+                this.historyDB.updateRecordDescription(record.id, description);
+                console.log(`✅ HistoryManager: Updated description for record ID: ${record.id}`);
+            } else {
+                console.warn('⚠️ HistoryManager: Cannot update description - missing historyDB or record ID');
+            }
+        } catch (error) {
+            console.error('❌ HistoryManager: Error updating record description:', error);
         }
     }
 

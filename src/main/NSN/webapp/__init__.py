@@ -1,4 +1,4 @@
-from flask import Flask, render_template, session, redirect, url_for
+from flask import Flask, render_template, session, redirect, url_for, request
 from webapp import connect
 from webapp import db
 from .private_message import message_bp
@@ -43,5 +43,79 @@ from webapp import departure_board
 from webapp import appeals
 from webapp import announcement
 from webapp import help_requests
+
+# Global template variable injector for WebSocket connection
+@app.context_processor
+def inject_nmp_and_websocket_vars():
+    """Inject NMP parameters and WebSocket connection variables into all templates"""
+    # Check if NMP parameters are present in request
+    nmp_injected = bool(request.args.get('nmp_injected') or session.get('nmp_user_id'))
+    
+    if nmp_injected:
+        # Get NMP parameters from request args or session
+        nmp_user_id = request.args.get('nmp_user_id') or session.get('nmp_user_id', '')
+        nmp_username = request.args.get('nmp_username') or session.get('nmp_username', '')
+        nmp_client_type = request.args.get('nmp_client_type') or session.get('nmp_client_type', '')
+        nmp_timestamp = request.args.get('nmp_timestamp') or session.get('nmp_timestamp', '')
+        nmp_ip_address = request.args.get('nmp_ip_address') or session.get('nmp_ip_address', '')
+        nmp_port = request.args.get('nmp_port') or session.get('nmp_port', '')
+        nmp_node_id = request.args.get('nmp_node_id') or session.get('nmp_node_id', '')
+        nmp_domain_id = request.args.get('nmp_domain_id') or session.get('nmp_domain_id', '')
+        nmp_cluster_id = request.args.get('nmp_cluster_id') or session.get('nmp_cluster_id', '')
+        nmp_channel_id = request.args.get('nmp_channel_id') or session.get('nmp_channel_id', '')
+        
+        # B-Client configuration
+        b_client_url = "http://localhost:3000"
+        websocket_url = "ws://127.0.0.1:8766"
+        has_cookie = bool(session.get('loggedin') and session.get('user_id'))
+        has_node = True  # Assume node is available
+        needs_registration = True  # Always allow registration
+        
+        return {
+            'nmp_injected': True,
+            'nmp_user_id': nmp_user_id,
+            'nmp_username': nmp_username,
+            'nmp_client_type': nmp_client_type,
+            'nmp_timestamp': nmp_timestamp,
+            'nmp_ip_address': nmp_ip_address,
+            'nmp_port': nmp_port,
+            'nmp_node_id': nmp_node_id,
+            'nmp_domain_id': nmp_domain_id,
+            'nmp_cluster_id': nmp_cluster_id,
+            'nmp_channel_id': nmp_channel_id,
+            'b_client_url': b_client_url,
+            'websocket_url': websocket_url,
+            'has_cookie': has_cookie,
+            'has_node': has_node,
+            'needs_registration': needs_registration,
+            'registration_info': {
+                'b_client_url': b_client_url,
+                'websocket_url': websocket_url
+            }
+        }
+    else:
+        # No NMP parameters, return empty values
+        return {
+            'nmp_injected': False,
+            'nmp_user_id': '',
+            'nmp_username': '',
+            'nmp_client_type': '',
+            'nmp_timestamp': '',
+            'nmp_ip_address': '',
+            'nmp_port': '',
+            'nmp_node_id': '',
+            'nmp_domain_id': '',
+            'nmp_cluster_id': '',
+            'nmp_channel_id': '',
+            'b_client_url': 'http://localhost:3000',
+            'websocket_url': 'ws://127.0.0.1:8766',
+            'has_cookie': False,
+            'has_node': False,
+            'needs_registration': False,
+            'registration_info': {
+                'b_client_url': 'http://localhost:3000',
+                'websocket_url': 'ws://127.0.0.1:8766'
+            }
+        }
 
 

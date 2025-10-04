@@ -5,9 +5,11 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 from websockets.exceptions import ConnectionClosed
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# 导入日志系统
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
+from utils.logger import get_bclient_logger
 
 @dataclass
 class ClientConnection:
@@ -35,6 +37,9 @@ class NodeManager:
     """
     
     def __init__(self):
+        # 初始化日志系统
+        self.logger = get_bclient_logger('nodemanager')
+        
         # Connection pools: key -> list of ClientConnection
         self.domain_pool: Dict[str, List[ClientConnection]] = {}
         self.cluster_pool: Dict[str, List[ClientConnection]] = {}
@@ -48,7 +53,7 @@ class NodeManager:
         # Request tracking for async operations
         self.pending_requests: Dict[str, asyncio.Future] = {}
         
-        logger.info("NodeManager initialized with connection pools")
+        self.logger.info("NodeManager initialized with connection pools")
     
     # ===================== C-Client Registration =====================
     
@@ -65,62 +70,62 @@ class NodeManager:
             ClientConnection instance
         """
         try:
-            logger.info("=" * 80)
-            logger.info("🔧 NODEMANAGER: handle_new_connection() CALLED")
-            logger.info(f"📋 NMP Parameters received: {nmp_params}")
-            logger.info("=" * 80)
+            self.logger.info("=" * 80)
+            self.logger.info("🔧 NODEMANAGER: handle_new_connection() CALLED")
+            self.logger.info(f"📋 NMP Parameters received: {nmp_params}")
+            self.logger.info("=" * 80)
             
             # Register the C-Client
-            logger.info("📝 Step 1: Calling register_c_client()...")
+            self.logger.info("📝 Step 1: Calling register_c_client()...")
             connection = self.register_c_client(websocket, nmp_params)
-            logger.info(f"✅ Step 1 completed: Connection created for node {connection.node_id}")
+            self.logger.info(f"✅ Step 1 completed: Connection created for node {connection.node_id}")
             
             # Check if client needs node assignment
-            logger.info(f"🔍 Step 2: Checking if assignment needed...")
-            logger.info(f"   connection.domain_id = {connection.domain_id}")
-            logger.info(f"   connection.cluster_id = {connection.cluster_id}")
-            logger.info(f"   connection.channel_id = {connection.channel_id}")
+            self.logger.info(f"🔍 Step 2: Checking if assignment needed...")
+            self.logger.info(f"   connection.domain_id = {connection.domain_id}")
+            self.logger.info(f"   connection.cluster_id = {connection.cluster_id}")
+            self.logger.info(f"   connection.channel_id = {connection.channel_id}")
             
             # Check if full hierarchy exists
             needs_assignment = False
             
             if not connection.domain_id:
-                logger.info(f"⚠️ Client missing domain_id, needs full assignment")
+                self.logger.info(f"⚠️ Client missing domain_id, needs full assignment")
                 needs_assignment = True
             elif not connection.cluster_id:
-                logger.info(f"⚠️ Client has domain but missing cluster_id, needs cluster/channel assignment")
+                self.logger.info(f"⚠️ Client has domain but missing cluster_id, needs cluster/channel assignment")
                 needs_assignment = True
             elif not connection.channel_id:
-                logger.info(f"⚠️ Client has domain/cluster but missing channel_id, needs channel assignment")
+                self.logger.info(f"⚠️ Client has domain/cluster but missing channel_id, needs channel assignment")
                 needs_assignment = True
             
             if needs_assignment:
-                logger.info("📍 Step 3: Calling assign_new_client()...")
+                self.logger.info("📍 Step 3: Calling assign_new_client()...")
                 await self.assign_new_client(connection)
-                logger.info("✅ Step 3 completed: Client assigned to node structure")
+                self.logger.info("✅ Step 3 completed: Client assigned to node structure")
             else:
-                logger.info(f"✅ Client already has full hierarchy (domain/cluster/channel), skipping assignment")
+                self.logger.info(f"✅ Client already has full hierarchy (domain/cluster/channel), skipping assignment")
             
-            logger.info("=" * 80)
-            logger.info("🎉 NODEMANAGER: handle_new_connection() COMPLETED")
-            logger.info(f"   Node ID: {connection.node_id}")
-            logger.info(f"   Domain ID: {connection.domain_id}")
-            logger.info(f"   Cluster ID: {connection.cluster_id}")
-            logger.info(f"   Channel ID: {connection.channel_id}")
-            logger.info(f"   Is Domain Main: {connection.is_domain_main_node}")
-            logger.info(f"   Is Cluster Main: {connection.is_cluster_main_node}")
-            logger.info(f"   Is Channel Main: {connection.is_channel_main_node}")
-            logger.info("=" * 80)
+            self.logger.info("=" * 80)
+            self.logger.info("🎉 NODEMANAGER: handle_new_connection() COMPLETED")
+            self.logger.info(f"   Node ID: {connection.node_id}")
+            self.logger.info(f"   Domain ID: {connection.domain_id}")
+            self.logger.info(f"   Cluster ID: {connection.cluster_id}")
+            self.logger.info(f"   Channel ID: {connection.channel_id}")
+            self.logger.info(f"   Is Domain Main: {connection.is_domain_main_node}")
+            self.logger.info(f"   Is Cluster Main: {connection.is_cluster_main_node}")
+            self.logger.info(f"   Is Channel Main: {connection.is_channel_main_node}")
+            self.logger.info("=" * 80)
             
             return connection
             
         except Exception as e:
-            logger.error("=" * 80)
-            logger.error(f"❌ NODEMANAGER: ERROR in handle_new_connection()")
-            logger.error(f"   Error: {e}")
+            self.logger.error("=" * 80)
+            self.logger.error(f"❌ NODEMANAGER: ERROR in handle_new_connection()")
+            self.logger.error(f"   Error: {e}")
             import traceback
             traceback.print_exc()
-            logger.error("=" * 80)
+            self.logger.error("=" * 80)
             raise
     
     async def assign_new_client(self, connection: ClientConnection) -> bool:
@@ -135,71 +140,71 @@ class NodeManager:
             True if assignment successful
         """
         try:
-            logger.info("─" * 80)
-            logger.info(f"🆕 NODEMANAGER: assign_new_client() STARTED")
-            logger.info(f"   Client node_id: {connection.node_id}")
-            logger.info(f"   Current state: domain_id={connection.domain_id}, cluster_id={connection.cluster_id}, channel_id={connection.channel_id}")
+            self.logger.info("─" * 80)
+            self.logger.info(f"🆕 NODEMANAGER: assign_new_client() STARTED")
+            self.logger.info(f"   Client node_id: {connection.node_id}")
+            self.logger.info(f"   Current state: domain_id={connection.domain_id}, cluster_id={connection.cluster_id}, channel_id={connection.channel_id}")
             
             # Check what level needs to be created
             if not connection.domain_id:
                 # No domain - create full hierarchy
-                logger.info("📍 No domain_id - need to create full hierarchy")
-                logger.info(f"🔍 Checking domain_pool...")
-                logger.info(f"   domain_pool size: {len(self.domain_pool)}")
-                logger.info(f"   domain_pool keys: {list(self.domain_pool.keys())}")
+                self.logger.info("📍 No domain_id - need to create full hierarchy")
+                self.logger.info(f"🔍 Checking domain_pool...")
+                self.logger.info(f"   domain_pool size: {len(self.domain_pool)}")
+                self.logger.info(f"   domain_pool keys: {list(self.domain_pool.keys())}")
                 
                 if len(self.domain_pool) == 0:
-                    logger.info("📍 No domains exist, creating first domain node")
-                    logger.info("🏗️ Calling new_domain_node() to create full hierarchy...")
+                    self.logger.info("📍 No domains exist, creating first domain node")
+                    self.logger.info("🏗️ Calling new_domain_node() to create full hierarchy...")
                     result = await self.new_domain_node(connection)
-                    logger.info(f"─" * 80)
+                    self.logger.info(f"─" * 80)
                     return result
                 
                 # Try to assign to existing domain
-                logger.info(f"📍 Found {len(self.domain_pool)} existing domain(s), trying to assign...")
+                self.logger.info(f"📍 Found {len(self.domain_pool)} existing domain(s), trying to assign...")
                 for domain_id, domain_connections in self.domain_pool.items():
                     if len(domain_connections) == 0:
                         continue
                     domain_main_connection = domain_connections[0]
                     success = await self.assign_to_domain(connection, domain_id, domain_main_connection.node_id)
                     if success:
-                        logger.info(f"✅ Successfully assigned to domain {domain_id}")
-                        logger.info(f"─" * 80)
+                        self.logger.info(f"✅ Successfully assigned to domain {domain_id}")
+                        self.logger.info(f"─" * 80)
                         return True
                 
                 # All domains full, create new
-                logger.info("📍 All domains full, creating new domain")
+                self.logger.info("📍 All domains full, creating new domain")
                 result = await self.new_domain_node(connection)
-                logger.info(f"─" * 80)
+                self.logger.info(f"─" * 80)
                 return result
                 
             elif not connection.cluster_id:
                 # Has domain but no cluster - create cluster and channel
-                logger.info(f"📍 Has domain_id but no cluster_id - need to create cluster/channel")
-                logger.info(f"🏗️ Calling new_cluster_node() for domain {connection.domain_id}...")
+                self.logger.info(f"📍 Has domain_id but no cluster_id - need to create cluster/channel")
+                self.logger.info(f"🏗️ Calling new_cluster_node() for domain {connection.domain_id}...")
                 result = await self.new_cluster_node(connection, connection.domain_id)
-                logger.info(f"─" * 80)
+                self.logger.info(f"─" * 80)
                 return result
                 
             elif not connection.channel_id:
                 # Has domain/cluster but no channel - create channel only
-                logger.info(f"📍 Has domain/cluster but no channel_id - need to create channel")
-                logger.info(f"🏗️ Calling new_channel_node() for cluster {connection.cluster_id}...")
+                self.logger.info(f"📍 Has domain/cluster but no channel_id - need to create channel")
+                self.logger.info(f"🏗️ Calling new_channel_node() for cluster {connection.cluster_id}...")
                 result = await self.new_channel_node(connection, connection.domain_id, connection.cluster_id)
-                logger.info(f"─" * 80)
+                self.logger.info(f"─" * 80)
                 return result
             
             # Should not reach here
-            logger.warning("⚠️ Client has full hierarchy but assign_new_client was called")
-            logger.info(f"─" * 80)
+            self.logger.warning("⚠️ Client has full hierarchy but assign_new_client was called")
+            self.logger.info(f"─" * 80)
             return True
             
         except Exception as e:
-            logger.error(f"❌ NODEMANAGER: ERROR in assign_new_client()")
-            logger.error(f"   Error: {e}")
+            self.logger.error(f"❌ NODEMANAGER: ERROR in assign_new_client()")
+            self.logger.error(f"   Error: {e}")
             import traceback
             traceback.print_exc()
-            logger.error(f"─" * 80)
+            self.logger.error(f"─" * 80)
             return False
     
     def register_c_client(self, websocket: Any, nmp_params: Dict[str, Any]) -> ClientConnection:
@@ -224,8 +229,8 @@ class NodeManager:
             ClientConnection instance
         """
         try:
-            logger.info("─" * 80)
-            logger.info("📝 NODEMANAGER: register_c_client() STARTED")
+            self.logger.info("─" * 80)
+            self.logger.info("📝 NODEMANAGER: register_c_client() STARTED")
             
             # Extract parameters
             node_id = nmp_params.get('nmp_node_id')
@@ -238,17 +243,17 @@ class NodeManager:
             cluster_id = nmp_params.get('nmp_cluster_id')
             channel_id = nmp_params.get('nmp_channel_id')
             
-            logger.info(f"📋 Registering C-Client: node_id={node_id}")
-            logger.info(f"📋 NMP Parameters:")
-            logger.info(f"   node_id: {node_id}")
-            logger.info(f"   user_id: {user_id}")
-            logger.info(f"   username: {username}")
-            logger.info(f"   domain_main_node_id: {domain_main_node_id}")
-            logger.info(f"   cluster_main_node_id: {cluster_main_node_id}")
-            logger.info(f"   channel_main_node_id: {channel_main_node_id}")
-            logger.info(f"   domain_id: {domain_id}")
-            logger.info(f"   cluster_id: {cluster_id}")
-            logger.info(f"   channel_id: {channel_id}")
+            self.logger.info(f"📋 Registering C-Client: node_id={node_id}")
+            self.logger.info(f"📋 NMP Parameters:")
+            self.logger.info(f"   node_id: {node_id}")
+            self.logger.info(f"   user_id: {user_id}")
+            self.logger.info(f"   username: {username}")
+            self.logger.info(f"   domain_main_node_id: {domain_main_node_id}")
+            self.logger.info(f"   cluster_main_node_id: {cluster_main_node_id}")
+            self.logger.info(f"   channel_main_node_id: {channel_main_node_id}")
+            self.logger.info(f"   domain_id: {domain_id}")
+            self.logger.info(f"   cluster_id: {cluster_id}")
+            self.logger.info(f"   channel_id: {channel_id}")
             
             # Create connection object
             connection = ClientConnection(
@@ -264,77 +269,77 @@ class NodeManager:
                 channel_main_node_id=channel_main_node_id
             )
             
-            logger.info("🔍 Determining node type by ID comparison...")
+            self.logger.info("🔍 Determining node type by ID comparison...")
             
             # Determine node type by comparing node_id with main node IDs
-            logger.info(f"🔍 Checking if Domain main node:")
-            logger.info(f"   node_id ({node_id}) == domain_main_node_id ({domain_main_node_id})?")
+            self.logger.info(f"🔍 Checking if Domain main node:")
+            self.logger.info(f"   node_id ({node_id}) == domain_main_node_id ({domain_main_node_id})?")
             if domain_main_node_id and node_id == domain_main_node_id:
                 connection.is_domain_main_node = True
-                logger.info(f"  ✅ YES - Node {node_id} is a DOMAIN main node")
+                self.logger.info(f"  ✅ YES - Node {node_id} is a DOMAIN main node")
             else:
-                logger.info(f"  ❌ NO - Not a domain main node")
+                self.logger.info(f"  ❌ NO - Not a domain main node")
             
-            logger.info(f"🔍 Checking if Cluster main node:")
-            logger.info(f"   node_id ({node_id}) == cluster_main_node_id ({cluster_main_node_id})?")
+            self.logger.info(f"🔍 Checking if Cluster main node:")
+            self.logger.info(f"   node_id ({node_id}) == cluster_main_node_id ({cluster_main_node_id})?")
             if cluster_main_node_id and node_id == cluster_main_node_id:
                 connection.is_cluster_main_node = True
-                logger.info(f"  ✅ YES - Node {node_id} is a CLUSTER main node")
+                self.logger.info(f"  ✅ YES - Node {node_id} is a CLUSTER main node")
             else:
-                logger.info(f"  ❌ NO - Not a cluster main node")
+                self.logger.info(f"  ❌ NO - Not a cluster main node")
             
-            logger.info(f"🔍 Checking if Channel main node:")
-            logger.info(f"   node_id ({node_id}) == channel_main_node_id ({channel_main_node_id})?")
+            self.logger.info(f"🔍 Checking if Channel main node:")
+            self.logger.info(f"   node_id ({node_id}) == channel_main_node_id ({channel_main_node_id})?")
             if channel_main_node_id and node_id == channel_main_node_id:
                 connection.is_channel_main_node = True
-                logger.info(f"  ✅ YES - Node {node_id} is a CHANNEL main node")
+                self.logger.info(f"  ✅ YES - Node {node_id} is a CHANNEL main node")
             else:
-                logger.info(f"  ❌ NO - Not a channel main node")
+                self.logger.info(f"  ❌ NO - Not a channel main node")
             
-            logger.info("📦 Adding to connection pools...")
-            logger.info(f"  📋 Node type: Domain={'MAIN' if connection.is_domain_main_node else 'REGULAR'}, Cluster={'MAIN' if connection.is_cluster_main_node else 'REGULAR'}, Channel={'MAIN' if connection.is_channel_main_node else 'REGULAR'}")
+            self.logger.info("📦 Adding to connection pools...")
+            self.logger.info(f"  📋 Node type: Domain={'MAIN' if connection.is_domain_main_node else 'REGULAR'}, Cluster={'MAIN' if connection.is_cluster_main_node else 'REGULAR'}, Channel={'MAIN' if connection.is_channel_main_node else 'REGULAR'}")
             
             # Add to domain pool if domain_id exists (main node or regular node)
             if domain_id:
                 self.add_to_domain_pool(domain_id, connection)
                 node_type = "MAIN" if connection.is_domain_main_node else "regular"
-                logger.info(f"  ✅ Added {node_type} node to domain_pool[{domain_id}]")
+                self.logger.info(f"  ✅ Added {node_type} node to domain_pool[{domain_id}]")
             
             # Add to cluster pool if cluster_id exists (main node or regular node)
             if cluster_id:
                 self.add_to_cluster_pool(cluster_id, connection)
                 node_type = "MAIN" if connection.is_cluster_main_node else "regular"
-                logger.info(f"  ✅ Added {node_type} node to cluster_pool[{cluster_id}]")
+                self.logger.info(f"  ✅ Added {node_type} node to cluster_pool[{cluster_id}]")
             
             # Add to channel pool if channel_id exists (main node or regular node)
             if channel_id:
                 self.add_to_channel_pool(channel_id, connection)
                 node_type = "MAIN" if connection.is_channel_main_node else "regular"
-                logger.info(f"  ✅ Added {node_type} node to channel_pool[{channel_id}]")
+                self.logger.info(f"  ✅ Added {node_type} node to channel_pool[{channel_id}]")
             
             # If not a main node at any level, add to channel pool as regular node
             if not (connection.is_domain_main_node or connection.is_cluster_main_node or connection.is_channel_main_node):
-                logger.info(f"  ℹ️ Not a main node at any level")
+                self.logger.info(f"  ℹ️ Not a main node at any level")
                 if channel_id:
                     self.add_to_channel_pool(channel_id, connection)
-                    logger.info(f"  ✅ Added to channel_pool[{channel_id}] as regular node")
+                    self.logger.info(f"  ✅ Added to channel_pool[{channel_id}] as regular node")
                 else:
-                    logger.warning(f"  ⚠️ Regular node without channel_id, NOT added to any pool")
+                    self.logger.warning(f"  ⚠️ Regular node without channel_id, NOT added to any pool")
             
             # Display pool stats
             stats = self.get_pool_stats()
-            logger.info(f"📊 Current pool stats after registration:")
-            logger.info(f"   Total domains: {stats['domains']}")
-            logger.info(f"   Total clusters: {stats['clusters']}")
-            logger.info(f"   Total channels: {stats['channels']}")
-            logger.info(f"   Total connections: {stats['total_connections']}")
+            self.logger.info(f"📊 Current pool stats after registration:")
+            self.logger.info(f"   Total domains: {stats['domains']}")
+            self.logger.info(f"   Total clusters: {stats['clusters']}")
+            self.logger.info(f"   Total channels: {stats['channels']}")
+            self.logger.info(f"   Total connections: {stats['total_connections']}")
             
-            logger.info(f"✅ NODEMANAGER: register_c_client() COMPLETED for {node_id}")
-            logger.info("─" * 80)
+            self.logger.info(f"✅ NODEMANAGER: register_c_client() COMPLETED for {node_id}")
+            self.logger.info("─" * 80)
             return connection
             
         except Exception as e:
-            logger.error(f"Error registering C-Client: {e}")
+            self.logger.error(f"Error registering C-Client: {e}")
             raise
     
     # ===================== Connection Pool Management =====================
@@ -349,7 +354,7 @@ class NodeManager:
         if connection.node_id in self.domain_node_index[domain_id]:
             # Connection already exists, update it instead of adding duplicate
             existing_connection = self.domain_node_index[domain_id][connection.node_id]
-            logger.info(f"Connection for node {connection.node_id} already exists in domain pool {domain_id}, updating...")
+            self.logger.info(f"Connection for node {connection.node_id} already exists in domain pool {domain_id}, updating...")
             # Update the existing connection with new websocket and user info
             existing_connection.websocket = connection.websocket
             existing_connection.user_id = connection.user_id
@@ -357,13 +362,13 @@ class NodeManager:
             existing_connection.is_domain_main_node = connection.is_domain_main_node
             existing_connection.is_cluster_main_node = connection.is_cluster_main_node
             existing_connection.is_channel_main_node = connection.is_channel_main_node
-            logger.info(f"Updated existing connection for node {connection.node_id} in domain pool {domain_id}")
+            self.logger.info(f"Updated existing connection for node {connection.node_id} in domain pool {domain_id}")
         else:
             # New connection, add it to the pool and index
             self.domain_pool[domain_id].append(connection)
             self.domain_node_index[domain_id][connection.node_id] = connection
             connection.domain_id = domain_id
-            logger.info(f"Added new connection to domain pool {domain_id}")
+            self.logger.info(f"Added new connection to domain pool {domain_id}")
     
     def add_to_cluster_pool(self, cluster_id: str, connection: ClientConnection):
         """Add connection to cluster pool"""
@@ -375,7 +380,7 @@ class NodeManager:
         if connection.node_id in self.cluster_node_index[cluster_id]:
             # Connection already exists, update it instead of adding duplicate
             existing_connection = self.cluster_node_index[cluster_id][connection.node_id]
-            logger.info(f"Connection for node {connection.node_id} already exists in cluster pool {cluster_id}, updating...")
+            self.logger.info(f"Connection for node {connection.node_id} already exists in cluster pool {cluster_id}, updating...")
             # Update the existing connection with new websocket and user info
             existing_connection.websocket = connection.websocket
             existing_connection.user_id = connection.user_id
@@ -383,13 +388,13 @@ class NodeManager:
             existing_connection.is_domain_main_node = connection.is_domain_main_node
             existing_connection.is_cluster_main_node = connection.is_cluster_main_node
             existing_connection.is_channel_main_node = connection.is_channel_main_node
-            logger.info(f"Updated existing connection for node {connection.node_id} in cluster pool {cluster_id}")
+            self.logger.info(f"Updated existing connection for node {connection.node_id} in cluster pool {cluster_id}")
         else:
             # New connection, add it to the pool and index
             self.cluster_pool[cluster_id].append(connection)
             self.cluster_node_index[cluster_id][connection.node_id] = connection
             connection.cluster_id = cluster_id
-            logger.info(f"Added new connection to cluster pool {cluster_id}")
+            self.logger.info(f"Added new connection to cluster pool {cluster_id}")
     
     def add_to_channel_pool(self, channel_id: str, connection: ClientConnection):
         """Add connection to channel pool"""
@@ -401,7 +406,7 @@ class NodeManager:
         if connection.node_id in self.channel_node_index[channel_id]:
             # Connection already exists, update it instead of adding duplicate
             existing_connection = self.channel_node_index[channel_id][connection.node_id]
-            logger.info(f"Connection for node {connection.node_id} already exists in channel pool {channel_id}, updating...")
+            self.logger.info(f"Connection for node {connection.node_id} already exists in channel pool {channel_id}, updating...")
             # Update the existing connection with new websocket and user info
             existing_connection.websocket = connection.websocket
             existing_connection.user_id = connection.user_id
@@ -409,21 +414,21 @@ class NodeManager:
             existing_connection.is_domain_main_node = connection.is_domain_main_node
             existing_connection.is_cluster_main_node = connection.is_cluster_main_node
             existing_connection.is_channel_main_node = connection.is_channel_main_node
-            logger.info(f"Updated existing connection for node {connection.node_id} in channel pool {channel_id}")
+            self.logger.info(f"Updated existing connection for node {connection.node_id} in channel pool {channel_id}")
         else:
             # New connection, add it to the pool and index
             self.channel_pool[channel_id].append(connection)
             self.channel_node_index[channel_id][connection.node_id] = connection
             connection.channel_id = channel_id
-            logger.info(f"Added new connection to channel pool {channel_id}")
+            self.logger.info(f"Added new connection to channel pool {channel_id}")
     
     def remove_connection(self, connection: ClientConnection):
         """Remove connection from all pools with proper hierarchy cleanup"""
         
-        logger.info(f"🔧 NodeManager: Starting connection removal process")
-        logger.info(f"🔧 NodeManager: Connection details - node_id: {connection.node_id}, user_id: {connection.user_id}")
-        logger.info(f"🔧 NodeManager: Connection hierarchy - domain: {connection.domain_id}, cluster: {connection.cluster_id}, channel: {connection.channel_id}")
-        logger.info(f"🔧 NodeManager: Connection types - domain_main: {connection.is_domain_main_node}, cluster_main: {connection.is_cluster_main_node}, channel_main: {connection.is_channel_main_node}")
+        self.logger.info(f"🔧 NodeManager: Starting connection removal process")
+        self.logger.info(f"🔧 NodeManager: Connection details - node_id: {connection.node_id}, user_id: {connection.user_id}")
+        self.logger.info(f"🔧 NodeManager: Connection hierarchy - domain: {connection.domain_id}, cluster: {connection.cluster_id}, channel: {connection.channel_id}")
+        self.logger.info(f"🔧 NodeManager: Connection types - domain_main: {connection.is_domain_main_node}, cluster_main: {connection.is_cluster_main_node}, channel_main: {connection.is_channel_main_node}")
         
         # 1. 从所有池中移除连接（使用 WebSocket 对象引用）
         removed_from = []
@@ -431,7 +436,7 @@ class NodeManager:
         # Remove from channel pool using O(1) index lookup
         if connection.channel_id and connection.channel_id in self.channel_pool:
             original_count = len(self.channel_pool[connection.channel_id])
-            logger.info(f"🔧 NodeManager: Channel pool {connection.channel_id} has {original_count} connections before removal")
+            self.logger.info(f"🔧 NodeManager: Channel pool {connection.channel_id} has {original_count} connections before removal")
             
             # Use fast index lookup for O(1) removal
             if connection.node_id in self.channel_node_index[connection.channel_id]:
@@ -445,23 +450,23 @@ class NodeManager:
                 ]
                 
                 removed_from.append(f"channel({connection.channel_id})")
-                logger.info(f"✅ NodeManager: Successfully removed connection from channel pool {connection.channel_id} using O(1) index lookup for node_id: {connection.node_id}")
+                self.logger.info(f"✅ NodeManager: Successfully removed connection from channel pool {connection.channel_id} using O(1) index lookup for node_id: {connection.node_id}")
                 
                 # 检查是否可以删除 channel 池
                 if self._should_remove_channel_pool(connection.channel_id):
                     del self.channel_pool[connection.channel_id]
                     del self.channel_node_index[connection.channel_id]
                     removed_from.append(f"channel_pool({connection.channel_id})")
-                    logger.info(f"🗑️ NodeManager: Removed empty channel pool and index: {connection.channel_id}")
+                    self.logger.info(f"🗑️ NodeManager: Removed empty channel pool and index: {connection.channel_id}")
                 else:
-                    logger.info(f"📊 NodeManager: Channel pool {connection.channel_id} still has connections, keeping pool")
+                    self.logger.info(f"📊 NodeManager: Channel pool {connection.channel_id} still has connections, keeping pool")
             else:
-                logger.warning(f"⚠️ NodeManager: Node {connection.node_id} not found in channel index {connection.channel_id}")
+                self.logger.warning(f"⚠️ NodeManager: Node {connection.node_id} not found in channel index {connection.channel_id}")
         
         # Remove from cluster pool using O(1) index lookup
         if connection.cluster_id and connection.cluster_id in self.cluster_pool:
             original_count = len(self.cluster_pool[connection.cluster_id])
-            logger.info(f"🔧 NodeManager: Cluster pool {connection.cluster_id} has {original_count} connections before removal")
+            self.logger.info(f"🔧 NodeManager: Cluster pool {connection.cluster_id} has {original_count} connections before removal")
             
             # Use fast index lookup for O(1) removal
             if connection.node_id in self.cluster_node_index[connection.cluster_id]:
@@ -475,23 +480,23 @@ class NodeManager:
                 ]
                 
                 removed_from.append(f"cluster({connection.cluster_id})")
-                logger.info(f"✅ NodeManager: Successfully removed connection from cluster pool {connection.cluster_id} using O(1) index lookup for node_id: {connection.node_id}")
+                self.logger.info(f"✅ NodeManager: Successfully removed connection from cluster pool {connection.cluster_id} using O(1) index lookup for node_id: {connection.node_id}")
                 
                 # 检查是否可以删除 cluster 池
                 if self._should_remove_cluster_pool(connection.cluster_id):
                     del self.cluster_pool[connection.cluster_id]
                     del self.cluster_node_index[connection.cluster_id]
                     removed_from.append(f"cluster_pool({connection.cluster_id})")
-                    logger.info(f"🗑️ NodeManager: Removed empty cluster pool and index: {connection.cluster_id}")
+                    self.logger.info(f"🗑️ NodeManager: Removed empty cluster pool and index: {connection.cluster_id}")
                 else:
-                    logger.info(f"📊 NodeManager: Cluster pool {connection.cluster_id} still has connections, keeping pool")
+                    self.logger.info(f"📊 NodeManager: Cluster pool {connection.cluster_id} still has connections, keeping pool")
             else:
-                logger.warning(f"⚠️ NodeManager: Node {connection.node_id} not found in cluster index {connection.cluster_id}")
+                self.logger.warning(f"⚠️ NodeManager: Node {connection.node_id} not found in cluster index {connection.cluster_id}")
         
         # Remove from domain pool using O(1) index lookup
         if connection.domain_id and connection.domain_id in self.domain_pool:
             original_count = len(self.domain_pool[connection.domain_id])
-            logger.info(f"🔧 NodeManager: Domain pool {connection.domain_id} has {original_count} connections before removal")
+            self.logger.info(f"🔧 NodeManager: Domain pool {connection.domain_id} has {original_count} connections before removal")
             
             # Use fast index lookup for O(1) removal
             if connection.node_id in self.domain_node_index[connection.domain_id]:
@@ -505,83 +510,85 @@ class NodeManager:
                 ]
                 
                 removed_from.append(f"domain({connection.domain_id})")
-                logger.info(f"✅ NodeManager: Successfully removed connection from domain pool {connection.domain_id} using O(1) index lookup for node_id: {connection.node_id}")
+                self.logger.info(f"✅ NodeManager: Successfully removed connection from domain pool {connection.domain_id} using O(1) index lookup for node_id: {connection.node_id}")
                 
                 # 检查是否可以删除 domain 池
                 if self._should_remove_domain_pool(connection.domain_id):
                     del self.domain_pool[connection.domain_id]
                     del self.domain_node_index[connection.domain_id]
                     removed_from.append(f"domain_pool({connection.domain_id})")
-                    logger.info(f"🗑️ NodeManager: Removed empty domain pool and index: {connection.domain_id}")
+                    self.logger.info(f"🗑️ NodeManager: Removed empty domain pool and index: {connection.domain_id}")
                 else:
-                    logger.info(f"📊 NodeManager: Domain pool {connection.domain_id} still has connections, keeping pool")
+                    self.logger.info(f"📊 NodeManager: Domain pool {connection.domain_id} still has connections, keeping pool")
             else:
-                logger.warning(f"⚠️ NodeManager: Node {connection.node_id} not found in domain index {connection.domain_id}")
+                self.logger.warning(f"⚠️ NodeManager: Node {connection.node_id} not found in domain index {connection.domain_id}")
         
         # Log final pool status
         total_domains = len(self.domain_pool)
         total_clusters = len(self.cluster_pool)
         total_channels = len(self.channel_pool)
-        logger.info(f"📊 NodeManager: Final pool status after removal - Domains: {total_domains}, Clusters: {total_clusters}, Channels: {total_channels}")
+        self.logger.info(f"📊 NodeManager: Final pool status after removal - Domains: {total_domains}, Clusters: {total_clusters}, Channels: {total_channels}")
         
         if removed_from:
-            logger.info(f"✅ NodeManager: Successfully removed connection from: {', '.join(removed_from)}")
+            self.logger.info(f"✅ NodeManager: Successfully removed connection from: {', '.join(removed_from)}")
         else:
-            logger.warning(f"⚠️ NodeManager: Connection was not found in any hierarchy pools")
+            self.logger.warning(f"⚠️ NodeManager: Connection was not found in any hierarchy pools")
 
     def _should_remove_channel_pool(self, channel_id: str) -> bool:
         """Check if channel pool should be removed"""
-        logger.info(f"🔍 NodeManager: Checking if channel pool {channel_id} should be removed")
+        self.logger.info(f"🔍 NodeManager: Checking if channel pool {channel_id} should be removed")
         
         # Channel 池可以删除的条件：
         # 1. 池中没有连接了
         # 2. 或者池中只剩下主节点连接，但主节点也断开了
         if channel_id not in self.channel_pool:
-            logger.info(f"✅ NodeManager: Channel pool {channel_id} not found, should be removed")
+            self.logger.info(f"✅ NodeManager: Channel pool {channel_id} not found, should be removed")
             return True
             
         remaining_connections = self.channel_pool[channel_id]
-        logger.info(f"🔍 NodeManager: Channel pool {channel_id} has {len(remaining_connections)} remaining connections")
+        self.logger.info(f"🔍 NodeManager: Channel pool {channel_id} has {len(remaining_connections)} remaining connections")
         
         if not remaining_connections:
-            logger.info(f"✅ NodeManager: Channel pool {channel_id} is empty, should be removed")
+            self.logger.info(f"✅ NodeManager: Channel pool {channel_id} is empty, should be removed")
             return True
             
         # 如果只剩下主节点且主节点断开，可以删除
         if len(remaining_connections) == 1:
             main_connection = remaining_connections[0]
-            logger.info(f"🔍 NodeManager: Channel pool {channel_id} has 1 connection, checking if it's a closed main node")
-            logger.info(f"🔍 NodeManager: Connection is_channel_main_node: {main_connection.is_channel_main_node}")
-            logger.info(f"🔍 NodeManager: Connection websocket.closed: {main_connection.websocket.closed}")
+            self.logger.info(f"🔍 NodeManager: Channel pool {channel_id} has 1 connection, checking if it's a closed main node")
+            self.logger.info(f"🔍 NodeManager: Connection is_channel_main_node: {main_connection.is_channel_main_node}")
+            self.logger.info(f"🔍 NodeManager: Connection websocket.closed: {main_connection.websocket.closed}")
             
-            if (main_connection.is_channel_main_node and 
-                main_connection.websocket.closed):
-                logger.info(f"✅ NodeManager: Channel pool {channel_id} has only closed main node, should be removed")
+            # Check if the main node connection is still valid
+            is_connection_valid = self._is_websocket_valid(main_connection.websocket)
+            
+            if (main_connection.is_channel_main_node and not is_connection_valid):
+                self.logger.info(f"✅ NodeManager: Channel pool {channel_id} has only invalid main node, should be removed")
                 return True
             else:
-                logger.info(f"📊 NodeManager: Channel pool {channel_id} has active connection, keeping pool")
+                self.logger.info(f"📊 NodeManager: Channel pool {channel_id} has active connection, keeping pool")
         else:
-            logger.info(f"📊 NodeManager: Channel pool {channel_id} has multiple connections, keeping pool")
+            self.logger.info(f"📊 NodeManager: Channel pool {channel_id} has multiple connections, keeping pool")
                 
         return False
 
     def _should_remove_cluster_pool(self, cluster_id: str) -> bool:
         """Check if cluster pool should be removed"""
-        logger.info(f"🔍 NodeManager: Checking if cluster pool {cluster_id} should be removed")
+        self.logger.info(f"🔍 NodeManager: Checking if cluster pool {cluster_id} should be removed")
         
         # Cluster 池可以删除的条件：
         # 1. 池中没有连接了
         # 2. 或者池中只剩下主节点连接，但主节点也断开了
         # 3. 或者该 cluster 下的所有 channels 都被删除了
         if cluster_id not in self.cluster_pool:
-            logger.info(f"✅ NodeManager: Cluster pool {cluster_id} not found, should be removed")
+            self.logger.info(f"✅ NodeManager: Cluster pool {cluster_id} not found, should be removed")
             return True
             
         remaining_connections = self.cluster_pool[cluster_id]
-        logger.info(f"🔍 NodeManager: Cluster pool {cluster_id} has {len(remaining_connections)} remaining connections")
+        self.logger.info(f"🔍 NodeManager: Cluster pool {cluster_id} has {len(remaining_connections)} remaining connections")
         
         if not remaining_connections:
-            logger.info(f"✅ NodeManager: Cluster pool {cluster_id} is empty, should be removed")
+            self.logger.info(f"✅ NodeManager: Cluster pool {cluster_id} is empty, should be removed")
             return True
             
         # 检查是否还有相关的 channels
@@ -590,33 +597,33 @@ class NodeManager:
             if conn.channel_id and conn.channel_id in self.channel_pool:
                 active_channels.append(conn.channel_id)
         
-        logger.info(f"🔍 NodeManager: Cluster pool {cluster_id} has active channels: {active_channels}")
+        self.logger.info(f"🔍 NodeManager: Cluster pool {cluster_id} has active channels: {active_channels}")
         
         if not active_channels:
-            logger.info(f"✅ NodeManager: Cluster pool {cluster_id} has no active channels, should be removed")
+            self.logger.info(f"✅ NodeManager: Cluster pool {cluster_id} has no active channels, should be removed")
             return True
         else:
-            logger.info(f"📊 NodeManager: Cluster pool {cluster_id} has active channels, keeping pool")
+            self.logger.info(f"📊 NodeManager: Cluster pool {cluster_id} has active channels, keeping pool")
             
         return False
 
     def _should_remove_domain_pool(self, domain_id: str) -> bool:
         """Check if domain pool should be removed"""
-        logger.info(f"🔍 NodeManager: Checking if domain pool {domain_id} should be removed")
+        self.logger.info(f"🔍 NodeManager: Checking if domain pool {domain_id} should be removed")
         
         # Domain 池可以删除的条件：
         # 1. 池中没有连接了
         # 2. 或者池中只剩下主节点连接，但主节点也断开了
         # 3. 或者该 domain 下的所有 clusters 都被删除了
         if domain_id not in self.domain_pool:
-            logger.info(f"✅ NodeManager: Domain pool {domain_id} not found, should be removed")
+            self.logger.info(f"✅ NodeManager: Domain pool {domain_id} not found, should be removed")
             return True
             
         remaining_connections = self.domain_pool[domain_id]
-        logger.info(f"🔍 NodeManager: Domain pool {domain_id} has {len(remaining_connections)} remaining connections")
+        self.logger.info(f"🔍 NodeManager: Domain pool {domain_id} has {len(remaining_connections)} remaining connections")
         
         if not remaining_connections:
-            logger.info(f"✅ NodeManager: Domain pool {domain_id} is empty, should be removed")
+            self.logger.info(f"✅ NodeManager: Domain pool {domain_id} is empty, should be removed")
             return True
             
         # 检查是否还有相关的 clusters
@@ -625,13 +632,13 @@ class NodeManager:
             if conn.cluster_id and conn.cluster_id in self.cluster_pool:
                 active_clusters.append(conn.cluster_id)
         
-        logger.info(f"🔍 NodeManager: Domain pool {domain_id} has active clusters: {active_clusters}")
+        self.logger.info(f"🔍 NodeManager: Domain pool {domain_id} has active clusters: {active_clusters}")
         
         if not active_clusters:
-            logger.info(f"✅ NodeManager: Domain pool {domain_id} has no active clusters, should be removed")
+            self.logger.info(f"✅ NodeManager: Domain pool {domain_id} has no active clusters, should be removed")
             return True
         else:
-            logger.info(f"📊 NodeManager: Domain pool {domain_id} has active clusters, keeping pool")
+            self.logger.info(f"📊 NodeManager: Domain pool {domain_id} has active clusters, keeping pool")
             
         return False
     
@@ -650,30 +657,30 @@ class NodeManager:
             # Send command
             import json
             await connection.websocket.send(json.dumps(command))
-            logger.info(f"Sent command {command['type']} to C-Client with request_id: {request_id}")
+            self.logger.info(f"Sent command {command['type']} to C-Client with request_id: {request_id}")
             
             # Wait for response with timeout
             try:
-                logger.info(f"⏳ Waiting for response (timeout: 30s)...")
+                self.logger.info(f"⏳ Waiting for response (timeout: 30s)...")
                 response = await asyncio.wait_for(future, timeout=30.0)
-                logger.info(f"✅ Received response for {command['type']}")
-                logger.info(f"📋 Response data: {response}")
+                self.logger.info(f"✅ Received response for {command['type']}")
+                self.logger.info(f"📋 Response data: {response}")
                 # Clean up on success
                 if request_id in self.pending_requests:
                     del self.pending_requests[request_id]
                 return response
             except asyncio.TimeoutError:
-                logger.error(f"❌ Timeout waiting for response to {command['type']} (request_id: {request_id})")
-                logger.error(f"   No response received after 30 seconds")
-                logger.error(f"   Keeping request_id in pending_requests for late response handling")
+                self.logger.error(f"❌ Timeout waiting for response to {command['type']} (request_id: {request_id})")
+                self.logger.error(f"   No response received after 30 seconds")
+                self.logger.error(f"   Keeping request_id in pending_requests for late response handling")
                 # Don't delete yet - allow late response to be processed
                 return {"success": False, "error": "Timeout"}
                     
         except ConnectionClosed:
-            logger.error("Connection closed while sending command")
+            self.logger.error("Connection closed while sending command")
             return {"success": False, "error": "Connection closed"}
         except Exception as e:
-            logger.error(f"Error sending command: {e}")
+            self.logger.error(f"Error sending command: {e}")
             return {"success": False, "error": str(e)}
     
     async def handle_c_client_response(self, connection: ClientConnection, response: Dict[str, Any]):
@@ -681,19 +688,19 @@ class NodeManager:
         request_id = response.get('request_id')
         command_type = response.get('command_type')
         
-        logger.info(f"📥 NODEMANAGER: handle_c_client_response() CALLED")
-        logger.info(f"   Request ID: {request_id}")
-        logger.info(f"   Command type: {command_type}")
-        logger.info(f"   Success: {response.get('success')}")
+        self.logger.info(f"📥 NODEMANAGER: handle_c_client_response() CALLED")
+        self.logger.info(f"   Request ID: {request_id}")
+        self.logger.info(f"   Command type: {command_type}")
+        self.logger.info(f"   Success: {response.get('success')}")
         
         if request_id and request_id in self.pending_requests:
             future = self.pending_requests[request_id]
             if not future.done():
-                logger.info(f"✅ Setting result for pending request {request_id}")
+                self.logger.info(f"✅ Setting result for pending request {request_id}")
                 future.set_result(response)
             else:
-                logger.warning(f"⚠️ Future for request {request_id} already done (likely timed out)")
-                logger.info(f"   Processing late response manually...")
+                self.logger.warning(f"⚠️ Future for request {request_id} already done (likely timed out)")
+                self.logger.info(f"   Processing late response manually...")
                 
                 # Handle late response - process the result even though timeout occurred
                 if response.get('success') and command_type:
@@ -701,50 +708,50 @@ class NodeManager:
             
             # Clean up after handling
             del self.pending_requests[request_id]
-            logger.info(f"✅ Cleaned up request_id: {request_id}")
+            self.logger.info(f"✅ Cleaned up request_id: {request_id}")
         else:
-            logger.warning(f"⚠️ No pending request found for request_id: {request_id}")
+            self.logger.warning(f"⚠️ No pending request found for request_id: {request_id}")
     
     async def _process_late_response(self, connection: ClientConnection, command_type: str, response: Dict[str, Any]):
         """Process a late response that arrived after timeout"""
         try:
-            logger.info(f"🔄 PROCESSING LATE RESPONSE for {command_type}")
+            self.logger.info(f"🔄 PROCESSING LATE RESPONSE for {command_type}")
             data = response.get('data', {})
             
             if command_type == 'new_domain_node':
                 domain_id = data.get('domain_id')
                 if domain_id:
-                    logger.info(f"   Late response: domain_id = {domain_id}")
+                    self.logger.info(f"   Late response: domain_id = {domain_id}")
                     connection.domain_id = domain_id
                     # Continue with cluster creation
-                    logger.info(f"   Continuing to create cluster...")
+                    self.logger.info(f"   Continuing to create cluster...")
                     await self.new_cluster_node(connection, domain_id)
                     
             elif command_type == 'new_cluster_node':
                 cluster_id = data.get('cluster_id')
                 if cluster_id:
-                    logger.info(f"   Late response: cluster_id = {cluster_id}")
+                    self.logger.info(f"   Late response: cluster_id = {cluster_id}")
                     connection.cluster_id = cluster_id
                     # Continue with channel creation
-                    logger.info(f"   Continuing to create channel...")
+                    self.logger.info(f"   Continuing to create channel...")
                     await self.new_channel_node(connection, connection.domain_id, cluster_id)
                     
             elif command_type == 'new_channel_node':
                 channel_id = data.get('channel_id')
                 if channel_id:
-                    logger.info(f"   Late response: channel_id = {channel_id}")
+                    self.logger.info(f"   Late response: channel_id = {channel_id}")
                     connection.channel_id = channel_id
                     # Add to channel pool
                     if connection.is_channel_main_node:
                         if channel_id not in self.channel_pool:
                             self.channel_pool[channel_id] = []
                         self.channel_pool[channel_id].append(connection)
-                        logger.info(f"   ✅ Added to channel_pool[{channel_id}]")
-                    logger.info(f"   ✅ Full hierarchy completed via late response!")
+                        self.logger.info(f"   ✅ Added to channel_pool[{channel_id}]")
+                    self.logger.info(f"   ✅ Full hierarchy completed via late response!")
                     
-            logger.info(f"✅ Late response processed successfully")
+            self.logger.info(f"✅ Late response processed successfully")
         except Exception as e:
-            logger.error(f"❌ Error processing late response: {e}")
+            self.logger.error(f"❌ Error processing late response: {e}")
     
     # ===================== Count Peers Methods =====================
     
@@ -766,11 +773,11 @@ class NodeManager:
             if response.get("success"):
                 return response.get("data", {}).get("count", 0)
             else:
-                logger.error(f"Failed to count peers: {response.get('error')}")
+                self.logger.error(f"Failed to count peers: {response.get('error')}")
                 return 0
                 
         except Exception as e:
-            logger.error(f"Error in count_peers: {e}")
+            self.logger.error(f"Error in count_peers: {e}")
             return 0
     
     # ===================== Assign To Methods =====================
@@ -785,32 +792,32 @@ class NodeManager:
             # Try to count peers through ANY connection in the pool (main node or regular node)
             node_count = 0
             if channel_connections:
-                logger.info(f"📊 Channel pool has {len(channel_connections)} connection(s)")
-                logger.info(f"   → Attempting to count peers through available connections...")
+                self.logger.info(f"📊 Channel pool has {len(channel_connections)} connection(s)")
+                self.logger.info(f"   → Attempting to count peers through available connections...")
                 
                 # Try to count through any available connection
                 count_success = False
                 for conn in channel_connections:
                     try:
                         node_count = await self.count_peers(conn, None, None, None)
-                        logger.info(f"✅ Successfully counted peers through node {conn.node_id}: {node_count} nodes")
+                        self.logger.info(f"✅ Successfully counted peers through node {conn.node_id}: {node_count} nodes")
                         count_success = True
                         break
                     except Exception as e:
-                        logger.warning(f"⚠️ Failed to count through node {conn.node_id}: {e}")
+                        self.logger.warning(f"⚠️ Failed to count through node {conn.node_id}: {e}")
                         continue
                 
                 if count_success:
                     if node_count >= 1000:
-                        logger.info(f"❌ Channel {channel_id} is full ({node_count} nodes)")
+                        self.logger.info(f"❌ Channel {channel_id} is full ({node_count} nodes)")
                         return False
                     else:
-                        logger.info(f"✅ Channel {channel_id} has capacity ({node_count} < 1000)")
+                        self.logger.info(f"✅ Channel {channel_id} has capacity ({node_count} < 1000)")
                 else:
-                    logger.warning(f"⚠️ All connections failed to count peers, proceeding with assignment anyway")
+                    self.logger.warning(f"⚠️ All connections failed to count peers, proceeding with assignment anyway")
             else:
-                logger.info(f"⚠️ Channel pool {channel_id} is empty (no connections)")
-                logger.info(f"   → Skipping peer count, directly assigning (assuming available)")
+                self.logger.info(f"⚠️ Channel pool {channel_id} is empty (no connections)")
+                self.logger.info(f"   → Skipping peer count, directly assigning (assuming available)")
             
             # Send assignToChannel command
             command = {
@@ -837,14 +844,14 @@ class NodeManager:
                     connection.node_id
                 )
                 
-                logger.info(f"✅ Successfully assigned {connection.node_id} to channel {channel_id}")
+                self.logger.info(f"✅ Successfully assigned {connection.node_id} to channel {channel_id}")
                 return True
             else:
-                logger.error(f"❌ Failed to assign to channel: {response.get('error')}")
+                self.logger.error(f"❌ Failed to assign to channel: {response.get('error')}")
                 return False
                 
         except Exception as e:
-            logger.error(f"❌ Error in assign_to_channel: {e}")
+            self.logger.error(f"❌ Error in assign_to_channel: {e}")
             return False
     
     async def assign_to_cluster(self, connection: ClientConnection, cluster_id: str, 
@@ -857,32 +864,32 @@ class NodeManager:
             # Try to count peers through ANY connection in the pool (main node or regular node)
             channel_count = 0
             if cluster_connections:
-                logger.info(f"📊 Cluster pool has {len(cluster_connections)} connection(s)")
-                logger.info(f"   → Attempting to count peers through available connections...")
+                self.logger.info(f"📊 Cluster pool has {len(cluster_connections)} connection(s)")
+                self.logger.info(f"   → Attempting to count peers through available connections...")
                 
                 # Try to count through any available connection
                 count_success = False
                 for conn in cluster_connections:
                     try:
                         channel_count = await self.count_peers(conn, None, cluster_id, None)
-                        logger.info(f"✅ Successfully counted peers through node {conn.node_id}: {channel_count} channels")
+                        self.logger.info(f"✅ Successfully counted peers through node {conn.node_id}: {channel_count} channels")
                         count_success = True
                         break
                     except Exception as e:
-                        logger.warning(f"⚠️ Failed to count through node {conn.node_id}: {e}")
+                        self.logger.warning(f"⚠️ Failed to count through node {conn.node_id}: {e}")
                         continue
                 
                 if count_success:
                     if channel_count >= 1000:
-                        logger.info(f"❌ Cluster {cluster_id} is full ({channel_count} channels)")
+                        self.logger.info(f"❌ Cluster {cluster_id} is full ({channel_count} channels)")
                         return False
                     else:
-                        logger.info(f"✅ Cluster {cluster_id} has capacity ({channel_count} < 1000)")
+                        self.logger.info(f"✅ Cluster {cluster_id} has capacity ({channel_count} < 1000)")
                 else:
-                    logger.warning(f"⚠️ All connections failed to count peers, proceeding with assignment anyway")
+                    self.logger.warning(f"⚠️ All connections failed to count peers, proceeding with assignment anyway")
             else:
-                logger.info(f"⚠️ Cluster pool {cluster_id} is empty (no connections)")
-                logger.info(f"   → Skipping peer count, directly assigning (assuming available)")
+                self.logger.info(f"⚠️ Cluster pool {cluster_id} is empty (no connections)")
+                self.logger.info(f"   → Skipping peer count, directly assigning (assuming available)")
             
             # Send assignToCluster command
             command = {
@@ -904,18 +911,18 @@ class NodeManager:
                 channel_assigned = False
                 for channel_connection in self.cluster_pool.get(cluster_id, []):
                     if channel_connection.channel_id:
-                        logger.info(f"🔍 Trying to assign to existing channel: {channel_connection.channel_id}")
+                        self.logger.info(f"🔍 Trying to assign to existing channel: {channel_connection.channel_id}")
                         if await self.assign_to_channel(connection, channel_connection.channel_id, 
                                                        channel_connection.node_id):
-                            logger.info(f"✅ Successfully assigned to existing channel: {channel_connection.channel_id}")
+                            self.logger.info(f"✅ Successfully assigned to existing channel: {channel_connection.channel_id}")
                             channel_assigned = True
                             break
                         else:
-                            logger.warning(f"⚠️ Failed to assign to channel {channel_connection.channel_id}, trying next...")
+                            self.logger.warning(f"⚠️ Failed to assign to channel {channel_connection.channel_id}, trying next...")
                 
                 # Only create new channel if NO existing channels were available
                 if not channel_assigned:
-                    logger.info(f"📍 No available channels found, creating new channel for cluster {cluster_id}")
+                    self.logger.info(f"📍 No available channels found, creating new channel for cluster {cluster_id}")
                     # Use connection's domain_id instead of response data
                     domain_id = connection.domain_id
                     if domain_id:
@@ -925,14 +932,14 @@ class NodeManager:
                             return await self.assign_to_channel(connection, connection.channel_id, 
                                                               connection.node_id)
                 
-                logger.info(f"✅ Successfully assigned {connection.node_id} to cluster {cluster_id}")
+                self.logger.info(f"✅ Successfully assigned {connection.node_id} to cluster {cluster_id}")
                 return True
             else:
-                logger.error(f"❌ Failed to assign to cluster: {response.get('error')}")
+                self.logger.error(f"❌ Failed to assign to cluster: {response.get('error')}")
                 return False
                 
         except Exception as e:
-            logger.error(f"❌ Error in assign_to_cluster: {e}")
+            self.logger.error(f"❌ Error in assign_to_cluster: {e}")
             return False
     
     async def assign_to_domain(self, connection: ClientConnection, domain_id: str, 
@@ -945,32 +952,32 @@ class NodeManager:
             # Try to count peers through ANY connection in the pool (main node or regular node)
             cluster_count = 0
             if domain_connections:
-                logger.info(f"📊 Domain pool has {len(domain_connections)} connection(s)")
-                logger.info(f"   → Attempting to count peers through available connections...")
+                self.logger.info(f"📊 Domain pool has {len(domain_connections)} connection(s)")
+                self.logger.info(f"   → Attempting to count peers through available connections...")
                 
                 # Try to count through any available connection
                 count_success = False
                 for conn in domain_connections:
                     try:
                         cluster_count = await self.count_peers(conn, domain_id, None, None)
-                        logger.info(f"✅ Successfully counted peers through node {conn.node_id}: {cluster_count} clusters")
+                        self.logger.info(f"✅ Successfully counted peers through node {conn.node_id}: {cluster_count} clusters")
                         count_success = True
                         break
                     except Exception as e:
-                        logger.warning(f"⚠️ Failed to count through node {conn.node_id}: {e}")
+                        self.logger.warning(f"⚠️ Failed to count through node {conn.node_id}: {e}")
                         continue
                 
                 if count_success:
                     if cluster_count >= 1000:
-                        logger.info(f"❌ Domain {domain_id} is full ({cluster_count} clusters)")
+                        self.logger.info(f"❌ Domain {domain_id} is full ({cluster_count} clusters)")
                         return False
                     else:
-                        logger.info(f"✅ Domain {domain_id} has capacity ({cluster_count} < 1000)")
+                        self.logger.info(f"✅ Domain {domain_id} has capacity ({cluster_count} < 1000)")
                 else:
-                    logger.warning(f"⚠️ All connections failed to count peers, proceeding with assignment anyway")
+                    self.logger.warning(f"⚠️ All connections failed to count peers, proceeding with assignment anyway")
             else:
-                logger.info(f"⚠️ Domain pool {domain_id} is empty (no connections)")
-                logger.info(f"   → Skipping peer count, directly assigning (assuming available)")
+                self.logger.info(f"⚠️ Domain pool {domain_id} is empty (no connections)")
+                self.logger.info(f"   → Skipping peer count, directly assigning (assuming available)")
             
             # Send assignToDomain command
             command = {
@@ -991,32 +998,32 @@ class NodeManager:
                 cluster_assigned = False
                 for cluster_connection in self.domain_pool.get(domain_id, []):
                     if cluster_connection.cluster_id:
-                        logger.info(f"🔍 Trying to assign to existing cluster: {cluster_connection.cluster_id}")
+                        self.logger.info(f"🔍 Trying to assign to existing cluster: {cluster_connection.cluster_id}")
                         if await self.assign_to_cluster(connection, cluster_connection.cluster_id, 
                                                        cluster_connection.node_id):
-                            logger.info(f"✅ Successfully assigned to existing cluster: {cluster_connection.cluster_id}")
+                            self.logger.info(f"✅ Successfully assigned to existing cluster: {cluster_connection.cluster_id}")
                             cluster_assigned = True
                             break
                         else:
-                            logger.warning(f"⚠️ Failed to assign to cluster {cluster_connection.cluster_id}, trying next...")
+                            self.logger.warning(f"⚠️ Failed to assign to cluster {cluster_connection.cluster_id}, trying next...")
                 
                 # Only create new cluster if NO existing clusters were available
                 if not cluster_assigned:
-                    logger.info(f"📍 No available clusters found, creating new cluster for domain {domain_id}")
+                    self.logger.info(f"📍 No available clusters found, creating new cluster for domain {domain_id}")
                     await self.new_cluster_node(connection, domain_id)
                     # Assign to own cluster
                     if connection.cluster_id:
                         return await self.assign_to_cluster(connection, connection.cluster_id, 
                                                           connection.node_id)
                 
-                logger.info(f"✅ Successfully assigned {connection.node_id} to domain {domain_id}")
+                self.logger.info(f"✅ Successfully assigned {connection.node_id} to domain {domain_id}")
                 return True
             else:
-                logger.error(f"❌ Failed to assign to domain: {response.get('error')}")
+                self.logger.error(f"❌ Failed to assign to domain: {response.get('error')}")
                 return False
                 
         except Exception as e:
-            logger.error(f"❌ Error in assign_to_domain: {e}")
+            self.logger.error(f"❌ Error in assign_to_domain: {e}")
             return False
     
     # ===================== New Node Methods =====================
@@ -1025,7 +1032,7 @@ class NodeManager:
                               cluster_id: str) -> bool:
         """Create new channel node (final level)"""
         try:
-            logger.info(f"🏗️ Creating new channel node for {connection.node_id} in cluster {cluster_id}")
+            self.logger.info(f"🏗️ Creating new channel node for {connection.node_id} in cluster {cluster_id}")
             
             command = {
                 "type": "new_channel_node",
@@ -1038,13 +1045,13 @@ class NodeManager:
             response = await self.send_to_c_client(connection, command)
             
             if not response.get("success"):
-                logger.error(f"Failed to create channel node: {response.get('error')}")
+                self.logger.error(f"Failed to create channel node: {response.get('error')}")
                 return False
             
             # Get channel_id from response
             channel_id = response.get("data", {}).get("channel_id")
             if not channel_id:
-                logger.error("No channel_id in response")
+                self.logger.error("No channel_id in response")
                 return False
             
             # Update connection
@@ -1053,22 +1060,22 @@ class NodeManager:
             
             # Add to channel pool
             self.add_to_channel_pool(channel_id, connection)
-            logger.info(f"✅ Created channel node: {channel_id}")
-            logger.info(f"🎉 Full node hierarchy completed for {connection.node_id}")
-            logger.info(f"   Domain: {domain_id}")
-            logger.info(f"   Cluster: {cluster_id}")
-            logger.info(f"   Channel: {channel_id}")
+            self.logger.info(f"✅ Created channel node: {channel_id}")
+            self.logger.info(f"🎉 Full node hierarchy completed for {connection.node_id}")
+            self.logger.info(f"   Domain: {domain_id}")
+            self.logger.info(f"   Cluster: {cluster_id}")
+            self.logger.info(f"   Channel: {channel_id}")
             
             return True
                 
         except Exception as e:
-            logger.error(f"Error in new_channel_node: {e}")
+            self.logger.error(f"Error in new_channel_node: {e}")
             return False
     
     async def new_cluster_node(self, connection: ClientConnection, domain_id: str) -> bool:
         """Create new cluster node and complete hierarchy"""
         try:
-            logger.info(f"🏗️ Creating new cluster node for {connection.node_id} in domain {domain_id}")
+            self.logger.info(f"🏗️ Creating new cluster node for {connection.node_id} in domain {domain_id}")
             
             # Step 1: Create cluster
             command = {
@@ -1081,13 +1088,13 @@ class NodeManager:
             response = await self.send_to_c_client(connection, command)
             
             if not response.get("success"):
-                logger.error(f"Failed to create cluster node: {response.get('error')}")
+                self.logger.error(f"Failed to create cluster node: {response.get('error')}")
                 return False
             
             # Get cluster_id from response
             cluster_id = response.get("data", {}).get("cluster_id")
             if not cluster_id:
-                logger.error("No cluster_id in response")
+                self.logger.error("No cluster_id in response")
                 return False
             
             # Update connection
@@ -1096,27 +1103,27 @@ class NodeManager:
             
             # Add to cluster pool
             self.add_to_cluster_pool(cluster_id, connection)
-            logger.info(f"✅ Created cluster node: {cluster_id}")
+            self.logger.info(f"✅ Created cluster node: {cluster_id}")
             
             # Step 2: Create channel
-            logger.info(f"🏗️ Creating channel for cluster {cluster_id}")
+            self.logger.info(f"🏗️ Creating channel for cluster {cluster_id}")
             channel_result = await self.new_channel_node(connection, domain_id, cluster_id)
             
             if not channel_result:
-                logger.warning("Failed to create channel, but cluster created successfully")
+                self.logger.warning("Failed to create channel, but cluster created successfully")
                 return True  # Cluster is created, so return True
             
-            logger.info(f"✅ Successfully created cluster node with full hierarchy: {cluster_id}")
+            self.logger.info(f"✅ Successfully created cluster node with full hierarchy: {cluster_id}")
             return True
                 
         except Exception as e:
-            logger.error(f"Error in new_cluster_node: {e}")
+            self.logger.error(f"Error in new_cluster_node: {e}")
             return False
     
     async def new_domain_node(self, connection: ClientConnection) -> bool:
         """Create new domain node and complete hierarchy"""
         try:
-            logger.info(f"🏗️ Creating new domain node for {connection.node_id}")
+            self.logger.info(f"🏗️ Creating new domain node for {connection.node_id}")
             
             # Step 1: Create domain
             command = {
@@ -1127,13 +1134,13 @@ class NodeManager:
             response = await self.send_to_c_client(connection, command)
             
             if not response.get("success"):
-                logger.error(f"Failed to create domain node: {response.get('error')}")
+                self.logger.error(f"Failed to create domain node: {response.get('error')}")
                 return False
             
             # Get domain_id from response
             domain_id = response.get("data", {}).get("domain_id")
             if not domain_id:
-                logger.error("No domain_id in response")
+                self.logger.error("No domain_id in response")
                 return False
             
             # Update connection
@@ -1142,21 +1149,21 @@ class NodeManager:
             
             # Add to domain pool
             self.add_to_domain_pool(domain_id, connection)
-            logger.info(f"✅ Created domain node: {domain_id}")
+            self.logger.info(f"✅ Created domain node: {domain_id}")
             
             # Step 2: Create cluster
-            logger.info(f"🏗️ Creating cluster for domain {domain_id}")
+            self.logger.info(f"🏗️ Creating cluster for domain {domain_id}")
             cluster_result = await self.new_cluster_node(connection, domain_id)
             
             if not cluster_result:
-                logger.warning("Failed to create cluster, but domain created successfully")
+                self.logger.warning("Failed to create cluster, but domain created successfully")
                 return True  # Domain is created, so return True
             
-            logger.info(f"✅ Successfully created domain node with full hierarchy: {domain_id}")
+            self.logger.info(f"✅ Successfully created domain node with full hierarchy: {domain_id}")
             return True
                 
         except Exception as e:
-            logger.error(f"Error in new_domain_node: {e}")
+            self.logger.error(f"Error in new_domain_node: {e}")
             return False
     
     # ===================== Add Peers Methods =====================
@@ -1166,7 +1173,7 @@ class NodeManager:
         """Notify all nodes in channel about new peer"""
         try:
             if channel_id not in self.channel_pool:
-                logger.warning(f"Channel pool {channel_id} not found")
+                self.logger.warning(f"Channel pool {channel_id} not found")
                 return
             
             command = {
@@ -1187,17 +1194,17 @@ class NodeManager:
             
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
-                logger.info(f"Notified {len(tasks)} nodes in channel {channel_id} about new peer {node_id}")
+                self.logger.info(f"Notified {len(tasks)} nodes in channel {channel_id} about new peer {node_id}")
                 
         except Exception as e:
-            logger.error(f"Error in add_new_node_to_peers: {e}")
+            self.logger.error(f"Error in add_new_node_to_peers: {e}")
     
     async def add_new_channel_to_peers(self, domain_id: str, cluster_id: str, 
                                       channel_id: str, node_id: str):
         """Notify all nodes in cluster about new channel"""
         try:
             if cluster_id not in self.cluster_pool:
-                logger.warning(f"Cluster pool {cluster_id} not found")
+                self.logger.warning(f"Cluster pool {cluster_id} not found")
                 return
             
             command = {
@@ -1218,16 +1225,16 @@ class NodeManager:
             
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
-                logger.info(f"Notified {len(tasks)} nodes in cluster {cluster_id} about new channel {channel_id}")
+                self.logger.info(f"Notified {len(tasks)} nodes in cluster {cluster_id} about new channel {channel_id}")
                 
         except Exception as e:
-            logger.error(f"Error in add_new_channel_to_peers: {e}")
+            self.logger.error(f"Error in add_new_channel_to_peers: {e}")
     
     async def add_new_cluster_to_peers(self, domain_id: str, cluster_id: str, node_id: str):
         """Notify all nodes in domain about new cluster"""
         try:
             if domain_id not in self.domain_pool:
-                logger.warning(f"Domain pool {domain_id} not found")
+                self.logger.warning(f"Domain pool {domain_id} not found")
                 return
             
             command = {
@@ -1247,10 +1254,10 @@ class NodeManager:
             
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
-                logger.info(f"Notified {len(tasks)} nodes in domain {domain_id} about new cluster {cluster_id}")
+                self.logger.info(f"Notified {len(tasks)} nodes in domain {domain_id} about new cluster {cluster_id}")
                 
         except Exception as e:
-            logger.error(f"Error in add_new_cluster_to_peers: {e}")
+            self.logger.error(f"Error in add_new_cluster_to_peers: {e}")
     
     async def add_new_domain_to_peers(self, domain_id: str, node_id: str):
         """Notify all domain nodes about new domain"""
@@ -1272,10 +1279,10 @@ class NodeManager:
             
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
-                logger.info(f"Notified {len(tasks)} domain nodes about new domain {domain_id}")
+                self.logger.info(f"Notified {len(tasks)} domain nodes about new domain {domain_id}")
                 
         except Exception as e:
-            logger.error(f"Error in add_new_domain_to_peers: {e}")
+            self.logger.error(f"Error in add_new_domain_to_peers: {e}")
     
     # ===================== Utility Methods =====================
     
@@ -1303,6 +1310,59 @@ class NodeManager:
             }
         }
     
+    def _is_websocket_valid(self, websocket) -> bool:
+        """Check if a WebSocket connection is still valid using the same logic as WebSocketClient"""
+        try:
+            # Check if connection was marked as closed by logout
+            if hasattr(websocket, '_closed_by_logout') and websocket._closed_by_logout:
+                self.logger.debug(f"🔍 NodeManager: Connection marked as closed by logout")
+                return False
+            
+            # Check WebSocket closed attribute
+            if hasattr(websocket, 'closed') and websocket.closed:
+                self.logger.debug(f"🔍 NodeManager: Connection is closed (closed=True)")
+                return False
+            
+            # Check connection state - use multiple methods for reliability
+            connection_valid = True
+            
+            # Method 1: Check websockets state attribute
+            if hasattr(websocket, 'state'):
+                state_value = websocket.state
+                state_name = websocket.state.name if hasattr(websocket.state, 'name') else str(websocket.state)
+                
+                # Check state value (3 = CLOSED, 2 = CLOSING)
+                if state_value in [2, 3] or state_name in ['CLOSED', 'CLOSING']:
+                    self.logger.debug(f"🔍 NodeManager: Connection is in {state_name} state (value: {state_value})")
+                    connection_valid = False
+            
+            # Method 2: Check close_code
+            if hasattr(websocket, 'close_code') and websocket.close_code is not None:
+                self.logger.debug(f"🔍 NodeManager: Connection has close_code {websocket.close_code}")
+                connection_valid = False
+            
+            # Method 3: Try to access the websocket object
+            try:
+                # This is a lightweight check - just accessing the websocket object
+                # without actually sending data
+                if hasattr(websocket, '_closed') and websocket._closed:
+                    self.logger.debug(f"🔍 NodeManager: Connection is marked as _closed")
+                    connection_valid = False
+            except Exception:
+                self.logger.debug(f"🔍 NodeManager: Connection appears to be invalid (exception during ping test)")
+                connection_valid = False
+            
+            if connection_valid:
+                self.logger.debug(f"🔍 NodeManager: Connection appears to be valid")
+            else:
+                self.logger.debug(f"🔍 NodeManager: Connection is invalid")
+            
+            return connection_valid
+            
+        except Exception as e:
+            self.logger.debug(f"🔍 NodeManager: Error checking connection validity: {e}")
+            return False
+    
     async def cleanup_disconnected_connections(self):
         """Clean up disconnected connections from pools"""
         disconnected_connections = []
@@ -1310,12 +1370,12 @@ class NodeManager:
         # Check all connections in all pools
         for connections in self.domain_pool.values():
             for connection in connections:
-                if connection.websocket.closed:
+                if not self._is_websocket_valid(connection.websocket):
                     disconnected_connections.append(connection)
         
         # Remove disconnected connections
         for connection in disconnected_connections:
             self.remove_connection(connection)
-            logger.info(f"Removed disconnected connection: {connection.node_id}")
+            self.logger.info(f"Removed disconnected connection: {connection.node_id}")
         
         return len(disconnected_connections)

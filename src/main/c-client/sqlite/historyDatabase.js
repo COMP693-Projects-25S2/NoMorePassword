@@ -17,6 +17,7 @@ class HistoryDatabase {
                 user_id     VARCHAR(50),
                 url         TEXT NOT NULL,
                 title       TEXT DEFAULT 'Loading...',
+                description TEXT,
                 timestamp   TEXT NOT NULL,
                 enter_time  INTEGER NOT NULL,
                 stay_duration REAL,
@@ -26,6 +27,17 @@ class HistoryDatabase {
                 updated_at  INTEGER DEFAULT (strftime('%s', 'now') * 1000)
             )
         `);
+
+        // Add description column if it doesn't exist (for existing databases)
+        try {
+            db.exec(`ALTER TABLE visit_history ADD COLUMN description TEXT`);
+            console.log('✅ Added description column to visit_history table');
+        } catch (error) {
+            // Column already exists, ignore error
+            if (!error.message.includes('duplicate column name')) {
+                console.warn('⚠️ Error adding description column:', error.message);
+            }
+        }
 
         // Create active records table (for tracking incomplete visits)
         db.exec(`
@@ -103,6 +115,23 @@ class HistoryDatabase {
             WHERE id = ?
         `);
         return stmt.run(title, Date.now(), visitId);
+    }
+
+    // Update record description (for storing JSON content)
+    updateRecordDescription(visitId, description) {
+        try {
+            const stmt = db.prepare(`
+                UPDATE visit_history 
+                SET description = ?, updated_at = ?
+                WHERE id = ?
+            `);
+            const result = stmt.run(description, Date.now(), visitId);
+            console.log(`✅ Updated description for visit record ${visitId}: ${result.changes} rows affected`);
+            return result.changes > 0;
+        } catch (error) {
+            console.error('❌ Error updating record description:', error);
+            return false;
+        }
     }
 
     // Update record stay duration

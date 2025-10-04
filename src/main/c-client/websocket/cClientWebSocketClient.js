@@ -1,10 +1,17 @@
 const WebSocket = require('ws');
 
+// 导入日志系统
+const { getCClientLogger } = require('../utils/logger');
+
 class CClientWebSocketClient {
     constructor() {
+        // 初始化日志系统
+        this.logger = getCClientLogger('websocket');
+
         this.websocket = null;
         this.clientId = null; // Will be set from NodeManager
         this.isConnected = false;
+        this.isRegistered = false; // Track registration status
         this.config = this.loadWebSocketConfig();
         this.reconnectInterval = this.config.reconnect_interval || 30;
         this.reconnectTimer = null;
@@ -17,7 +24,7 @@ class CClientWebSocketClient {
      */
     setMainWindow(mainWindow) {
         this.mainWindow = mainWindow;
-        console.log('🔌 [WebSocket Client] Main window reference set for page refresh functionality');
+        this.logger.info('Main window reference set for page refresh functionality');
     }
 
     /**
@@ -26,7 +33,15 @@ class CClientWebSocketClient {
      */
     setElectronApp(electronApp) {
         this.electronApp = electronApp;
-        console.log('🔌 [WebSocket Client] ElectronApp reference set for connection sharing');
+        this.logger.info('ElectronApp reference set for connection sharing');
+    }
+
+    /**
+     * Reset registration status - call this when explicitly needing to re-register
+     */
+    resetRegistrationStatus() {
+        this.isRegistered = false;
+        this.logger.info('Registration status reset - will register on next connection');
     }
 
     loadWebSocketConfig() {
@@ -85,7 +100,7 @@ class CClientWebSocketClient {
 
     setClientId(clientId) {
         this.clientId = clientId;
-        console.log(`🆔 [WebSocket Client] Client ID set: ${this.clientId}`);
+        this.logger.info(`Client ID set: ${this.clientId}`);
     }
 
     getCurrentUserInfo() {
@@ -122,9 +137,9 @@ class CClientWebSocketClient {
 
         try {
             // Get current user info for registration
-            console.log(`🔍 [WebSocket Client] Getting current user info...`);
+            this.logger.debug(`Getting current user info...`);
             const currentUser = this.getCurrentUserInfo();
-            console.log(`👤 [WebSocket Client] Current user info:`, currentUser);
+            this.logger.debug(`Current user info:`, currentUser);
 
             // Get main node IDs from NodeManager
             let mainNodeIds = {
@@ -134,9 +149,9 @@ class CClientWebSocketClient {
             };
 
             if (this.electronApp && this.electronApp.nodeManager) {
-                console.log(`🔍 [WebSocket Client] Getting main node IDs from NodeManager...`);
+                this.logger.debug(`Getting main node IDs from NodeManager...`);
                 mainNodeIds = this.electronApp.nodeManager.getMainNodeIds();
-                console.log(`📋 [WebSocket Client] Main node IDs:`, mainNodeIds);
+                this.logger.debug(`Main node IDs:`, mainNodeIds);
             } else {
                 console.warn(`⚠️ [WebSocket Client] NodeManager not available, using null for main node IDs`);
             }
@@ -156,7 +171,7 @@ class CClientWebSocketClient {
                 cluster_main_node_id: mainNodeIds.cluster_main_node_id,
                 channel_main_node_id: mainNodeIds.channel_main_node_id
             };
-            console.log(`📤 [WebSocket Client] Sending registration message with main node IDs:`, registerMessage);
+            this.logger.info(`Sending registration message with main node IDs:`, registerMessage);
             this.sendMessage(registerMessage);
             return true;
         } catch (error) {
@@ -166,7 +181,7 @@ class CClientWebSocketClient {
     }
 
     async reRegisterUser() {
-        console.log(`🔄 [WebSocket Client] Re-registering user after switch...`);
+        this.logger.info(`Re-registering user after switch...`);
 
         if (!this.isConnected || !this.websocket) {
             console.warn('[WebSocket Client] Cannot re-register user - not connected');
@@ -176,7 +191,7 @@ class CClientWebSocketClient {
         try {
             // Get updated user info
             const currentUser = this.getCurrentUserInfo();
-            console.log(`👤 [WebSocket Client] Updated user info:`, currentUser);
+            this.logger.debug(`Updated user info:`, currentUser);
 
             // Send re-registration message
             const reRegisterMessage = {
@@ -190,8 +205,8 @@ class CClientWebSocketClient {
                 channel_id: currentUser ? currentUser.channel_id : null,
             };
 
-            console.log(`📤 [WebSocket Client] Sending re-registration message:`, reRegisterMessage);
-            console.log(`🔍 [WebSocket Client] Re-registration details:`);
+            this.logger.info(`Sending re-registration message:`, reRegisterMessage);
+            this.logger.debug(`Re-registration details:`);
             console.log(`   Client ID: ${this.clientId}`);
             console.log(`   User ID: ${currentUser ? currentUser.user_id : 'null'}`);
             console.log(`   Username: ${currentUser ? currentUser.username : 'null'}`);
@@ -227,6 +242,9 @@ class CClientWebSocketClient {
             // Disconnect current connection
             console.log(`🔌 [WebSocket Client] Disconnecting current WebSocket connection...`);
             this.disconnect();
+
+            // Reset registration status for user switch
+            this.resetRegistrationStatus();
 
             // Wait a moment for disconnection to complete
             console.log(`⏳ [WebSocket Client] Waiting 500ms for disconnection to complete...`);
@@ -284,6 +302,9 @@ class CClientWebSocketClient {
                 // Force disconnect regardless of state
                 this.disconnect();
 
+                // Reset registration status for forced reconnection
+                this.resetRegistrationStatus();
+
                 // Wait longer for disconnection to complete and clear any cached state
                 console.log(`⏳ [WebSocket Client] Waiting 500ms for disconnection to complete...`);
                 await new Promise(resolve => setTimeout(resolve, 500));
@@ -333,9 +354,14 @@ class CClientWebSocketClient {
                 }
             });
 
-            this.websocket.on('close', () => {
+            this.websocket.on('close', (code, reason) => {
+                console.log(`🔌 [WebSocket Client] ===== WEBSOCKET CONNECTION CLOSED =====`);
                 console.log(`🔌 [WebSocket Client] Connection closed`);
+                console.log(`   Code: ${code}`);
+                console.log(`   Reason: ${reason}`);
                 console.log(`   Target: ${environmentName} (${host}:${port})`);
+                console.log(`   Close Code Meanings: 1000=Normal, 1005=No Status, 1006=Abnormal, 1011=Server Error`);
+                console.log(`🔌 [WebSocket Client] ===== END CONNECTION CLOSED =====`);
                 this.isConnected = false;
 
                 // Store connection info for potential reconnection
@@ -392,35 +418,17 @@ class CClientWebSocketClient {
             console.log(`   Full URL: ${url.toString()}`);
 
             // Use the existing connectToServer method
-            console.log(`🔌 [WebSocket Client] ===== INITIATING CONNECTION =====`);
-            console.log(`🔌 [WebSocket Client] Calling connectToServer method...`);
-            console.log(`🔌 [WebSocket Client] Target: ${host}:${port}`);
-            console.log(`🔌 [WebSocket Client] Connection type: NSN-Provided WebSocket`);
+            console.log(`🔌 [WebSocket Client] Connecting to NSN-provided WebSocket: ${host}:${port}`);
 
             const startTime = Date.now();
             const result = await this.connectToServer(host, port, 'NSN-Provided WebSocket');
             const endTime = Date.now();
             const duration = endTime - startTime;
 
-            console.log(`🔌 [WebSocket Client] ===== CONNECTION RESULT =====`);
-            console.log(`🔌 [WebSocket Client] Connection duration: ${duration}ms`);
-            console.log(`🔌 [WebSocket Client] ConnectToServer result: ${result}`);
-            console.log(`🔌 [WebSocket Client] Final connection status:`, {
-                connected: this.isConnected,
-                websocket: !!this.websocket,
-                readyState: this.websocket ? this.websocket.readyState : 'N/A'
-            });
-
             if (result) {
-                console.log(`✅ [WebSocket Client] ===== NSN WEBSOCKET CONNECTION SUCCESS =====`);
-                console.log(`✅ [WebSocket Client] Successfully connected to NSN-provided WebSocket`);
-                console.log(`✅ [WebSocket Client] WebSocket URL: ${websocketUrl}`);
-                console.log(`✅ [WebSocket Client] Connection time: ${duration}ms`);
-                console.log(`✅ [WebSocket Client] Ready to register with B-Client`);
-                console.log(`✅ [WebSocket Client] Auto-registration can now proceed`);
+                console.log(`✅ [WebSocket Client] Connected to NSN WebSocket in ${duration}ms`);
             } else {
-                console.error(`❌ [WebSocket Client] ===== NSN WEBSOCKET CONNECTION FAILED =====`);
-                console.error(`❌ [WebSocket Client] Failed to connect to NSN-provided WebSocket`);
+                console.error(`❌ [WebSocket Client] Failed to connect to NSN WebSocket`);
                 console.error(`❌ [WebSocket Client] WebSocket URL: ${websocketUrl}`);
                 console.error(`❌ [WebSocket Client] Connection time: ${duration}ms`);
                 console.error(`❌ [WebSocket Client] Auto-registration cannot proceed`);
@@ -462,25 +470,32 @@ class CClientWebSocketClient {
                 console.log(`✅ [WebSocket Client] Connected to B-Client`);
                 console.log(`   Target: ${this.config.environment_name} (${this.config.host}:${this.config.port})`);
                 this.isConnected = true;
+                // Only reset registration status if we're explicitly reconnecting
+                // For normal reconnections, keep the previous registration status
 
-                // Get current user info for registration
-                console.log(`🔍 [WebSocket Client] Getting current user info...`);
-                const currentUser = this.getCurrentUserInfo();
-                console.log(`👤 [WebSocket Client] Current user info:`, currentUser);
+                // Only register if not already registered
+                if (!this.isRegistered) {
+                    // Get current user info for registration
+                    console.log(`🔍 [WebSocket Client] Getting current user info...`);
+                    const currentUser = this.getCurrentUserInfo();
+                    console.log(`👤 [WebSocket Client] Current user info:`, currentUser);
 
-                // Register as C-Client with user_id and additional parameters
-                const registerMessage = {
-                    type: 'c_client_register',
-                    client_id: this.clientId || `c-client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                    user_id: currentUser ? currentUser.user_id : null,
-                    username: currentUser ? currentUser.username : null,
-                    node_id: currentUser ? currentUser.node_id : null,
-                    domain_id: currentUser ? currentUser.domain_id : null,
-                    cluster_id: currentUser ? currentUser.cluster_id : null,
-                    channel_id: currentUser ? currentUser.channel_id : null
-                };
-                console.log(`📤 [WebSocket Client] Sending registration message:`, registerMessage);
-                this.sendMessage(registerMessage);
+                    // Register as C-Client with user_id and additional parameters
+                    const registerMessage = {
+                        type: 'c_client_register',
+                        client_id: this.clientId || `c-client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                        user_id: currentUser ? currentUser.user_id : null,
+                        username: currentUser ? currentUser.username : null,
+                        node_id: currentUser ? currentUser.node_id : null,
+                        domain_id: currentUser ? currentUser.domain_id : null,
+                        cluster_id: currentUser ? currentUser.cluster_id : null,
+                        channel_id: currentUser ? currentUser.channel_id : null
+                    };
+                    console.log(`📤 [WebSocket Client] Sending registration message:`, registerMessage);
+                    this.sendMessage(registerMessage);
+                } else {
+                    console.log(`🔄 [WebSocket Client] Already registered, skipping registration`);
+                }
             });
 
             this.websocket.on('message', (data) => {
@@ -493,38 +508,8 @@ class CClientWebSocketClient {
                 }
             });
 
-            this.websocket.on('close', () => {
-                console.log('[WebSocket Client] Disconnected from B-Client');
-                this.isConnected = false;
-
-                // Auto-reconnect if enabled
-                if (this.config.auto_reconnect) {
-                    console.log(`[WebSocket Client] Auto-reconnecting in ${this.reconnectInterval} seconds...`);
-                    this.reconnectTimer = setTimeout(() => {
-                        this.connect();
-                    }, this.reconnectInterval * 1000);
-                }
-            });
-
-            this.websocket.on('error', (error) => {
-                console.log(`❌ [WebSocket Client] Connection error:`, error);
-                console.log(`   Target: ${this.config.environment_name} (${this.config.host}:${this.config.port})`);
-                console.log(`   Error Code: ${error.code}`);
-                console.log(`   Error Message: ${error.message}`);
-                console.log(`⚠️ [WebSocket Client] B-Client WebSocket server may not be running`);
-                console.log(`⚠️ [WebSocket Client] C-Client will continue to work, connection will be retried automatically`);
-                this.isConnected = false;
-            });
-
-            this.websocket.on('close', (code, reason) => {
-                console.log(`🔌 [WebSocket Client] Connection closed`);
-                console.log(`   Code: ${code}`);
-                console.log(`   Reason: ${reason}`);
-                console.log(`   Target: ${this.config.environment_name} (${this.config.host}:${this.config.port})`);
-                console.log(`⚠️ [WebSocket Client] Connection lost, but C-Client will continue to work`);
-                console.log(`⚠️ [WebSocket Client] Auto-reconnect is enabled, will retry automatically`);
-                this.isConnected = false;
-            });
+            // REMOVED: Duplicate close event listeners that were causing connection state confusion
+            // The close event is already handled above at line 351
 
             // Add a timeout to check if open event fires
             setTimeout(() => {
@@ -552,6 +537,7 @@ class CClientWebSocketClient {
                 console.log('✅ [WebSocket Client] Registration successful');
                 console.log(`   Client ID: ${message.client_id || 'N/A'}`);
                 console.log(`   User ID: ${message.user_id || 'N/A'}`);
+                this.isRegistered = true; // Mark as registered
                 break;
 
             case 'registration_rejected':
@@ -796,6 +782,7 @@ class CClientWebSocketClient {
         }
 
         this.isConnected = false;
+        // Keep isRegistered status on disconnect - only reset when explicitly needed
 
         // Clear any existing reconnect timer
         if (this.reconnectTimer) {
@@ -841,6 +828,7 @@ class CClientWebSocketClient {
         // Completely reset all connection state
         this.websocket = null;
         this.isConnected = false;
+        this.isRegistered = false;  // Reset registration status for fresh connection
         this.connectionInProgress = false;
 
         // Clear all timers
@@ -973,17 +961,12 @@ class CClientWebSocketClient {
             const isRepeatedLogout = this.isRepeatedLogout(user_id);
             console.log(`🔓 [WebSocket Client] Repeated logout: ${isRepeatedLogout}`);
 
-            // Step 1: Clear website-specific browser sessions (optimized for repeated logouts)
+            // Step 1: Clear website-specific browser sessions (always complete cleanup)
             console.log('🔓 [WebSocket Client] Step 1: Clearing website-specific browser sessions...');
             if (this.mainWindow && this.mainWindow.tabManager) {
                 try {
-                    if (isRepeatedLogout) {
-                        // For repeated logouts, only clear new sessions
-                        await this.clearIncrementalWebsiteSessions(website_config);
-                    } else {
-                        // For first logout, clear all sessions
-                        await this.clearWebsiteSpecificSessions(website_config);
-                    }
+                    // Always clear all sessions for complete logout - no optimization for repeated logouts
+                    await this.clearWebsiteSpecificSessions(website_config);
                     console.log(`✅ [WebSocket Client] ${website_config?.name || 'Website'} browser sessions cleared (other websites preserved)`);
                 } catch (error) {
                     console.error('❌ [WebSocket Client] Error clearing website browser sessions:', error);
@@ -992,17 +975,12 @@ class CClientWebSocketClient {
                 console.warn('⚠️ [WebSocket Client] TabManager not available for session clearing');
             }
 
-            // Step 2: Close website-specific tabs (optimized for repeated logouts)
+            // Step 2: Close website-specific tabs (always complete cleanup)
             console.log('🔓 [WebSocket Client] Step 2: Closing website-specific tabs...');
             if (this.mainWindow && this.mainWindow.tabManager) {
                 try {
-                    if (isRepeatedLogout) {
-                        // For repeated logouts, only close new tabs
-                        await this.closeIncrementalWebsiteTabs(website_config);
-                    } else {
-                        // For first logout, close all tabs
-                        await this.closeWebsiteSpecificTabs(website_config);
-                    }
+                    // Always close all tabs for complete logout - no optimization for repeated logouts
+                    await this.closeWebsiteSpecificTabs(website_config);
                     console.log(`✅ [WebSocket Client] ${website_config?.name || 'Website'} tabs closed (other website tabs preserved)`);
                 } catch (error) {
                     console.error('❌ [WebSocket Client] Error managing website tabs:', error);
@@ -1011,16 +989,12 @@ class CClientWebSocketClient {
                 console.warn('⚠️ [WebSocket Client] TabManager not available for tab management');
             }
 
-            // Step 3: Clear local user session data (optimized)
+            // Step 3: Clear local user session data (always clear for complete logout)
             console.log('🔓 [WebSocket Client] Step 3: Clearing local user session data...');
             try {
-                if (!isRepeatedLogout) {
-                    // Only clear session data on first logout
-                    await this.clearUserSessionData(user_id);
-                    console.log('ℹ️ [WebSocket Client] User session data cleared');
-                } else {
-                    console.log('ℹ️ [WebSocket Client] Skipping session data clearing for repeated logout');
-                }
+                // Always clear session data for complete logout - no optimization for repeated logouts
+                await this.clearUserSessionData(user_id);
+                console.log('ℹ️ [WebSocket Client] User session data cleared');
             } catch (error) {
                 console.error('❌ [WebSocket Client] Error clearing local session data:', error);
             }
@@ -1588,6 +1562,15 @@ class CClientWebSocketClient {
             console.log('🔐 [WebSocket Client] Message:', msg);
             console.log('🔐 [WebSocket Client] Timestamp:', timestamp);
 
+            // Add WebSocket connection state logging
+            console.log('🔍 [WebSocket Client] ===== WEBSOCKET CONNECTION STATE =====');
+            console.log('🔍 [WebSocket Client] WebSocket connection state:');
+            console.log('   - isConnected:', this.isConnected);
+            console.log('   - isRegistered:', this.isRegistered);
+            console.log('   - readyState:', this.websocket ? this.websocket.readyState : 'N/A');
+            console.log('   - WebSocket object:', !!this.websocket);
+            console.log('🔍 [WebSocket Client] ===== END WEBSOCKET STATE =====');
+
             // Check if user has logged out (prevent auto-login after logout)
             console.log('🔍 [WebSocket Client] ===== CHECKING USER LOGOUT STATUS =====');
             const isUserLoggedOut = await this.checkUserLogoutStatus(user_id);
@@ -1595,8 +1578,27 @@ class CClientWebSocketClient {
                 console.log('🔓 [WebSocket Client] User has logged out, rejecting auto-login');
                 console.log('🔓 [WebSocket Client] User must login manually to reset logout status');
 
+                // Add WebSocket connection state logging after logout check
+                console.log('🔍 [WebSocket Client] ===== WEBSOCKET STATE AFTER LOGOUT CHECK =====');
+                console.log('🔍 [WebSocket Client] WebSocket connection state after logout rejection:');
+                console.log('   - isConnected:', this.isConnected);
+                console.log('   - isRegistered:', this.isRegistered);
+                console.log('   - readyState:', this.websocket ? this.websocket.readyState : 'N/A');
+                console.log('   - WebSocket object:', !!this.websocket);
+                console.log('🔍 [WebSocket Client] ===== END POST-LOGOUT STATE =====');
+
                 // Send feedback to B-Client that auto-login was rejected
                 this.sendSessionFeedback(message, false, 'User has logged out, auto-login rejected');
+
+                // Add WebSocket connection state logging after sending feedback
+                console.log('🔍 [WebSocket Client] ===== WEBSOCKET STATE AFTER FEEDBACK =====');
+                console.log('🔍 [WebSocket Client] WebSocket connection state after sending feedback:');
+                console.log('   - isConnected:', this.isConnected);
+                console.log('   - isRegistered:', this.isRegistered);
+                console.log('   - readyState:', this.websocket ? this.websocket.readyState : 'N/A');
+                console.log('   - WebSocket object:', !!this.websocket);
+                console.log('🔍 [WebSocket Client] ===== END POST-FEEDBACK STATE =====');
+
                 return;
             }
             console.log('✅ [WebSocket Client] User is not logged out, proceeding with auto-login');
@@ -2675,8 +2677,26 @@ class CClientWebSocketClient {
             console.log('⏳ [WebSocket Client] Waiting for cleanup to complete...');
             await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
 
-            // Send feedback to B-Client that logout is completed
+            // Send feedback to B-Client that logout is completed BEFORE disconnecting
+            console.log('📤 [WebSocket Client] Sending logout feedback BEFORE disconnecting...');
             this.sendLogoutFeedback(message, true, 'Logout completed successfully');
+
+            // CRITICAL FIX: Reset WebSocket connection state AFTER sending feedback
+            console.log('🔄 [WebSocket Client] Resetting WebSocket connection state after sending feedback...');
+
+            // Check if connection is still valid before disconnecting
+            if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+                console.log('🔌 [WebSocket Client] Connection is still open, proceeding with clean disconnect...');
+                this.disconnect(); // This will close the connection but keep isRegistered=true
+            } else {
+                console.log('⚠️ [WebSocket Client] Connection already closed or invalid, skipping disconnect...');
+                // Just reset the state without calling disconnect
+                this.isConnected = false;
+                this.websocket = null;
+            }
+
+            this.resetRegistrationStatus(); // This will reset isRegistered=false
+            console.log('✅ [WebSocket Client] WebSocket connection state reset - ready for reconnection');
 
         } catch (error) {
             console.error('❌ [WebSocket Client] Error handling logout for website:', error);

@@ -6,9 +6,15 @@ const OAuthHandler = require('./oauthHandler');
 const SessionManager = require('./sessionManager');
 const ViewOperations = require('./viewOperations');
 
+// 导入日志系统
+const { getCClientLogger } = require('../utils/logger');
+
 // BrowserView Manager - Refactored
 class ViewManager {
     constructor(mainWindow, historyManager, apiPort = null) {
+        // 初始化日志系统
+        this.logger = getCClientLogger('viewmanager');
+        
         // Handle both ElectronApp instance and BrowserWindow instance
         if (mainWindow && mainWindow.mainWindow) {
             // If mainWindow is ElectronApp instance, get the actual BrowserWindow
@@ -1010,7 +1016,9 @@ class ViewManager {
                 console.log(`🔍 ViewManager: Waiting 50ms for dynamic content injection...`);
                 await new Promise(resolve => setTimeout(resolve, 50));
 
-                await this.detectNSNResponse(view, id, 'DOM-READY');
+                // Disabled: NSN response detection is now handled by TabManager
+                // await this.detectNSNResponse(view, id, 'DOM-READY');
+                console.log(`🔍 ViewManager: NSN response detection disabled - handled by TabManager`);
             });
 
             // Add backup event listener for page load completion
@@ -1020,7 +1028,9 @@ class ViewManager {
                 console.log(`🔍 ViewManager: Page load completed for view ${id}`);
                 console.log(`🔍 ViewManager: Current URL: ${view.webContents.getURL()}`);
 
-                await this.detectNSNResponse(view, id, 'DID-FINISH-LOAD');
+                // Disabled: NSN response detection is now handled by TabManager
+                // await this.detectNSNResponse(view, id, 'DID-FINISH-LOAD');
+                console.log(`🔍 ViewManager: NSN response detection disabled - handled by TabManager`);
             });
 
             // Add another backup event listener for page load stop
@@ -1030,7 +1040,9 @@ class ViewManager {
                 console.log(`🔍 ViewManager: Page stopped loading for view ${id}`);
                 console.log(`🔍 ViewManager: Current URL: ${view.webContents.getURL()}`);
 
-                await this.detectNSNResponse(view, id, 'DID-STOP-LOADING');
+                // Disabled: NSN response detection is now handled by TabManager
+                // await this.detectNSNResponse(view, id, 'DID-STOP-LOADING');
+                console.log(`🔍 ViewManager: NSN response detection disabled - handled by TabManager`);
             });
 
             // Add error event listener

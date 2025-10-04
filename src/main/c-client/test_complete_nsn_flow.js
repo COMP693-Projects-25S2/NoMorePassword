@@ -25,7 +25,7 @@ async function testCompleteNSNFlow() {
         console.log('📝 Step 2: Simulating NSN response...');
         const nsnResponse = {
             action: 'connect_websocket',
-            websocket_url: 'ws://127.0.0.1:8766',
+            websocket_url: process.env.NMP_WEBSOCKET_URL || 'ws://127.0.0.1:8766',
             user_id: 'test-user-123',
             message: 'Please connect to B-Client WebSocket server'
         };

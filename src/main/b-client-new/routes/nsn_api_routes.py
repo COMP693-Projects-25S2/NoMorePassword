@@ -8,8 +8,17 @@ import json
 import time
 import requests
 
+# 导入日志系统
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from utils.logger import get_bclient_logger
+
 # Create blueprint for NSN API routes
 nsn_api_routes = Blueprint('nsn_api_routes', __name__)
+
+# Initialize logger
+logger = get_bclient_logger('nsn_api_routes')
 
 # These will be injected when blueprint is registered
 db = None
@@ -111,9 +120,9 @@ def nsn_login():
                     db.session.commit()
                     
                     result['session_data'] = session_data
-                    print(f"✅ Stored NSN session for user: {username}")
+                    logger.info(f"Stored NSN session for user: {username}")
                 except Exception as e:
-                    print(f"⚠️  Failed to store session: {e}")
+                    logger.warning(f"Failed to store session: {e}")
         
         return jsonify(result)
     except Exception as e:
