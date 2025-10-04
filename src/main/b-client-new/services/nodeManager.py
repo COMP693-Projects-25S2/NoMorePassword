@@ -557,10 +557,10 @@ class NodeManager:
             main_connection = remaining_connections[0]
             self.logger.info(f"🔍 NodeManager: Channel pool {channel_id} has 1 connection, checking if it's a closed main node")
             self.logger.info(f"🔍 NodeManager: Connection is_channel_main_node: {main_connection.is_channel_main_node}")
-            self.logger.info(f"🔍 NodeManager: Connection websocket.closed: {main_connection.websocket.closed}")
             
             # Check if the main node connection is still valid
             is_connection_valid = self._is_websocket_valid(main_connection.websocket)
+            self.logger.info(f"🔍 NodeManager: Connection is_valid: {is_connection_valid}")
             
             if (main_connection.is_channel_main_node and not is_connection_valid):
                 self.logger.info(f"✅ NodeManager: Channel pool {channel_id} has only invalid main node, should be removed")

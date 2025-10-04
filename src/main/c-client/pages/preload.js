@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld(
     openConfigModal: () => ipcRenderer.invoke('open-config-modal'),
     openNetworkConfig: () => ipcRenderer.invoke('open-network-config'),
     openNodeStatusModal: () => ipcRenderer.invoke('open-node-status-modal'),
+    openSyncDataViewer: () => ipcRenderer.invoke('open-sync-data-viewer'),
     getNodeStatus: () => ipcRenderer.invoke('get-node-status'),
     openUserSelector: () => ipcRenderer.invoke('open-user-selector'),
     switchUser: (userId) => ipcRenderer.invoke('switch-user', userId),
@@ -60,6 +61,13 @@ contextBridge.exposeInMainWorld(
     onShowNotification: (callback) => ipcRenderer.on('show-notification', callback),
     onCloseAllTabs: (callback) => ipcRenderer.on('close-all-tabs', callback),
 
+    // Sync data viewer
+    onShowSyncDataViewer: (callback) => ipcRenderer.on('show-sync-data-viewer', callback),
+
+    // Sync notifications
+    onSyncDataReceived: (callback) => ipcRenderer.on('sync-data-received', callback),
+    onSyncDataSent: (callback) => ipcRenderer.on('sync-data-sent', callback),
+    onSyncError: (callback) => ipcRenderer.on('sync-error', callback),
 
     // Cleanup listeners
     removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)

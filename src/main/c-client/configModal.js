@@ -206,6 +206,10 @@ class ConfigModal {
                 <span class="config-option-icon">📊</span>
                 <span class="config-option-text">Node Status</span>
             </div>
+            <div class="config-option" id="check-sync-data">
+                <span class="config-option-icon">📈</span>
+                <span class="config-option-text">Check Sync Data</span>
+            </div>
             <div class="config-option" id="b-client-config">
                 <span class="config-option-icon">🔗</span>
                 <span class="config-option-text">B-Client Configuration</span>
@@ -280,6 +284,24 @@ class ConfigModal {
                 } catch (error) {
                     console.error('Error opening node status modal:', error);
                 }
+            });
+
+            // Handle check sync data button click
+            const checkSyncDataBtn = document.getElementById('check-sync-data');
+            checkSyncDataBtn.addEventListener('click', async () => {
+                try {
+                    console.log('📈 Check Sync Data button clicked');
+                    const result = await ipcRenderer.invoke('open-sync-data-viewer');
+                    console.log('📈 Check Sync Data IPC result:', result);
+                    if (!result.success) {
+                        console.error('Failed to open sync data viewer:', result.error);
+                        alert('Failed to open sync data viewer: ' + result.error);
+                    }
+                } catch (error) {
+                    console.error('Error opening sync data viewer:', error);
+                    alert('Error opening sync data viewer: ' + error.message);
+                }
+                window.close();
             });
 
             // Handle B-Client configuration button click

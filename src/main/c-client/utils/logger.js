@@ -19,6 +19,8 @@ class CClientLogger {
             main: path.join(this.logDir, `cclient_main_${startTime}.log`),
             websocket: path.join(this.logDir, `cclient_websocket_${startTime}.log`),
             nodemanager: path.join(this.logDir, `cclient_nodemanager_${startTime}.log`),
+            sync: path.join(this.logDir, `cclient_sync_${startTime}.log`), // 统一的sync日志文件
+            syncmanager: path.join(this.logDir, `cclient_sync_${startTime}.log`), // 重定向到sync文件
             tabmanager: path.join(this.logDir, `cclient_tabmanager_${startTime}.log`),
             viewmanager: path.join(this.logDir, `cclient_viewmanager_${startTime}.log`),
             history: path.join(this.logDir, `cclient_history_${startTime}.log`),
@@ -34,7 +36,7 @@ class CClientLogger {
             ERROR: 3
         };
 
-        this.currentLevel = this.levels.WARN; // 只显示WARNING及以上级别到控制台
+        this.currentLevel = this.levels.INFO; // 显示INFO及以上级别到控制台和文件
 
         // 原始console方法
         this.originalConsole = {
@@ -62,6 +64,7 @@ Log files created:
   Main: ${this.logFiles.main}
   WebSocket: ${this.logFiles.websocket}
   NodeManager: ${this.logFiles.nodemanager}
+  SyncManager: ${this.logFiles.syncmanager}
   TabManager: ${this.logFiles.tabmanager}
   ViewManager: ${this.logFiles.viewmanager}
   History: ${this.logFiles.history}
@@ -155,6 +158,11 @@ function getCClientLogger(moduleName) {
     return cclientLogger.getLogger(moduleName);
 }
 
+function getSyncLogger(moduleName) {
+    // 对于sync相关的模块，使用sync日志文件
+    return cclientLogger.getLogger('sync');
+}
+
 function setupConsoleRedirect(moduleName) {
     return cclientLogger.overrideConsole(moduleName);
 }
@@ -162,6 +170,7 @@ function setupConsoleRedirect(moduleName) {
 module.exports = {
     CClientLogger,
     getCClientLogger,
+    getSyncLogger,
     setupConsoleRedirect,
     cclientLogger
 };

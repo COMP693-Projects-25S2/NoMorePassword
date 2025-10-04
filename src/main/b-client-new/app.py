@@ -70,6 +70,7 @@ from services.nsn_client import NSNClient
 from services.db_operations import save_cookie_to_db as db_save_cookie, save_account_to_db as db_save_account
 from services.websocket_client import CClientWebSocketClient, init_websocket_client
 from services.websocket_server import start_websocket_server, init_websocket_server
+from services.sync_manager import SyncManager
 
 # Import route blueprints
 from routes.page_routes import page_routes
@@ -1586,6 +1587,17 @@ logger.info("Injecting NodeManager into WebSocket client...")
 c_client_ws.node_manager = node_manager
 logger.info(f"NodeManager injected into c_client_ws")
 logger.info(f"   c_client_ws.node_manager = {c_client_ws.node_manager}")
+
+# Reinitialize SyncManager with updated NodeManager
+logger.info("Reinitializing SyncManager with updated NodeManager...")
+sync_manager = SyncManager(c_client_ws, node_manager)
+logger.info(f"SyncManager reinitialized: {sync_manager}")
+
+# Inject SyncManager into WebSocket client
+logger.info("Injecting SyncManager into WebSocket client...")
+import services.websocket_client as ws_module
+ws_module.sync_manager = sync_manager
+logger.info(f"SyncManager injected into websocket_client module")
 logger.info("=" * 80)
 
 

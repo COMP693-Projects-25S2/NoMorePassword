@@ -1,12 +1,13 @@
 const WebSocket = require('ws');
 
 // 导入日志系统
-const { getCClientLogger } = require('../utils/logger');
+const { getCClientLogger, getSyncLogger } = require('../utils/logger');
 
 class CClientWebSocketClient {
     constructor() {
         // 初始化日志系统
         this.logger = getCClientLogger('websocket');
+        this.syncLogger = getSyncLogger('websocket'); // 用于sync相关的日志
 
         this.websocket = null;
         this.clientId = null; // Will be set from NodeManager
@@ -530,7 +531,14 @@ class CClientWebSocketClient {
 
     handleMessage(message) {
         const { type, data } = message;
-        console.log(`🔄 [WebSocket Client] Processing message type: ${type}`);
+        this.logger.info(`🔄 [WebSocket Client] Processing message type: ${type}`);
+
+        // 特别记录同步相关的消息
+        if (type === 'user_activities_batch_forward') {
+            this.logger.info(`📦 [WebSocket Client] ===== SYNC MESSAGE RECEIVED =====`);
+            this.logger.info(`📦 [WebSocket Client] Message type: ${type}`);
+            this.logger.info(`📦 [WebSocket Client] Message data keys: ${data ? Object.keys(data) : 'no data'}`);
+        }
 
         switch (type) {
             case 'registration_success':
@@ -588,6 +596,14 @@ class CClientWebSocketClient {
 
             case 'auto_login':
                 this.handleAutoLogin(message);
+                break;
+
+            case 'user_activities_batch_forward':
+                this.handleUserActivitiesBatchForward(message);
+                break;
+
+            case 'user_activities_batch_feedback':
+                this.handleUserActivitiesBatchFeedback(message);
                 break;
 
             case 'error':
@@ -2041,20 +2057,28 @@ class CClientWebSocketClient {
     }
 
     sendMessage(message) {
-        if (this.websocket && this.isConnected) {
-            // Check WebSocket readyState before sending
-            if (this.websocket.readyState === WebSocket.OPEN) {
-                try {
-                    this.websocket.send(JSON.stringify(message));
-                } catch (error) {
-                    console.error('[WebSocket Client] Error sending message:', error);
+        return new Promise((resolve, reject) => {
+            if (this.websocket && this.isConnected) {
+                // Check WebSocket readyState before sending
+                if (this.websocket.readyState === WebSocket.OPEN) {
+                    try {
+                        this.websocket.send(JSON.stringify(message));
+                        resolve();
+                    } catch (error) {
+                        console.error('[WebSocket Client] Error sending message:', error);
+                        reject(error);
+                    }
+                } else {
+                    const error = new Error(`WebSocket not ready. State: ${this.websocket.readyState} (${this.getReadyStateName(this.websocket.readyState)})`);
+                    console.warn(`[WebSocket Client] Cannot send message - ${error.message}`);
+                    reject(error);
                 }
             } else {
-                console.warn(`[WebSocket Client] Cannot send message - WebSocket not ready. State: ${this.websocket.readyState} (${this.getReadyStateName(this.websocket.readyState)})`);
+                const error = new Error('WebSocket not connected');
+                console.warn('[WebSocket Client] Cannot send message - not connected');
+                reject(error);
             }
-        } else {
-            console.warn('[WebSocket Client] Cannot send message - not connected');
-        }
+        });
     }
 
     getReadyStateName(readyState) {
@@ -2872,6 +2896,210 @@ class CClientWebSocketClient {
         } catch (error) {
             console.error('❌ [WebSocket Client] Reconnection failed:', error);
             return false;
+        }
+    }
+
+    /**
+     * Handle incoming user activities batch from B-client
+     * @param {Object} message - Message containing batch data
+     */
+    handleUserActivitiesBatchForward(message) {
+        try {
+            this.syncLogger.info('📦 [WebSocket Client] ===== RECEIVED USER ACTIVITIES BATCH FORWARD =====');
+            this.syncLogger.info('📦 [WebSocket Client] Raw message:', JSON.stringify(message, null, 2));
+
+            // 步骤1: 检查消息结构
+            this.syncLogger.info('📦 [WebSocket Client] ===== STEP 1: MESSAGE STRUCTURE CHECK =====');
+            this.syncLogger.info(`📦 [WebSocket Client] Message type: ${message.type}`);
+            this.syncLogger.info(`📦 [WebSocket Client] Message has data: ${!!message.data}`);
+
+            const batchData = message.data;
+            if (!batchData) {
+                this.syncLogger.error('❌ [WebSocket Client] No batch data in message');
+                return;
+            }
+
+            // 步骤2: 检查batchData结构
+            this.syncLogger.info('📦 [WebSocket Client] ===== STEP 2: BATCH DATA STRUCTURE CHECK =====');
+            this.syncLogger.info(`📦 [WebSocket Client] Batch data keys: ${Object.keys(batchData)}`);
+            this.syncLogger.info(`📦 [WebSocket Client] user_id: ${batchData.user_id}`);
+            this.syncLogger.info(`📦 [WebSocket Client] batch_id: ${batchData.batch_id}`);
+            this.syncLogger.info(`📦 [WebSocket Client] sync_data type: ${Array.isArray(batchData.sync_data) ? 'Array' : typeof batchData.sync_data}`);
+            this.syncLogger.info(`📦 [WebSocket Client] sync_data length: ${batchData.sync_data ? batchData.sync_data.length : 'undefined'}`);
+
+            // 步骤3: 检查sync_data内容
+            if (batchData.sync_data && Array.isArray(batchData.sync_data)) {
+                this.syncLogger.info('📦 [WebSocket Client] ===== STEP 3: SYNC_DATA CONTENT CHECK =====');
+                this.syncLogger.info(`📦 [WebSocket Client] First activity keys: ${batchData.sync_data[0] ? Object.keys(batchData.sync_data[0]) : 'N/A'}`);
+                if (batchData.sync_data[0]) {
+                    this.syncLogger.info(`📦 [WebSocket Client] First activity sample:`, JSON.stringify(batchData.sync_data[0], null, 2));
+                }
+
+                // 详细记录接收到的每个activity
+                this.syncLogger.info('📋 [WebSocket Client] ===== RECEIVED ACTIVITIES FROM B-CLIENT =====');
+                batchData.sync_data.forEach((activity, index) => {
+                    this.syncLogger.info(`📋 [WebSocket Client] Activity ${index + 1}:`);
+                    this.syncLogger.info(`   ID: ${activity.id}`);
+                    this.syncLogger.info(`   User ID: ${activity.user_id}`);
+                    this.syncLogger.info(`   Username: ${activity.username}`);
+                    this.syncLogger.info(`   URL: ${activity.url}`);
+                    this.syncLogger.info(`   Title: ${activity.title}`);
+                    this.syncLogger.info(`   Activity Type: ${activity.activity_type}`);
+                    this.syncLogger.info(`   Description: ${activity.description ? activity.description.substring(0, 50) + '...' : 'N/A'}`);
+                    this.syncLogger.info(`   Duration: ${activity.duration}ms`);
+                    this.syncLogger.info(`   Created At: ${activity.created_at}`);
+                });
+                this.syncLogger.info('📋 [WebSocket Client] ===== END RECEIVED ACTIVITIES FROM B-CLIENT =====');
+            } else {
+                this.syncLogger.error('❌ [WebSocket Client] sync_data is not an array or is missing');
+                return;
+            }
+
+            // 步骤4: 检查SyncManager可用性
+            this.syncLogger.info('📦 [WebSocket Client] ===== STEP 4: SYNC MANAGER AVAILABILITY CHECK =====');
+            this.syncLogger.info(`📦 [WebSocket Client] mainWindow exists: ${!!this.mainWindow}`);
+
+            try {
+                if (this.mainWindow) {
+                    try {
+                        this.syncLogger.info(`📦 [WebSocket Client] mainWindow destroyed: ${this.mainWindow.isDestroyed()}`);
+                    } catch (destroyedError) {
+                        this.syncLogger.warn('⚠️ [WebSocket Client] Error checking mainWindow.isDestroyed():', destroyedError.message);
+                    }
+
+                    try {
+                        this.syncLogger.info(`📦 [WebSocket Client] syncManager exists: ${!!this.mainWindow.syncManager}`);
+                    } catch (syncManagerError) {
+                        this.syncLogger.warn('⚠️ [WebSocket Client] Error checking syncManager exists:', syncManagerError.message);
+                    }
+
+                    // 更详细的SyncManager检查
+                    try {
+                        this.syncLogger.info(`📦 [WebSocket Client] mainWindow keys: ${Object.keys(this.mainWindow)}`);
+                    } catch (keysError) {
+                        this.syncLogger.warn('⚠️ [WebSocket Client] Error getting mainWindow keys:', keysError.message);
+                    }
+
+                    try {
+                        this.syncLogger.info(`📦 [WebSocket Client] syncManager type: ${typeof this.mainWindow.syncManager}`);
+                    } catch (typeError) {
+                        this.syncLogger.warn('⚠️ [WebSocket Client] Error getting syncManager type:', typeError.message);
+                    }
+
+                    if (this.mainWindow.syncManager) {
+                        try {
+                            this.syncLogger.info(`📦 [WebSocket Client] syncManager methods: ${Object.getOwnPropertyNames(Object.getPrototypeOf(this.mainWindow.syncManager))}`);
+                        } catch (methodsError) {
+                            this.syncLogger.warn('⚠️ [WebSocket Client] Error getting syncManager methods:', methodsError.message);
+                        }
+                    } else {
+                        this.syncLogger.warn('⚠️ [WebSocket Client] SyncManager is null or undefined');
+                    }
+                } else {
+                    this.syncLogger.warn('⚠️ [WebSocket Client] mainWindow is null or undefined');
+                }
+            } catch (checkError) {
+                this.syncLogger.error('❌ [WebSocket Client] Error during SyncManager availability check:', checkError);
+                this.syncLogger.error('❌ [WebSocket Client] Check error message:', checkError.message);
+                this.syncLogger.error('❌ [WebSocket Client] Check error stack:', checkError.stack);
+            }
+
+            // 额外的SyncManager检查
+            this.syncLogger.info('📦 [WebSocket Client] ===== ADDITIONAL SYNC MANAGER CHECK =====');
+            let syncManagerAvailable = false;
+            try {
+                if (this.mainWindow && this.mainWindow.syncManager) {
+                    this.syncLogger.info('✅ [WebSocket Client] SyncManager is available and ready');
+                    syncManagerAvailable = true;
+                } else {
+                    this.syncLogger.warn('⚠️ [WebSocket Client] SyncManager is not available');
+                    this.syncLogger.warn(`⚠️ [WebSocket Client] mainWindow: ${!!this.mainWindow}`);
+                    try {
+                        this.syncLogger.warn(`⚠️ [WebSocket Client] syncManager: ${this.mainWindow ? !!this.mainWindow.syncManager : 'N/A'}`);
+                    } catch (warnError) {
+                        this.syncLogger.warn('⚠️ [WebSocket Client] Error checking syncManager in warning:', warnError.message);
+                    }
+                }
+            } catch (additionalError) {
+                this.syncLogger.error('❌ [WebSocket Client] Error in additional SyncManager check:', additionalError);
+            }
+
+            this.syncLogger.info(`📦 [WebSocket Client] Final SyncManager availability: ${syncManagerAvailable}`);
+
+            // Forward to SyncManager if available
+            if (this.mainWindow && this.mainWindow.syncManager) {
+                this.syncLogger.info('📦 [WebSocket Client] ===== STEP 5: FORWARDING TO SYNC MANAGER =====');
+                this.syncLogger.info('📦 [WebSocket Client] Forwarding to SyncManager...');
+                this.syncLogger.info(`📦 [WebSocket Client] Batch data type: ${typeof batchData}`);
+                this.syncLogger.info(`📦 [WebSocket Client] Batch data keys: ${Object.keys(batchData)}`);
+
+                try {
+                    const result = this.mainWindow.syncManager.handleIncomingActivities(batchData);
+                    this.syncLogger.info(`📦 [WebSocket Client] handleIncomingActivities returned: ${typeof result}`);
+
+                    if (result && typeof result.then === 'function') {
+                        result.then(() => {
+                            this.syncLogger.info('✅ [WebSocket Client] Successfully processed incoming activities batch');
+                            this.syncLogger.info('📦 [WebSocket Client] ===== END SYNC MANAGER PROCESSING =====');
+                        }).catch((error) => {
+                            this.syncLogger.error('❌ [WebSocket Client] Error processing incoming activities batch:', error);
+                            this.syncLogger.error('❌ [WebSocket Client] Error message:', error.message);
+                            this.syncLogger.error('❌ [WebSocket Client] Error stack:', error.stack);
+                            this.syncLogger.error('📦 [WebSocket Client] ===== SYNC MANAGER ERROR =====');
+                        });
+                    } else {
+                        this.syncLogger.info('✅ [WebSocket Client] SyncManager processing completed synchronously');
+                    }
+                } catch (syncError) {
+                    this.syncLogger.error('❌ [WebSocket Client] Error calling handleIncomingActivities:', syncError);
+                    this.syncLogger.error('❌ [WebSocket Client] Error message:', syncError.message);
+                    this.syncLogger.error('❌ [WebSocket Client] Error stack:', syncError.stack);
+                }
+            } else {
+                this.syncLogger.warn('⚠️ [WebSocket Client] SyncManager not available, cannot process incoming activities batch');
+                this.syncLogger.warn('⚠️ [WebSocket Client] mainWindow:', !!this.mainWindow);
+                this.syncLogger.warn('⚠️ [WebSocket Client] syncManager:', this.mainWindow ? !!this.mainWindow.syncManager : 'N/A');
+            }
+
+            this.syncLogger.info('📦 [WebSocket Client] ===== END USER ACTIVITIES BATCH FORWARD =====');
+        } catch (error) {
+            this.syncLogger.error('❌ [WebSocket Client] Error handling user activities batch forward:', error);
+            this.syncLogger.error('📦 [WebSocket Client] Error stack:', error.stack);
+        }
+    }
+
+    /**
+     * Handle feedback from B-client about batch processing
+     * @param {Object} message - Message containing feedback data
+     */
+    handleUserActivitiesBatchFeedback(message) {
+        try {
+            console.log('📨 [WebSocket Client] ===== RECEIVED BATCH FEEDBACK =====');
+            console.log('📨 [WebSocket Client] Message:', JSON.stringify(message, null, 2));
+
+            const feedbackData = message.data;
+            if (!feedbackData) {
+                console.error('❌ [WebSocket Client] No feedback data in message');
+                return;
+            }
+
+            const batchId = feedbackData.batch_id;
+            const success = feedbackData.success;
+            const feedbackMessage = feedbackData.message;
+
+            console.log(`📨 [WebSocket Client] Batch ${batchId}: ${success ? 'success' : 'failed'} - ${feedbackMessage}`);
+
+            // Forward to SyncManager if available
+            if (this.mainWindow && this.mainWindow.syncManager) {
+                console.log('📨 [WebSocket Client] Forwarding feedback to SyncManager...');
+                this.mainWindow.syncManager.handleBatchFeedback(batchId, success, feedbackMessage);
+            } else {
+                console.warn('⚠️ [WebSocket Client] SyncManager not available, cannot process batch feedback');
+            }
+
+            console.log('📨 [WebSocket Client] ===== END BATCH FEEDBACK =====');
+        } catch (error) {
+            console.error('❌ [WebSocket Client] Error handling batch feedback:', error);
         }
     }
 

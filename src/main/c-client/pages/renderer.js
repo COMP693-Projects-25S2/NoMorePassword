@@ -197,21 +197,31 @@ document.addEventListener('DOMContentLoaded', () => {
     // 历史按钮事件 - 现在创建新标签页
     document.getElementById('history').onclick = showVisitHistory;
 
-    // 配置弹框功能 - 独立窗口
+    // 配置弹框功能 - 恢复原来的弹框方式
     const configBtn = document.getElementById('config-btn');
 
     // 显示配置弹框
-    configBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        try {
-            const result = await window.electronAPI.openConfigModal();
-            if (!result.success) {
-                console.error('Failed to open config modal:', result.error);
+    if (configBtn) {
+        configBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            try {
+                const result = await window.electronAPI.openConfigModal();
+                if (!result.success) {
+                    console.error('Failed to open config modal:', result.error);
+                }
+            } catch (error) {
+                console.error('Error opening config modal:', error);
             }
-        } catch (error) {
-            console.error('Error opening config modal:', error);
-        }
-    });
+        });
+    } else {
+        console.error('❌ Config button not found!');
+    }
+
+    // 初始化UI组件
+    initializeUIComponents();
+
+    // 监听IPC消息
+    setupIPCListeners();
 
 
 
@@ -460,4 +470,104 @@ function showNotification(type, message) {
     };
 }
 
+// ===================== UI Components Initialization =====================
+
+/**
+ * Initialize UI components
+ */
+function initializeUIComponents() {
+    console.log('🎨 Initializing UI components...');
+
+    // Load and initialize SyncDataViewer
+    try {
+        // Check if script is already loaded
+        if (!document.querySelector('script[src="../ui/syncDataViewer.js"]')) {
+            const script = document.createElement('script');
+            script.src = '../ui/syncDataViewer.js';
+            script.onload = () => {
+                console.log('✅ SyncDataViewer component loaded');
+                // Make sure the global instance is available
+                if (window.syncDataViewer) {
+                    console.log('✅ SyncDataViewer global instance available');
+                } else {
+                    console.warn('⚠️ SyncDataViewer global instance not found');
+                }
+            };
+            script.onerror = (error) => {
+                console.error('❌ Failed to load SyncDataViewer component:', error);
+            };
+            document.head.appendChild(script);
+        } else {
+            console.log('✅ SyncDataViewer script already loaded');
+        }
+    } catch (error) {
+        console.error('❌ Error initializing SyncDataViewer:', error);
+    }
+
+    // Load and initialize SyncNotification
+    try {
+        // Dynamically import the SyncNotification component
+        const script = document.createElement('script');
+        script.src = '../ui/syncNotification.js';
+        script.onload = () => {
+            console.log('✅ SyncNotification component loaded');
+        };
+        script.onerror = (error) => {
+            console.error('❌ Failed to load SyncNotification component:', error);
+        };
+        document.head.appendChild(script);
+    } catch (error) {
+        console.error('❌ Error initializing SyncNotification:', error);
+    }
+}
+
+/**
+ * Setup IPC listeners
+ */
+function setupIPCListeners() {
+    console.log('📡 Setting up IPC listeners...');
+
+    // Listen for show sync data viewer message
+    window.electronAPI.onShowSyncDataViewer(() => {
+        console.log('📊 Received show sync data viewer message');
+        if (window.syncDataViewer) {
+            window.syncDataViewer.show();
+        } else {
+            console.error('❌ SyncDataViewer not available');
+        }
+    });
+
+    // Listen for sync data received notification
+    window.electronAPI.onSyncDataReceived((data) => {
+        console.log('📥 Received sync data notification:', data);
+        if (window.syncNotification) {
+            const { username, activitiesCount } = data;
+            window.syncNotification.show(username, activitiesCount, 3000);
+        } else {
+            console.error('❌ SyncNotification not available');
+        }
+    });
+
+    // Listen for sync data sent notification
+    window.electronAPI.onSyncDataSent((data) => {
+        console.log('📤 Received sync data sent notification:', data);
+        if (window.syncNotification) {
+            const { activitiesCount } = data;
+            window.syncNotification.showSent(activitiesCount, 2000);
+        } else {
+            console.error('❌ SyncNotification not available');
+        }
+    });
+
+    // Listen for sync error notification
+    window.electronAPI.onSyncError((data) => {
+        console.log('❌ Received sync error notification:', data);
+        if (window.syncNotification) {
+            const { errorMessage } = data;
+            window.syncNotification.showError(errorMessage, 4000);
+        } else {
+            console.error('❌ SyncNotification not available');
+        }
+    });
+}
 

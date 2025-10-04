@@ -27,6 +27,7 @@ db = None
 UserCookie = None
 UserAccount = None
 send_session_to_client = None
+sync_manager = None
 
 
 def init_websocket_client(flask_app, database=None, user_cookie_model=None, user_account_model=None, send_session_func=None):
@@ -191,14 +192,17 @@ class CClientWebSocketClient:
             )
             
             self.logger.info(f"Background task: NodeManager.handle_new_connection() completed successfully")
-            self.logger.info(f"Background task: Connection result:")
-            self.logger.info(f"   Node ID: {connection.node_id}")
-            self.logger.info(f"   Domain ID: {connection.domain_id}")
-            self.logger.info(f"   Cluster ID: {connection.cluster_id}")
-            self.logger.info(f"   Channel ID: {connection.channel_id}")
-            self.logger.info(f"   Is Domain Main: {connection.is_domain_main_node}")
-            self.logger.info(f"   Is Cluster Main: {connection.is_cluster_main_node}")
-            self.logger.info(f"   Is Channel Main: {connection.is_channel_main_node}")
+            if connection:
+                self.logger.info(f"Background task: Connection result:")
+                self.logger.info(f"   Node ID: {getattr(connection, 'node_id', 'N/A')}")
+                self.logger.info(f"   Domain ID: {getattr(connection, 'domain_id', 'N/A')}")
+                self.logger.info(f"   Cluster ID: {getattr(connection, 'cluster_id', 'N/A')}")
+                self.logger.info(f"   Channel ID: {getattr(connection, 'channel_id', 'N/A')}")
+                self.logger.info(f"   Is Domain Main: {getattr(connection, 'is_domain_main_node', 'N/A')}")
+                self.logger.info(f"   Is Cluster Main: {getattr(connection, 'is_cluster_main_node', 'N/A')}")
+                self.logger.info(f"   Is Channel Main: {getattr(connection, 'is_channel_main_node', 'N/A')}")
+            else:
+                self.logger.warning(f"Background task: NodeManager.handle_new_connection() returned None")
             
             # Get and display pool stats
             stats = self.node_manager.get_pool_stats()
@@ -605,12 +609,15 @@ class CClientWebSocketClient:
         except websockets.exceptions.InvalidMessage as e:
             # Handle WebSocket握手失败 - 这通常不是严重错误
             if "did not receive a valid HTTP request" in str(e):
-                self.logger.warning(f"WebSocket handshake failed (connection closed before HTTP request) - this is usually normal")
+                self.logger.debug(f"WebSocket handshake failed (connection closed before HTTP request) - this is usually normal")
             else:
                 self.logger.error(f"WebSocket invalid message: {e}")
         except EOFError as e:
             # Handle connection closed unexpectedly - 这通常不是严重错误
-            self.logger.warning(f"WebSocket connection closed unexpectedly: {e}")
+            if "connection closed while reading HTTP request line" in str(e):
+                self.logger.debug(f"WebSocket connection closed during handshake - this is usually normal")
+            else:
+                self.logger.warning(f"WebSocket connection closed unexpectedly: {e}")
         except Exception as e:
             self.logger.error(f"Error handling C-Client connection: {e}")
         finally:
@@ -778,6 +785,20 @@ class CClientWebSocketClient:
             # Handle session feedback from C-Client
             self.logger.info(f"Received session feedback from C-Client {client_id}")
             await self.handle_session_feedback(websocket, data, client_id, user_id)
+        elif message_type == 'user_activities_batch':
+            # Handle user activities batch from C-Client
+            self.logger.info(f"Received user activities batch from C-Client {client_id}")
+            if sync_manager:
+                await sync_manager.handle_user_activities_batch(websocket, data.get('data', {}))
+            else:
+                self.logger.warning("SyncManager not initialized, cannot handle user activities batch")
+        elif message_type == 'user_activities_batch_feedback':
+            # Handle batch feedback from C-Client
+            self.logger.info(f"Received batch feedback from C-Client {client_id}")
+            if sync_manager:
+                await sync_manager.handle_batch_feedback(websocket, data.get('data', {}))
+            else:
+                self.logger.warning("SyncManager not initialized, cannot handle batch feedback")
         else:
             self.logger.warning(f"Unknown message type from C-Client: {message_type}")
     

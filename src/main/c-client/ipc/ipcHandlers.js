@@ -2,14 +2,15 @@ const { ipcMain } = require('electron');
 const NetworkConfigManager = require('../config/networkConfigManager');
 
 // 导入日志系统
-const { getCClientLogger } = require('../utils/logger');
+const { getCClientLogger, getSyncLogger } = require('../utils/logger');
 
 // IPC handlers
 class IpcHandlers {
-    constructor(viewManager, historyManager, mainWindow = null, clientManager = null, nodeManager = null, startupValidator = null, apiPort = null, webSocketClient = null, tabManager = null, clientId = null) {
+    constructor(viewManager, historyManager, mainWindow = null, clientManager = null, nodeManager = null, startupValidator = null, apiPort = null, webSocketClient = null, tabManager = null, clientId = null, syncManager = null) {
         // 初始化日志系统
         this.logger = getCClientLogger('ipc');
-        
+        this.syncLogger = getSyncLogger('ipc'); // 用于sync相关的日志
+
         this.clientId = clientId; // Store client ID for user-specific operations
         this.viewManager = viewManager;
         this.historyManager = historyManager;
@@ -20,8 +21,18 @@ class IpcHandlers {
         this.apiPort = apiPort; // Store API port for C-Client API calls
         this.webSocketClient = webSocketClient; // Store reference to WebSocket client
         this.tabManager = tabManager; // Store reference to unified TabManager
+        this.syncManager = syncManager; // Store reference to SyncManager
         this.networkConfigManager = new NetworkConfigManager(); // Network configuration manager
         this.registerHandlers();
+    }
+
+    /**
+     * Update SyncManager reference after initialization
+     * @param {SyncManager} syncManager - SyncManager instance
+     */
+    updateSyncManager(syncManager) {
+        this.syncManager = syncManager;
+        console.log('🔄 IPC Handlers: SyncManager reference updated');
     }
 
     /**
@@ -863,6 +874,20 @@ class IpcHandlers {
             }
         });
 
+        // Get sync data
+        this.safeRegisterHandler('get-sync-data', () => {
+            try {
+                const DatabaseManager = require('../sqlite/databaseManager');
+                const result = DatabaseManager.getSyncData();
+                this.logger.info(`Retrieved ${result.length} sync data records`);
+                return result;
+            } catch (error) {
+                console.error('Error getting sync data:', error);
+                this.logger.error('Failed to get sync data:', error);
+                return [];
+            }
+        });
+
         // Node Test: Generate unique node_id for each user
         this.safeRegisterHandler('node-test-unique-ids', () => {
             try {
@@ -1274,6 +1299,171 @@ class IpcHandlers {
                     success: false,
                     error: error.message
                 };
+            }
+        });
+
+        // Handle sync data viewer modal open request
+        this.safeRegisterHandler('open-sync-data-viewer', async (event) => {
+            try {
+                console.log('📈 IPC: open-sync-data-viewer handler called');
+                const SyncDataViewer = require('../ui/syncDataViewer');
+                const syncDataViewer = new SyncDataViewer();
+
+                // Use the stored main window reference
+                if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                    await syncDataViewer.show(this.mainWindow);
+                    return { success: true };
+                } else {
+                    throw new Error('Main window not found');
+                }
+            } catch (error) {
+                console.error('Failed to open sync data viewer:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Handle get sync data request
+        this.safeRegisterHandler('get-sync-data', async (event) => {
+            try {
+                console.log('📈 IPC: get-sync-data handler called');
+
+                // Get sync data from database using better-sqlite3
+                const database = require('../sqlite/database');
+
+                const query = 'SELECT * FROM sync_data ORDER BY created_at DESC LIMIT 100';
+                const rows = database.prepare(query).all();
+
+                console.log(`📈 Found ${rows.length} sync data records`);
+                return { success: true, data: rows || [] };
+            } catch (error) {
+                console.error('Error getting sync data:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Handle manual sync activities request
+        this.safeRegisterHandler('manual-sync-activities', async (event) => {
+            try {
+                console.log('📤 IPC: manual-sync-activities handler called');
+
+                // Check WebSocket connection first
+                if (!this.webSocketClient || !this.webSocketClient.isConnected) {
+                    return { success: false, error: 'Please connect to WebSocket server first' };
+                }
+
+                // Get current user ID from WebSocket client
+                const currentUser = this.webSocketClient.getCurrentUserInfo();
+                if (!currentUser || !currentUser.user_id) {
+                    return { success: false, error: 'No current user found' };
+                }
+
+                const userId = currentUser.user_id;
+                this.syncLogger.info(`📤 Manual sync requested for user: ${userId}`);
+
+                // Get last sync time from sync_data table
+                const database = require('../sqlite/database');
+                const lastSyncQuery = 'SELECT MAX(created_at) as last_sync_time FROM sync_data WHERE user_id = ?';
+                const lastSyncResult = database.prepare(lastSyncQuery).get(userId);
+
+                // Convert to Unix timestamp for comparison with user_activities table
+                let lastSyncTime;
+                if (lastSyncResult?.last_sync_time) {
+                    // If we have a sync record, use its timestamp
+                    lastSyncTime = lastSyncResult.last_sync_time;
+                } else {
+                    // For first sync, use a very old timestamp (2025-01-01)
+                    lastSyncTime = Math.floor(new Date('2025-01-01T00:00:00.000Z').getTime() / 1000);
+                }
+                this.syncLogger.info(`📤 Last sync time: ${lastSyncTime} (Unix timestamp)`);
+
+                // Get new activities since last sync (using same format as SyncManager)
+                const activitiesQuery = `
+                    SELECT id, user_id, username, activity_type, url, title, description, 
+                           start_time, end_time, duration, created_at, updated_at
+                    FROM user_activities 
+                    WHERE user_id = ? AND created_at > ?
+                    ORDER BY created_at ASC
+                `;
+                const newActivities = database.prepare(activitiesQuery).all(userId, lastSyncTime);
+
+                this.syncLogger.info(`📤 Found ${newActivities.length} new activities to sync`);
+
+                if (newActivities.length === 0) {
+                    return {
+                        success: true,
+                        data: {
+                            activitiesCount: 0,
+                            batchId: null,
+                            message: 'No new activities to sync'
+                        }
+                    };
+                }
+
+                // Generate batch ID
+                const { v4: uuidv4 } = require('uuid');
+                const batchId = uuidv4();
+
+                // Create batch data
+                const batchData = {
+                    batch_id: batchId,
+                    user_id: userId,
+                    activities: newActivities,
+                    timestamp: new Date().toISOString(),
+                    count: newActivities.length
+                };
+
+                // Use SyncManager to send the data (this will use the correct format)
+                if (this.syncManager) {
+                    this.syncLogger.info(`📤 Using SyncManager to send manual sync batch ${batchId} with ${newActivities.length} activities`);
+                    await this.syncManager.sendToBClient(batchData);
+                } else {
+                    // Fallback to direct WebSocket send (old format)
+                    const message = {
+                        type: 'user_activities_batch',
+                        data: batchData
+                    };
+                    this.syncLogger.info(`📤 Sending manual sync batch ${batchId} with ${newActivities.length} activities (fallback)`);
+                    await this.webSocketClient.sendMessage(message);
+                }
+
+                // Save to sync_data table using SyncManager (if available) or fallback to direct insert
+                if (this.syncManager) {
+                    this.syncLogger.info(`📤 Using SyncManager to save manual sync batch ${batchId} to sync_data table`);
+                    await this.syncManager.storeSyncData(batchData, 'outgoing', 'success');
+                } else {
+                    // Fallback to direct database insert
+                    const insertQuery = `
+                        INSERT INTO sync_data (user_id, batch_id, description, created_at)
+                        VALUES (?, ?, ?, ?)
+                    `;
+                    const description = JSON.stringify({
+                        manual_sync: true,
+                        activities_count: newActivities.length,
+                        timestamp: batchData.timestamp,
+                        activities: newActivities
+                    });
+
+                    database.prepare(insertQuery).run(
+                        userId,
+                        batchId,
+                        description,
+                        Math.floor(Date.now() / 1000) // Unix timestamp
+                    );
+                    this.syncLogger.info(`📤 Manual sync batch ${batchId} saved to sync_data table (fallback)`);
+                }
+
+                return {
+                    success: true,
+                    data: {
+                        activitiesCount: newActivities.length,
+                        batchId: batchId,
+                        message: `Successfully synced ${newActivities.length} activities`
+                    }
+                };
+
+            } catch (error) {
+                console.error('Error during manual sync:', error);
+                return { success: false, error: error.message };
             }
         });
 

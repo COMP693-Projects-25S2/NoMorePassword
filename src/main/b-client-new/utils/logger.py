@@ -24,6 +24,8 @@ class BClientLogger:
         self.main_log_file = self.log_dir / f"bclient_main_{start_time}.log"
         self.websocket_log_file = self.log_dir / f"bclient_websocket_{start_time}.log"
         self.nodemanager_log_file = self.log_dir / f"bclient_nodemanager_{start_time}.log"
+        self.sync_log_file = self.log_dir / f"bclient_sync_{start_time}.log"  # 统一的sync日志文件
+        self.sync_manager_log_file = self.log_dir / f"bclient_sync_{start_time}.log"  # 重定向到sync文件
         self.routes_log_file = self.log_dir / f"bclient_routes_{start_time}.log"
         self.app_log_file = self.log_dir / f"bclient_app_{start_time}.log"
         
@@ -50,6 +52,13 @@ class BClientLogger:
         self.nodemanager_logger = self._create_logger(
             'bclient_nodemanager',
             self.nodemanager_log_file,
+            level=logging.INFO
+        )
+        
+        # SyncManager模块logger
+        self.sync_manager_logger = self._create_logger(
+            'bclient_sync_manager',
+            self.sync_manager_log_file,
             level=logging.INFO
         )
         
@@ -108,6 +117,7 @@ class BClientLogger:
         module_map = {
             'websocket': self.websocket_logger,
             'nodemanager': self.nodemanager_logger,
+            'sync_manager': self.sync_manager_logger,
             'routes': self.routes_logger,
             'app': self.app_logger,
             'main': self.main_logger
@@ -122,6 +132,7 @@ class BClientLogger:
         self.main_logger.info(f"  Main: {self.main_log_file}")
         self.main_logger.info(f"  WebSocket: {self.websocket_log_file}")
         self.main_logger.info(f"  NodeManager: {self.nodemanager_log_file}")
+        self.main_logger.info(f"  SyncManager: {self.sync_manager_log_file}")
         self.main_logger.info(f"  Routes: {self.routes_log_file}")
         self.main_logger.info(f"  App: {self.app_log_file}")
         self.main_logger.info("=" * 60)

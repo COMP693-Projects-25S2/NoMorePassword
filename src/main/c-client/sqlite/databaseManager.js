@@ -1583,6 +1583,70 @@ class DatabaseManager {
             };
         }
     }
+
+    // ===================== Sync Data Methods =====================
+
+    /**
+     * Get all sync data records
+     * @returns {Array} Array of sync data records
+     */
+    static getSyncData() {
+        try {
+            console.log('📊 DatabaseManager: Getting all sync data records...');
+
+            const stmt = db.prepare(`
+                SELECT 
+                    id,
+                    batch_id,
+                    user_id,
+                    direction,
+                    activity_data,
+                    status,
+                    created_at,
+                    updated_at
+                FROM sync_data 
+                ORDER BY created_at DESC
+            `);
+
+            const result = stmt.all();
+            console.log(`📊 DatabaseManager: Retrieved ${result.length} sync data records`);
+
+            return result;
+
+        } catch (error) {
+            console.error('❌ DatabaseManager: Error getting sync data:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get sync data statistics
+     * @returns {Object} Sync data statistics
+     */
+    static getSyncDataStats() {
+        try {
+            console.log('📊 DatabaseManager: Getting sync data statistics...');
+
+            const stmt = db.prepare(`
+                SELECT 
+                    direction,
+                    status,
+                    COUNT(*) as count,
+                    MAX(created_at) as last_sync
+                FROM sync_data 
+                GROUP BY direction, status
+            `);
+
+            const result = stmt.all();
+            console.log(`📊 DatabaseManager: Retrieved sync data statistics: ${result.length} groups`);
+
+            return result;
+
+        } catch (error) {
+            console.error('❌ DatabaseManager: Error getting sync data statistics:', error);
+            throw error;
+        }
+    }
 }
 
 module.exports = DatabaseManager;

@@ -117,6 +117,7 @@ db.exec(`
 db.exec(`
     CREATE TABLE IF NOT EXISTS sync_data (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        batch_id    VARCHAR(50),
         user_id     VARCHAR(50),
         username    TEXT,
         activity_type VARCHAR(50),

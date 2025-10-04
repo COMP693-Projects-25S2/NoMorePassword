@@ -55,6 +55,9 @@ class ElectronApp {
         this.currentWebSocketUrl = null; // Track current WebSocket URL for connection sharing
         this.websiteWebSocketConnections = new Map(); // Track WebSocket connections per website domain
 
+        // SyncManager for user activity synchronization
+        this.syncManager = null;
+
         // B-Client configuration modal
         this.bClientConfigModal = null;
 
@@ -400,6 +403,15 @@ class ElectronApp {
 
             // Set up browsing history monitoring
             this.setupHistoryRecording();
+
+            // Initialize SyncManager for user activity synchronization
+            console.log(`🔄 C-Client: Initializing SyncManager...`);
+            await this.initializeSyncManager();
+            console.log(`🔄 C-Client: SyncManager initialization completed`);
+
+            // Update IPC handlers with SyncManager reference
+            this.ipcHandlers.updateSyncManager(this.syncManager);
+            console.log(`🌐 C-Client: Updated IpcHandlers with SyncManager reference`);
 
             // Register keyboard shortcuts
             this.registerShortcuts();
@@ -840,6 +852,13 @@ class ElectronApp {
                             this.clearLocalUsers();
                         }
                     },
+                    {
+                        label: 'Check Sync Data',
+                        accelerator: 'CmdOrCtrl+Shift+S',
+                        click: () => {
+                            this.showSyncDataViewer();
+                        }
+                    },
                     { type: 'separator' },
                     {
                         label: 'Exit',
@@ -912,6 +931,17 @@ class ElectronApp {
             await dialog.show();
         } catch (error) {
             console.error('Error showing network config dialog:', error);
+        }
+    }
+
+    async showSyncDataViewer() {
+        try {
+            // 向渲染进程发送消息显示SyncData查看器
+            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                this.mainWindow.webContents.send('show-sync-data-viewer');
+            }
+        } catch (error) {
+            console.error('Error showing sync data viewer:', error);
         }
     }
 
@@ -2120,6 +2150,55 @@ class ElectronApp {
     async safeQuit() {
         await this.cleanup();
         app.quit();
+    }
+
+    /**
+     * Initialize SyncManager for user activity synchronization
+     */
+    async initializeSyncManager() {
+        try {
+            const SyncManager = require('./syncManager/syncManager');
+
+            // Initialize SyncManager with main window and database instance
+            const database = require('./sqlite/database');
+            this.syncManager = new SyncManager(this, database);
+
+            // Set main window reference for SyncManager
+            if (this.webSocketClient) {
+                this.webSocketClient.setMainWindow(this);
+            }
+
+            console.log('✅ SyncManager initialized successfully');
+
+        } catch (error) {
+            console.error('❌ Failed to initialize SyncManager:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Start sync for current user
+     * @param {string} userId - Current user ID
+     */
+    startSyncForUser(userId) {
+        if (this.syncManager) {
+            console.log(`🔄 Starting sync for user: ${userId}`);
+            this.syncManager.startSync(userId);
+        } else {
+            console.warn('⚠️ SyncManager not initialized, cannot start sync');
+        }
+    }
+
+    /**
+     * Stop sync for current user
+     */
+    stopSyncForUser() {
+        if (this.syncManager) {
+            console.log('🔄 Stopping sync for current user');
+            this.syncManager.stopSync();
+        } else {
+            console.warn('⚠️ SyncManager not initialized, cannot stop sync');
+        }
     }
 }
 
