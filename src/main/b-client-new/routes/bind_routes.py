@@ -999,7 +999,7 @@ def bind():
             # 准备注册数据
             signup_data = {
                 'username': unique_username,
-                'email': f"{nmp_username}@nomorepassword.local",
+                'email': f"{unique_username}@nomorepassword.local",
                 'first_name': nmp_username.split('-')[0] if '-' in nmp_username else nmp_username,
                 'last_name': 'NMP User',
                 'location': 'Unknown',
@@ -1029,7 +1029,7 @@ def bind():
             # 准备注册数据
             signup_data = {
                 'username': unique_username,
-                'email': f"{nmp_username}@nomorepassword.local",
+                'email': f"{unique_username}@nomorepassword.local",
                 'first_name': nmp_username.split('-')[0] if '-' in nmp_username else nmp_username,
                 'last_name': 'NMP User',
                 'location': 'Unknown',
