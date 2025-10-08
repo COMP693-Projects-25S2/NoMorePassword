@@ -1,174 +1,111 @@
-# NoMorePassword - Electron Browser
+# B-Client Flask Application
 
-一个基于 Electron 的浏览器应用，具有访问历史跟踪功能。
+Enterprise-level client for NoMorePassword Backend Service, rebuilt using Flask + Python.
 
-## 功能特性
+## Features
 
-- 🌐 基于 Electron 的现代浏览器界面
-- 📊 访问历史跟踪和记录
-- 🔐 用户注册和认证系统
-- 🎯 双客户端架构 (C-Client 和 B-Client)
-- 💾 SQLite 数据库存储
-- 🔄 OAuth 认证支持
-- 📱 响应式用户界面
+- **Cookie Management**: Store and manage user cookies with auto-refresh capability
+- **Account Management**: Store user account credentials with full details
+- **Dashboard Statistics**: Real-time statistics and monitoring
+- **Enterprise Security**: Complete data isolation and enhanced security features
 
-## 技术栈
+## Installation
 
-- **Electron** - 跨平台桌面应用框架
-- **SQLite** - 轻量级数据库
-- **Node.js** - 后端运行时
-- **HTML/CSS/JavaScript** - 前端界面
-
-## 安装和运行
-
-### 前置要求
-
-- Node.js (推荐 v16 或更高版本)
-- npm 或 yarn
-
-### 安装依赖
-
-```bash
-npm install
-```
-
-### 运行应用
-
-#### 启动 C-Client (默认)
-```bash
-npm start
-# 或
-npm run start:c-client
-```
-
-#### 启动 B-Client
-```bash
-npm run start:b-client
-```
-
-#### 开发模式
-```bash
-npm run dev
-npm run dev:c-client
-npm run dev:b-client
-```
-
-### 构建应用
-
-```bash
-npm run build
-```
-
-## 项目结构
-
-```
-src/
-├── main/                    # 主进程代码
-│   ├── discard-b/          # B-Client 特定代码
-│   │   ├── window/         # B-Client 窗口管理
-│   │   ├── sqlite/         # B-Client 数据库
-│   │   ├── history/        # B-Client 历史记录
-│   │   ├── ipc/            # B-Client IPC 处理
-│   │   └── nodeManager/    # B-Client 节点管理
-│   └── c-client/           # C-Client 特定代码
-│       ├── window/         # C-Client 窗口管理
-│       ├── sqlite/         # C-Client 数据库
-│       ├── history/        # C-Client 历史记录
-│       ├── ipc/            # C-Client IPC 处理
-│       └── nodeManager/    # C-Client 节点管理
-├── pages/                  # 渲染进程页面
-│   ├── index.html          # C-Client 主页面
-│   ├── b-client.html       # B-Client 页面
-│   ├── history.html        # 历史记录页面
-│   └── userRegistration.html # 用户注册页面
-```
-
-## 快捷键
-
-- `Ctrl+Shift+I` - 打开开发者工具
-- `Ctrl+T` - 新建标签页
-- `F5` - 刷新页面
-- `Alt+Left` - 后退
-- `Alt+Right` - 前进
-- `Ctrl+H` - 打开历史记录
-- `Ctrl+Shift+L` - 清除本地用户
-
-## 数据库
-
-应用使用 SQLite 数据库存储：
-- 用户信息
-- 访问历史
-- 会话数据
-
-数据库文件位置：
-- C-Client: `src/main/c-client/sqlite/secure.db`
-- B-Client: `src/main/discard-b/sqlite/b_client_secure.db`
-
-## 开发说明
-
-### 客户端切换
-
-应用支持两种客户端模式：
-- **C-Client**: 完整的浏览器功能
-- **B-Client**: 简化的浏览器功能
-
-### 历史记录
-
-应用会自动记录：
-- 访问的 URL
-- 页面标题
-- 访问时间
-- 停留时长
-
-### OAuth 认证
-
-支持 OAuth 2.0 认证流程，包括：
-- 授权码流程
-- 令牌管理
-- 会话保持
-
-## 故障排除
-
-### 常见问题
-
-1. **应用无法启动**
-   - 检查 Node.js 版本
-   - 重新安装依赖: `npm install`
-
-2. **better-sqlite3 模块版本不匹配错误**
+1. **Install Python dependencies**:
+   ```bash
+   pip install -r requirements.txt
    ```
-   Error: The module was compiled against a different Node.js version
+
+2. **Run the application**:
+   ```bash
+   python run.py
    ```
-   - 运行修复命令: `npm run fix-modules`
-   - 或手动执行: `npx electron-rebuild`
 
-3. **数据库错误**
-   - 检查数据库文件权限
-   - 删除损坏的数据库文件重新创建
+3. **Access the application**:
+   - Main page: http://localhost:3000
+   - Dashboard: http://localhost:3000/dashboard
+   - History: http://localhost:3000/history
+   - API Health: http://localhost:3000/api/health
 
-4. **OAuth 认证失败**
-   - 检查网络连接
-   - 验证 OAuth 配置
+## API Endpoints
 
-### 日志
+### Health Check
+- `GET /api/health` - Service health status
 
-应用日志会输出到控制台，包括：
-- 初始化过程
-- 错误信息
-- 用户操作记录
+### Statistics
+- `GET /api/stats` - Dashboard statistics
 
-## 许可证
+### Configuration
+- `GET /api/config` - Application configuration
 
-MIT License
+### Cookie Management
+- `GET /api/cookies?user_id=<user_id>` - Get cookies for user
+- `POST /api/cookies` - Add or update cookie
 
-## 贡献
+### Account Management
+- `GET /api/accounts?user_id=<user_id>` - Get accounts for user
+- `POST /api/accounts` - Add or update account
+- `DELETE /api/accounts/<user_id>/<username>/<website>/<account>` - Delete account
 
-欢迎提交 Issue 和 Pull Request！
+## Database Schema
 
-## 更新日志
+### user_cookies
+- `user_id` (VARCHAR(50), Primary Key)
+- `username` (TEXT, Primary Key)
+- `node_id` (VARCHAR(50))
+- `cookie` (TEXT)
+- `auto_refresh` (BOOLEAN)
+- `refresh_time` (TIMESTAMP)
+- `create_time` (TIMESTAMP)
 
-### v1.0.0
-- 初始版本发布
-- 基础浏览器功能
-- 历史记录跟踪
-- 双客户端支持
+### user_accounts
+- `user_id` (VARCHAR(50), Primary Key)
+- `username` (TEXT, Primary Key)
+- `website` (TEXT, Primary Key)
+- `account` (VARCHAR(50), Primary Key)
+- `password` (TEXT)
+- `email` (TEXT)
+- `first_name` (TEXT)
+- `last_name` (TEXT)
+- `location` (TEXT)
+- `registration_method` (VARCHAR(20))
+- `auto_generated` (BOOLEAN)
+- `create_time` (TIMESTAMP)
+
+### domain_nodes
+**Note: This table has been removed. Domain information is now managed by NodeManager connection pools in memory.**
+
+## Configuration
+
+The application uses `config.json` for configuration. Key settings:
+
+- **Network**: IP address settings for local/public deployment
+- **API**: Port configurations for NSN and C-Client services
+- **Target Websites**: Website configurations for different environments
+- **Auto-refresh**: Default interval for cookie refresh
+
+## Environment Variables
+
+- `HOST`: Server host (default: 0.0.0.0)
+- `PORT`: Server port (default: 3000)
+- `DEBUG`: Debug mode (default: True)
+
+## Development
+
+The application is built with:
+- **Flask**: Web framework
+- **SQLAlchemy**: Database ORM
+- **SQLite**: Database (b_client_secure.db)
+- **HTML/CSS/JavaScript**: Frontend
+
+## Security Features
+
+- Complete data isolation
+- Enterprise-level security
+- Encrypted database storage
+- Secure cookie management
+- Auto-refresh capabilities
+
+## License
+
+Enterprise-level client for NoMorePassword Backend Service.
