@@ -23,14 +23,14 @@ try:
 except ImportError:
     websockets = None
 
-# 导入日志系统
+# Import logging system
 from utils.logger import get_bclient_logger, setup_print_redirect
 
-# 立即设置日志重定向（在模块导入时就生效）
+# Set up log redirection immediately (takes effect on module import)
 logger = get_bclient_logger('app')
 print_redirect = setup_print_redirect('app')
 
-# 重定向print到日志
+# Redirect print to logger
 builtins.print = print_redirect
 
 logger.info("B-Client application module imported")
@@ -45,10 +45,10 @@ def safe_close_websocket(websocket, reason="Connection closed"):
     """
     try:
         if hasattr(websocket, 'close'):
-            # 标记连接为已关闭（在尝试关闭之前）
+            # Mark connection as closed (before attempting to close)
             websocket._closed_by_logout = True
             
-            # 尝试关闭连接 - 使用asyncio.run来处理异步close
+            # Try to close connection - use asyncio.run to handle async close
             try:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
@@ -58,7 +58,7 @@ def safe_close_websocket(websocket, reason="Connection closed"):
                 return True
             except Exception as close_error:
                 # Error in async close - this is handled by the logging system
-                # 即使异步关闭失败，也标记为已关闭
+                # Mark as closed even if async close fails
                 return True
         else:
             # WebSocket has no close method - this is handled by the logging system
@@ -236,12 +236,12 @@ def get_cookies():
         if not user_id:
             return jsonify({'error': 'user_id is required'}), 400
         
-        # 查询用户的cookie（应该只有一条记录）
+        # Query user's cookie (should only have one record)
         cookie = UserCookie.query.filter_by(user_id=user_id).first()
         
         if cookie:
-            # 找到cookie：只返回状态，不立即发送session
-            # Session将在WebSocket注册完成后发送
+            # Found cookie: only return status, don't send session immediately
+            # Session will be sent after WebSocket registration completes
             logger.info(f"Found cookie for user {user_id}")
             logger.info(f"Cookie details - username: {cookie.username}, node_id: {cookie.node_id}")
             logger.info(f"Session will be sent after WebSocket registration completes")
@@ -252,7 +252,7 @@ def get_cookies():
                 'message': 'Cookie found and session sent to C-Client'
             })
         else:
-            # 未找到cookie：返回失败响应
+            # Cookie not found: return failure response
             logger.info(f"No cookie found for user {user_id}")
             return jsonify({
                 'success': False,
@@ -1219,7 +1219,7 @@ def save_cookie_to_db(user_id, username, raw_session_cookie, node_id, auto_refre
         logger.info(f"Raw session cookie length: {len(raw_session_cookie) if raw_session_cookie else 0}")
         logger.info(f"Raw session cookie preview: {raw_session_cookie[:100] if raw_session_cookie else 'None'}...")
         
-        # 预处理 session 数据为 JSON 格式
+        # Preprocess session data to JSON format
         logger.info(f"===== PREPROCESSING SESSION DATA =====")
         session_data_json = {
             'loggedin': True,
@@ -1232,23 +1232,23 @@ def save_cookie_to_db(user_id, username, raw_session_cookie, node_id, auto_refre
             'nmp_timestamp': str(int(time.time() * 1000))
         }
         
-        # 编码为 JSON 字符串
+        # Encode to JSON string
         processed_cookie = json.dumps(session_data_json)
         logger.info(f"Preprocessed session data: {processed_cookie}")
         logger.info(f"Preprocessed cookie length: {len(processed_cookie)}")
         
-        # 删除现有记录
+        # Delete existing records
         logger.info(f"Deleting existing cookie records...")
         deleted_count = UserCookie.query.filter_by(user_id=user_id, username=username).delete()
         logger.info(f"Deleted {deleted_count} existing cookie records")
         
-        # 创建新记录（保存预处理后的 JSON 字符串）
+        # Create new record (save preprocessed JSON string)
         logger.info(f"Creating new cookie record with preprocessed data...")
         user_cookie = UserCookie(
             user_id=user_id,
             username=username,
             node_id=node_id,
-            cookie=processed_cookie,  # 保存预处理后的 JSON 字符串
+            cookie=processed_cookie,  # Save preprocessed JSON string
             auto_refresh=auto_refresh,
             refresh_time=datetime.utcnow()
         )
@@ -1279,7 +1279,7 @@ def save_account_to_db(user_id, username, account, password, account_data):
         logger.info(f"Password length: {len(password) if password else 0}")
         logger.info(f"Account data: {account_data}")
         
-        # 删除现有记录
+        # Delete existing records
         logger.info(f"Deleting existing account records...")
         deleted_count = UserAccount.query.filter_by(
             user_id=user_id, 
@@ -1288,7 +1288,7 @@ def save_account_to_db(user_id, username, account, password, account_data):
         ).delete()
         logger.info(f"Deleted {deleted_count} existing account records")
         
-        # 创建新记录
+        # Create new record
         logger.info(f"Creating new account record...")
         user_account = UserAccount(
             user_id=user_id,
@@ -1359,7 +1359,7 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
         logger.info(f"WebSocket client available: {c_client_ws}")
         logger.info(f"User connections: {c_client_ws.user_connections}")
         
-        # 查找该用户的WebSocket连接
+        # Find WebSocket connections for this user
         logger.info(f"===== SESSION SEND DEBUG INFO =====")
         logger.info(f"Target user_id: {user_id}")
         logger.info(f"All user_connections keys: {list(c_client_ws.user_connections.keys())}")
@@ -1369,7 +1369,7 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
             connections = c_client_ws.user_connections[user_id]
             logger.info(f"Found {len(connections)} connections for user {user_id}")
             
-            # 详细记录每个连接的user_id
+            # Log each connection's user_id in detail
             for i, conn in enumerate(connections):
                 conn_user_id = getattr(conn, 'user_id', 'unknown')
                 conn_node_id = getattr(conn, 'node_id', 'unknown')
@@ -1381,7 +1381,7 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
             logger.info(f"===== END SENDING SESSION: NO CONNECTIONS =====")
             return False
             
-        # 尝试发送session数据，支持重试
+        # Try to send session data with retry support
         for attempt in range(max_retries):
             logger.info(f"===== SESSION SEND ATTEMPT {attempt + 1}/{max_retries} =====")
             
@@ -1389,44 +1389,44 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
             feedback_received = {}
             successful_connections = []  # Track actually successful connections
             
-            # 设置feedback跟踪
+                # Set up feedback tracking
             for websocket in connections:
                 feedback_received[websocket] = False
                 websocket._session_feedback_tracking = feedback_received
             
-            # 发送session数据给所有该用户的连接
+            # Send session data to all connections for this user
             for i, websocket in enumerate(connections):
                 try:
                         logger.info(f"Checking connection {i+1}/{len(connections)} (attempt {attempt + 1})")
                         
-                        # 检查连接是否仍然有效 - 优先检查我们的标记
+                        # Check if connection is still valid - prioritize our marker
                         if hasattr(websocket, '_closed_by_logout') and websocket._closed_by_logout:
                             logger.warning(f"Connection {i+1} was closed by logout, skipping")
                             continue
                         
-                        # 检查WebSocket的closed属性
+                        # Check WebSocket's closed attribute
                         if hasattr(websocket, 'closed') and websocket.closed:
                             logger.warning(f"Connection {i+1} is closed (closed=True), skipping")
                             continue
                         
-                        # 检查连接状态 - 更严格的检查
+                        # Check connection state - stricter check
                         if hasattr(websocket, 'state'):
                             state_value = websocket.state
                             state_name = websocket.state.name if hasattr(websocket.state, 'name') else str(websocket.state)
                             
-                            # 检查状态值（3 = CLOSED, 2 = CLOSING）
+                            # Check state value (3 = CLOSED, 2 = CLOSING)
                             if state_value in [2, 3] or state_name in ['CLOSED', 'CLOSING']:
                                 logger.warning(f"Connection {i+1} is in {state_name} state (value: {state_value}), skipping")
                                 continue
                         
-                        # 检查close_code - 如果设置了close_code，说明连接已经关闭
+                        # Check close_code - if close_code is set, connection is closed
                         if hasattr(websocket, 'close_code') and websocket.close_code is not None:
                             logger.warning(f"Connection {i+1} has close_code {websocket.close_code}, skipping")
                             continue
                         
-                        # 尝试发送测试消息来验证连接是否真的有效
+                        # Try to send test message to verify connection is really valid
                         try:
-                            # 发送一个简单的ping消息来测试连接
+                            # Send a simple ping message to test connection
                             test_message = {'type': 'ping', 'timestamp': int(time.time() * 1000)}
                             await websocket.send(json.dumps(test_message))
                             logger.info(f"Connection {i+1} ping successful, connection is valid")
@@ -1436,7 +1436,7 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                         
                         logger.info(f"Connection {i+1} is valid, sending session")
                         
-                        # 从cookie中提取NSN用户信息
+                        # Extract NSN user info from cookie
                         nsn_user_id_from_cookie = None
                         nsn_username_from_cookie = None
                         
@@ -1447,29 +1447,29 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                             logger.info(f"Extracted from cookie - nsn_user_id: {nsn_user_id_from_cookie}, nsn_username: {nsn_username_from_cookie}")
                         except Exception as e:
                             logger.warning(f"Failed to parse cookie data: {e}")
-                            # 使用传入的参数作为fallback
+                            # Use passed parameters as fallback
                             nsn_user_id_from_cookie = nsn_user_id
                             nsn_username_from_cookie = nsn_username
                         
-                        # 使用从cookie中提取的信息，如果提取失败则使用传入的参数
+                        # Use info extracted from cookie, use passed parameters if extraction fails
                         final_nsn_user_id = nsn_user_id_from_cookie or nsn_user_id
                         final_nsn_username = nsn_username_from_cookie or nsn_username
                         
-                        # 直接使用预处理后的 session 数据
+                        # Directly use preprocessed session data
                         processed_session_data = {
-                            'session_cookie': processed_session_cookie,  # 直接使用预处理后的 JSON 字符串
+                            'session_cookie': processed_session_cookie,  # Directly use preprocessed JSON string
                             'nsn_user_id': final_nsn_user_id,
                             'nsn_username': final_nsn_username,
                             'loggedin': True,
                             'role': 'traveller'
                         }
                         
-                        # 添加网站配置信息
+                        # Add website config info
                         website_config = {
                             'root_path': website_root_path or 'http://localhost:5000',
                             'name': website_name or 'NSN',
                             'session_partition': session_partition or 'persist:nsn',
-                            'root_url': c_client_ws.get_nsn_root_url()  # 添加NSN root URL
+                            'root_url': c_client_ws.get_nsn_root_url()  # Add NSN root URL
                         }
                         
                         message = {
@@ -1525,18 +1525,18 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                     logger.error(f"Failed to send to any connections on attempt {attempt + 1}")
                     continue
                 
-                # 等待feedback - 只等待实际发送成功的连接（已经在上面跟踪）
+                # Wait for feedback - only wait for actually successful connections (already tracked above)
                 logger.info(f"Waiting for session feedback from {len(successful_connections)} successful connections...")
                 start_time = asyncio.get_event_loop().time()
-                timeout = 30  # 30秒超时
+                timeout = 30  # 30 second timeout
                 
-                # 只跟踪成功发送的连接
+                # Only track successfully sent connections
                 successful_feedback_received = {conn: False for conn in successful_connections}
                 
                 while asyncio.get_event_loop().time() - start_time < timeout:
                     if all(successful_feedback_received.values()):
                         logger.info(f"All session feedback received for user {user_id} on attempt {attempt + 1}")
-                        # 清理feedback跟踪
+                        # Clean up feedback tracking
                         for websocket in successful_connections:
                             if hasattr(websocket, '_session_feedback_tracking'):
                                 delattr(websocket, '_session_feedback_tracking')
@@ -1546,19 +1546,19 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                     
                     await asyncio.sleep(0.5)
                 else:
-                    # 超时
+                    # Timeout
                     missing_feedback = [ws for ws, received in successful_feedback_received.items() if not received]
                     logger.warning(f"Session feedback timeout on attempt {attempt + 1}")
                     logger.warning(f"   Missing feedback from {len(missing_feedback)} connections")
                     
-                    # 清理feedback跟踪
+                    # Clean up feedback tracking
                     for websocket in successful_connections:
                         if hasattr(websocket, '_session_feedback_tracking'):
                             delattr(websocket, '_session_feedback_tracking')
                     
                     if attempt < max_retries - 1:
                         logger.info(f"Retrying session send... ({attempt + 2}/{max_retries})")
-                        await asyncio.sleep(2)  # 等待2秒后重试
+                        await asyncio.sleep(2)  # Wait 2 seconds before retry
                         continue
                     else:
                         logger.error(f"Max retries reached, giving up")
@@ -1623,7 +1623,7 @@ if __name__ == '__main__':
     
     logger.info("Starting Flask server on 0.0.0.0:3000")
     
-    # 配置Flask日志级别，减少控制台输出
+    # Configure Flask log level to reduce console output
     logging.getLogger('werkzeug').setLevel(logging.WARNING)
     
     app.run(debug=True, host='0.0.0.0', port=3000)

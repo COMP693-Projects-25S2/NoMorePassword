@@ -31,7 +31,7 @@ def save_cookie_to_db(db, UserCookie, user_id, username, raw_session_cookie, nod
         logger.info(f"Raw session cookie length: {len(raw_session_cookie) if raw_session_cookie else 0}")
         logger.info(f"Raw session cookie preview: {raw_session_cookie[:100] if raw_session_cookie else 'None'}...")
         
-        # 预处理 session 数据为 JSON 格式
+        # Preprocess session data to JSON format
         logger.info(f"===== PREPROCESSING SESSION DATA =====")
         session_data_json = {
             'loggedin': True,
@@ -44,23 +44,23 @@ def save_cookie_to_db(db, UserCookie, user_id, username, raw_session_cookie, nod
             'nmp_timestamp': str(int(time.time() * 1000))
         }
         
-        # 编码为 JSON 字符串
+        # Encode to JSON string
         processed_cookie = json.dumps(session_data_json)
         logger.info(f"Preprocessed session data: {processed_cookie}")
         logger.info(f"Preprocessed cookie length: {len(processed_cookie)}")
         
-        # 删除现有记录
+        # Delete existing records
         logger.info(f"Deleting existing cookie records...")
         deleted_count = UserCookie.query.filter_by(user_id=user_id, username=username).delete()
         logger.info(f"Deleted {deleted_count} existing cookie records")
         
-        # 创建新记录（保存预处理后的 JSON 字符串）
+        # Create new record (save preprocessed JSON string)
         logger.info(f"Creating new cookie record with preprocessed data...")
         user_cookie = UserCookie(
             user_id=user_id,
             username=username,
             node_id=node_id,
-            cookie=processed_cookie,  # 保存预处理后的 JSON 字符串
+            cookie=processed_cookie,  # Save preprocessed JSON string
             auto_refresh=auto_refresh,
             refresh_time=datetime.utcnow()
         )
@@ -96,7 +96,7 @@ def save_account_to_db(db, UserAccount, user_id, username, account, password, ac
         logger.info(f"Password length: {len(password) if password else 0}")
         logger.info(f"Account data: {account_data}")
         
-        # 删除现有记录
+        # Delete existing records
         logger.info(f"Deleting existing account records...")
         deleted_count = UserAccount.query.filter_by(
             user_id=user_id, 
@@ -105,7 +105,7 @@ def save_account_to_db(db, UserAccount, user_id, username, account, password, ac
         ).delete()
         logger.info(f"Deleted {deleted_count} existing account records")
         
-        # 创建新记录
+        # Create new record
         logger.info(f"Creating new account record...")
         user_account = UserAccount(
             user_id=user_id,

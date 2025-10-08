@@ -1,15 +1,15 @@
 const { ipcMain } = require('electron');
 const NetworkConfigManager = require('../config/networkConfigManager');
 
-// 导入日志系统
+// Import logging system
 const { getCClientLogger, getSyncLogger } = require('../utils/logger');
 
 // IPC handlers
 class IpcHandlers {
     constructor(viewManager, historyManager, mainWindow = null, clientManager = null, nodeManager = null, startupValidator = null, apiPort = null, webSocketClient = null, tabManager = null, clientId = null, syncManager = null) {
-        // 初始化日志系统
+        // Initialize logging system
         this.logger = getCClientLogger('ipc');
-        this.syncLogger = getSyncLogger('ipc'); // 用于sync相关的日志
+        this.syncLogger = getSyncLogger('ipc'); // For sync-related logs
 
         this.clientId = clientId; // Store client ID for user-specific operations
         this.viewManager = viewManager;

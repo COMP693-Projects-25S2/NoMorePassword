@@ -1,7 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const DatabaseManager = require('../sqlite/databaseManager');
 
-// 导入日志系统
+// Import logging system
 const { getCClientLogger } = require('../utils/logger');
 
 /**
@@ -10,7 +10,7 @@ const { getCClientLogger } = require('../utils/logger');
  */
 class NodeManager {
     constructor() {
-        // 初始化日志系统
+        // Initialize logging system
         this.logger = getCClientLogger('nodemanager');
 
         this.currentUser = null;

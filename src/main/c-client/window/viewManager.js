@@ -6,15 +6,15 @@ const OAuthHandler = require('./oauthHandler');
 const SessionManager = require('./sessionManager');
 const ViewOperations = require('./viewOperations');
 
-// 导入日志系统
+// Import logging system
 const { getCClientLogger } = require('../utils/logger');
 
 // BrowserView Manager - Refactored
 class ViewManager {
     constructor(mainWindow, historyManager, apiPort = null) {
-        // 初始化日志系统
+        // Initialize logging system
         this.logger = getCClientLogger('viewmanager');
-        
+
         // Handle both ElectronApp instance and BrowserWindow instance
         if (mainWindow && mainWindow.mainWindow) {
             // If mainWindow is ElectronApp instance, get the actual BrowserWindow

@@ -16,6 +16,10 @@ from utils.logger import get_bclient_logger
 # Initialize logger
 logger = get_bclient_logger('sync_data_queries')
 
+# Global variables (will be injected)
+db = None
+SyncData = None
+
 
 class SyncDataQueries:
     """Database queries for sync_data table"""

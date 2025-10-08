@@ -113,7 +113,7 @@ class WindowManager {
             clearTimeout(resizeTimeout);
             resizeTimeout = setTimeout(() => {
                 this.onWindowResize();
-            }, 100); // 100ms 防抖
+            }, 100); // 100ms debounce
         });
 
         // Window move event (optional)

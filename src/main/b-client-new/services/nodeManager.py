@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 from websockets.exceptions import ConnectionClosed
 
-# 导入日志系统
+# Import logging system
 sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
 from utils.logger import get_bclient_logger
 
@@ -39,7 +39,7 @@ class NodeManager:
     """
     
     def __init__(self):
-        # 初始化日志系统
+        # Initialize logging system
         self.logger = get_bclient_logger('nodemanager')
         
         # Connection pools: key -> list of ClientConnection
@@ -430,7 +430,7 @@ class NodeManager:
         self.logger.info(f"🔧 NodeManager: Connection hierarchy - domain: {connection.domain_id}, cluster: {connection.cluster_id}, channel: {connection.channel_id}")
         self.logger.info(f"🔧 NodeManager: Connection types - domain_main: {connection.is_domain_main_node}, cluster_main: {connection.is_cluster_main_node}, channel_main: {connection.is_channel_main_node}")
         
-        # 1. 从所有池中移除连接（使用 WebSocket 对象引用）
+        # 1. Remove connection from all pools (using WebSocket object reference)
         removed_from = []
         
         # Remove from channel pool using O(1) index lookup
@@ -452,7 +452,7 @@ class NodeManager:
                 removed_from.append(f"channel({connection.channel_id})")
                 self.logger.info(f"✅ NodeManager: Successfully removed connection from channel pool {connection.channel_id} using O(1) index lookup for node_id: {connection.node_id}")
                 
-                # 检查是否可以删除 channel 池
+                # Check if channel pool can be deleted
                 if self._should_remove_channel_pool(connection.channel_id):
                     del self.channel_pool[connection.channel_id]
                     del self.channel_node_index[connection.channel_id]
@@ -482,7 +482,7 @@ class NodeManager:
                 removed_from.append(f"cluster({connection.cluster_id})")
                 self.logger.info(f"✅ NodeManager: Successfully removed connection from cluster pool {connection.cluster_id} using O(1) index lookup for node_id: {connection.node_id}")
                 
-                # 检查是否可以删除 cluster 池
+                # Check if cluster pool can be deleted
                 if self._should_remove_cluster_pool(connection.cluster_id):
                     del self.cluster_pool[connection.cluster_id]
                     del self.cluster_node_index[connection.cluster_id]
@@ -512,7 +512,7 @@ class NodeManager:
                 removed_from.append(f"domain({connection.domain_id})")
                 self.logger.info(f"✅ NodeManager: Successfully removed connection from domain pool {connection.domain_id} using O(1) index lookup for node_id: {connection.node_id}")
                 
-                # 检查是否可以删除 domain 池
+                # Check if domain pool can be deleted
                 if self._should_remove_domain_pool(connection.domain_id):
                     del self.domain_pool[connection.domain_id]
                     del self.domain_node_index[connection.domain_id]
@@ -538,9 +538,9 @@ class NodeManager:
         """Check if channel pool should be removed"""
         self.logger.info(f"🔍 NodeManager: Checking if channel pool {channel_id} should be removed")
         
-        # Channel 池可以删除的条件：
-        # 1. 池中没有连接了
-        # 2. 或者池中只剩下主节点连接，但主节点也断开了
+        # Channel pool can be deleted if:
+        # 1. Pool has no connections
+        # 2. Or pool only has main node connection, but main node is also disconnected
         if channel_id not in self.channel_pool:
             self.logger.info(f"✅ NodeManager: Channel pool {channel_id} not found, should be removed")
             return True
@@ -552,7 +552,7 @@ class NodeManager:
             self.logger.info(f"✅ NodeManager: Channel pool {channel_id} is empty, should be removed")
             return True
             
-        # 如果只剩下主节点且主节点断开，可以删除
+        # If only main node remains and main node is disconnected, can be deleted
         if len(remaining_connections) == 1:
             main_connection = remaining_connections[0]
             self.logger.info(f"🔍 NodeManager: Channel pool {channel_id} has 1 connection, checking if it's a closed main node")
@@ -576,10 +576,10 @@ class NodeManager:
         """Check if cluster pool should be removed"""
         self.logger.info(f"🔍 NodeManager: Checking if cluster pool {cluster_id} should be removed")
         
-        # Cluster 池可以删除的条件：
-        # 1. 池中没有连接了
-        # 2. 或者池中只剩下主节点连接，但主节点也断开了
-        # 3. 或者该 cluster 下的所有 channels 都被删除了
+        # Cluster pool can be deleted if:
+        # 1. Pool has no connections
+        # 2. Or pool only has main node connection, but main node is also disconnected
+        # 3. Or all channels under this cluster have been deleted
         if cluster_id not in self.cluster_pool:
             self.logger.info(f"✅ NodeManager: Cluster pool {cluster_id} not found, should be removed")
             return True
@@ -591,7 +591,7 @@ class NodeManager:
             self.logger.info(f"✅ NodeManager: Cluster pool {cluster_id} is empty, should be removed")
             return True
             
-        # 检查是否还有相关的 channels
+        # Check if there are still related channels
         active_channels = []
         for conn in remaining_connections:
             if conn.channel_id and conn.channel_id in self.channel_pool:
@@ -611,10 +611,10 @@ class NodeManager:
         """Check if domain pool should be removed"""
         self.logger.info(f"🔍 NodeManager: Checking if domain pool {domain_id} should be removed")
         
-        # Domain 池可以删除的条件：
-        # 1. 池中没有连接了
-        # 2. 或者池中只剩下主节点连接，但主节点也断开了
-        # 3. 或者该 domain 下的所有 clusters 都被删除了
+        # Domain pool can be deleted if:
+        # 1. Pool has no connections
+        # 2. Or pool only has main node connection, but main node is also disconnected
+        # 3. Or all clusters under this domain have been deleted
         if domain_id not in self.domain_pool:
             self.logger.info(f"✅ NodeManager: Domain pool {domain_id} not found, should be removed")
             return True
@@ -626,7 +626,7 @@ class NodeManager:
             self.logger.info(f"✅ NodeManager: Domain pool {domain_id} is empty, should be removed")
             return True
             
-        # 检查是否还有相关的 clusters
+        # Check if there are still related clusters
         active_clusters = []
         for conn in remaining_connections:
             if conn.cluster_id and conn.cluster_id in self.cluster_pool:

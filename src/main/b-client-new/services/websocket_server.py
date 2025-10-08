@@ -7,7 +7,7 @@ import sys
 import os
 import traceback
 
-# 导入日志系统
+# Import logging system
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from utils.logger import get_bclient_logger
 
@@ -51,7 +51,7 @@ def start_websocket_server():
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            # B-Client 作为服务器，使用配置的地址和端口
+            # B-Client as server, use configured address and port
             host = c_client_ws.config.get('server_host', '0.0.0.0')
             port = c_client_ws.config.get('server_port', 8766)
             logger.info(f"Starting WebSocket server on {host}:{port}")

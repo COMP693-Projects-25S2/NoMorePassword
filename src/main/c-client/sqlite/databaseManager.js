@@ -1105,7 +1105,7 @@ class DatabaseManager {
         }
     }
 
-    // 辅助方法：解析client_ids数组
+    // Helper method: parse client_ids array
     static parseClientIds(clientIdsJson) {
         try {
             return clientIdsJson ? JSON.parse(clientIdsJson) : [];
@@ -1115,7 +1115,7 @@ class DatabaseManager {
         }
     }
 
-    // 辅助方法：序列化client_ids数组
+    // Helper method: serialize client_ids array
     static serializeClientIds(clientIds) {
         try {
             return JSON.stringify(clientIds || []);
@@ -1125,7 +1125,7 @@ class DatabaseManager {
         }
     }
 
-    // 检查用户是否被指定客户端使用
+    // Check if user is used by specified client
     static isUserAssignedToClient(userId, clientId) {
         try {
             const user = db.prepare('SELECT client_ids FROM local_users WHERE user_id = ?').get(userId);
@@ -1139,7 +1139,7 @@ class DatabaseManager {
         }
     }
 
-    // 将用户分配给客户端
+    // Assign user to client
     static assignUserToClient(userId, clientId) {
         try {
             if (!clientId) {
@@ -1175,7 +1175,7 @@ class DatabaseManager {
         }
     }
 
-    // 从客户端移除用户
+    // Remove user from client
     static removeUserFromClient(userId, clientId) {
         try {
             if (!clientId) {
@@ -1212,7 +1212,7 @@ class DatabaseManager {
         }
     }
 
-    // 获取用户的所有客户端
+    // Get all clients for user
     static getUserClients(userId) {
         try {
             const user = db.prepare('SELECT client_ids FROM local_users WHERE user_id = ?').get(userId);
@@ -1225,7 +1225,7 @@ class DatabaseManager {
         }
     }
 
-    // 从所有用户中移除指定客户端ID
+    // Remove specified client ID from all users
     static removeClientFromAllUsers(clientId) {
         try {
             if (!clientId) {
@@ -1233,7 +1233,7 @@ class DatabaseManager {
                 return { success: false, error: 'clientId is required' };
             }
 
-            // 获取所有包含该客户端ID的用户
+            // Get all users containing this client ID
             const users = db.prepare('SELECT user_id, client_ids FROM local_users WHERE client_ids LIKE ?').all(`%"${clientId}"%`);
 
             let totalChanges = 0;
@@ -1271,16 +1271,16 @@ class DatabaseManager {
                 return { success: false, error: 'clientId is required' };
             }
 
-            // Step 1: 从其他用户中移除当前客户端ID
+            // Step 1: Remove current client ID from other users
             this.removeClientFromAllUsers(clientId);
 
-            // Step 2: 将用户分配给客户端（如果还没有分配）
+            // Step 2: Assign user to client (if not already assigned)
             const assignResult = this.assignUserToClient(userId, clientId);
             if (!assignResult.success) {
                 return assignResult;
             }
 
-            // Step 3: 更新用户的 updated_at 时间戳
+            // Step 3: Update user's updated_at timestamp
             const result = db.prepare('UPDATE local_users SET updated_at = ? WHERE user_id = ?').run(
                 Math.floor(Date.now() / 1000),
                 userId

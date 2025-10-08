@@ -11,7 +11,7 @@ import asyncio
 import threading
 import traceback
 
-# 导入日志系统
+# Import logging system
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from utils.logger import get_bclient_logger
 
@@ -50,7 +50,7 @@ def init_websocket_client(flask_app, database=None, user_cookie_model=None, user
 
 class CClientWebSocketClient:
     def __init__(self):
-        # 初始化日志系统
+        # Initialize logging system
         self.logger = get_bclient_logger('websocket')
         
         self.websocket = None
@@ -634,7 +634,7 @@ class CClientWebSocketClient:
             'subsequent_logout': 1,  # Ultra-fast: 1 second (just for message sending)
             'feedback_check_interval': 0.1,  # Not used anymore
             'immediate_feedback_threshold': 0.5,  # Not used anymore
-            'no_feedback_waiting': True  # 关键：不等待反馈
+            'no_feedback_waiting': True  # Key: don't wait for feedback
         }
         
         # Pre-initialize connection pools for instant access
@@ -970,24 +970,24 @@ class CClientWebSocketClient:
                                     # CRITICAL FIX: Only reuse connection if it's still valid
                                     if self.is_connection_valid(existing_websocket):
                                         self.logger.info(f"Existing connection is still valid, reusing it")
-                                        
-                                        # Then add to new user pool
-                                        if user_id not in self.user_connections:
-                                            # New user - create new user pool
-                                            self.user_connections[user_id] = []
-                                            self.logger.info(f"Created new user pool for {user_id}")
-                                        
-                                        if existing_websocket not in self.user_connections[user_id]:
-                                            # Add connection to user pool
-                                            self.user_connections[user_id].append(existing_websocket)
-                                            self.logger.info(f"Added connection to user pool: {user_id} (total: {len(self.user_connections[user_id])})")
-                                        else:
-                                            self.logger.info(f"Connection already in user pool: {user_id}")
+                                    
+                                    # Then add to new user pool
+                                    if user_id not in self.user_connections:
+                                        # New user - create new user pool
+                                        self.user_connections[user_id] = []
+                                        self.logger.info(f"Created new user pool for {user_id}")
+                                    
+                                    if existing_websocket not in self.user_connections[user_id]:
+                                        # Add connection to user pool
+                                        self.user_connections[user_id].append(existing_websocket)
+                                        self.logger.info(f"Added connection to user pool: {user_id} (total: {len(self.user_connections[user_id])})")
                                     else:
-                                        self.logger.error(f"Existing connection is invalid (closed/logged out), closing new connection and not reusing")
-                                        # Close the new connection since we can't reuse the old one
-                                        await websocket.close(code=1000, reason="Existing connection invalid, not reusing")
-                                        return
+                                        self.logger.info(f"Connection already in user pool: {user_id}")
+                                else:
+                                    self.logger.error(f"Existing connection is invalid (closed/logged out), closing new connection and not reusing")
+                                    # Close the new connection since we can't reuse the old one
+                                    await websocket.close(code=1000, reason="Existing connection invalid, not reusing")
+                                    return
                                 
                                 # Send success response to existing connection
                                 await self.send_message_to_websocket(existing_websocket, {
@@ -1211,13 +1211,13 @@ class CClientWebSocketClient:
             
             self.logger.info(f"🔌 ===== END DISCONNECTION CLEANUP =====")
         except websockets.exceptions.InvalidMessage as e:
-            # Handle WebSocket握手失败 - 这通常不是严重错误
+            # Handle WebSocket handshake failure - this is usually not a critical error
             if "did not receive a valid HTTP request" in str(e):
                 self.logger.debug(f"WebSocket handshake failed (connection closed before HTTP request) - this is usually normal")
             else:
                 self.logger.error(f"WebSocket invalid message: {e}")
         except EOFError as e:
-            # Handle connection closed unexpectedly - 这通常不是严重错误
+            # Handle connection closed unexpectedly - this is usually not a critical error
             if "connection closed while reading HTTP request line" in str(e):
                 self.logger.debug(f"WebSocket connection closed during handshake - this is usually normal")
             else:
@@ -1405,7 +1405,7 @@ class CClientWebSocketClient:
         elif message_type == 'cluster_verification_response':
             # Handle cluster verification response from C-Client
             self.logger.info(f"Received cluster verification response from C-Client {client_id}")
-            # 路由到发起验证的实例（C1的实例）
+            # Route to the originator instance (C1's instance)
             await self.handle_cluster_verification_response_to_originator(websocket, data, client_id, user_id)
         else:
             self.logger.warning(f"Unknown message type from C-Client: {message_type}")
@@ -1418,7 +1418,7 @@ class CClientWebSocketClient:
             self.logger.info(f"🔍 User ID: {user_id}")
             self.logger.info(f"🔍 Response data: {data}")
             
-            # 查找所有连接实例，找到有等待事件的实例
+            # Find all connection instances with waiting events
             originator_instance = None
             for connection_id, instance in self.connection_cluster_verification.items():
                 if hasattr(instance, 'response_events') and instance.response_events:
@@ -1433,7 +1433,7 @@ class CClientWebSocketClient:
                 self.logger.info(f"🔍 ✅ Response routed to originator instance")
             else:
                 self.logger.warning(f"🔍 ❌ No originator instance found with waiting events")
-                # 回退到全局服务
+                # Fallback to global service
                 global_service = get_cluster_verification_service()
                 if global_service:
                     self.logger.info(f"🔍 ===== FALLBACK TO GLOBAL SERVICE =====")
@@ -1585,15 +1585,15 @@ class CClientWebSocketClient:
                         try:
                             self.logger.info(f"===== STARTING CLUSTER VERIFICATION =====")
                             
-                            # 为这次验证创建临时实例（避免多用户混乱）
-                            # 这个实例只用于这次验证流程：查询C2 → 查询C1 → 对比结果
+                            # Create temporary instance for this verification (avoid multi-user confusion)
+                            # This instance is only used for this verification flow: query C2 → query C1 → compare results
                             verification_instance = ClusterVerificationService(self, db)
                             
                             self.logger.info(f"🔍 Created temporary verification instance for this verification")
                             self.logger.info(f"🔍 Instance: {verification_instance}")
                             self.logger.info(f"🔍 Connection ID: {id(websocket)}")
                             
-                            # 将实例临时存储到connection_cluster_verification中，以便响应路由
+                            # Temporarily store instance for response routing
                             connection_id = id(websocket)
                             self.connection_cluster_verification[connection_id] = verification_instance
                             
@@ -1601,7 +1601,7 @@ class CClientWebSocketClient:
                                 # Perform cluster verification using the temporary instance
                                 verification_result = await verification_instance.verify_user_cluster(user_id, channel_id, node_id)
                             finally:
-                                # 验证完成后清理临时实例
+                                # Clean up temporary instance after verification
                                 if connection_id in self.connection_cluster_verification:
                                     del self.connection_cluster_verification[connection_id]
                                     self.logger.info(f"🔍 Cleaned up temporary verification instance")
@@ -1613,7 +1613,7 @@ class CClientWebSocketClient:
                             if verification_result.get('success', False):
                                 if verification_result.get('verification_passed', False):
                                     self.logger.info(f"===== CLUSTER VERIFICATION PASSED - SENDING SESSION =====")
-                                    # Continue with normal session send (验证通过，继续发送session)
+                                    # Continue with normal session send (verification passed, continue sending session)
                                 else:
                                     self.logger.warning(f"===== CLUSTER VERIFICATION FAILED - BLOCKING SESSION =====")
                                     # Block session send
@@ -1631,7 +1631,7 @@ class CClientWebSocketClient:
                             # Block session send on exception
                             return False
                     
-                    # 验证通过或不需要验证，发送session
+                    # Verification passed or not required, send session
                     send_result = await send_session_to_client(
                         user_id, 
                         cookie.cookie, 
@@ -1734,24 +1734,24 @@ class CClientWebSocketClient:
                             # CRITICAL FIX: Only reuse connection if it's still valid
                             if self.is_connection_valid(existing_websocket):
                                 self.logger.info(f"Existing connection is still valid, reusing it")
-                                
-                                # Then add to new user pool
-                                if user_id not in self.user_connections:
-                                    # New user - create new user pool
-                                    self.user_connections[user_id] = []
-                                    self.logger.info(f"Created new user pool for {user_id}")
-                                
-                                if existing_websocket not in self.user_connections[user_id]:
-                                    # Add connection to user pool
-                                    self.user_connections[user_id].append(existing_websocket)
-                                    self.logger.info(f"Added connection to user pool: {user_id} (total: {len(self.user_connections[user_id])})")
-                                else:
-                                    self.logger.info(f"Connection already in user pool: {user_id}")
+                            
+                            # Then add to new user pool
+                            if user_id not in self.user_connections:
+                                # New user - create new user pool
+                                self.user_connections[user_id] = []
+                                self.logger.info(f"Created new user pool for {user_id}")
+                            
+                            if existing_websocket not in self.user_connections[user_id]:
+                                # Add connection to user pool
+                                self.user_connections[user_id].append(existing_websocket)
+                                self.logger.info(f"Added connection to user pool: {user_id} (total: {len(self.user_connections[user_id])})")
                             else:
-                                self.logger.error(f"Existing connection is invalid (closed/logged out), closing new connection and not reusing")
-                                # Close the new connection since we can't reuse the old one
-                                await websocket.close(code=1000, reason="Existing connection invalid, not reusing")
-                                return
+                                self.logger.info(f"Connection already in user pool: {user_id}")
+                        else:
+                            self.logger.error(f"Existing connection is invalid (closed/logged out), closing new connection and not reusing")
+                            # Close the new connection since we can't reuse the old one
+                            await websocket.close(code=1000, reason="Existing connection invalid, not reusing")
+                        return
                     else:
                         # Different node - reject
                         self.logger.error(f"Client {client_id} trying to connect to different node")
@@ -2570,53 +2570,53 @@ class CClientWebSocketClient:
         # Send logout message in parallel to all connections
         await self.send_logout_message_parallel(user_id, message, user_websockets)
         
-        # 设置反馈跟踪机制
+        # Set up feedback tracking mechanism
         feedback_received = {}
         for websocket in user_websockets:
             feedback_received[websocket] = False
         
-        # 存储反馈跟踪到websocket对象
+        # Store feedback tracking to websocket object
         for websocket in user_websockets:
             websocket._logout_feedback_tracking = feedback_received
         
         self.logger.info(f"Waiting for logout feedback from {len(user_websockets)} connections...")
         
-        # 等待所有反馈，使用更长的超时时间确保稳定性
-        timeout = timeout or 10  # 10秒超时，确保所有C端都有时间响应
+        # Wait for all feedback with longer timeout for stability
+        timeout = timeout or 10  # 10 second timeout, ensure all C-Clients have time to respond
         start_time = asyncio.get_event_loop().time()
-        check_interval = 0.1  # 100ms检查间隔
+        check_interval = 0.1  # 100ms check interval
         
         while asyncio.get_event_loop().time() - start_time < timeout:
             elapsed = asyncio.get_event_loop().time() - start_time
             
-            # 检查是否所有反馈都收到了
+            # Check if all feedback has been received
             if all(feedback_received.values()):
                 self.logger.info(f"All logout feedback received for user {user_id} in {elapsed:.2f}s")
                 break
             
-            # 显示进度
+            # Show progress
             received_count = sum(1 for received in feedback_received.values() if received)
             self.logger.info(f"Received {received_count}/{len(user_websockets)} feedbacks ({elapsed:.1f}s)")
             
-            # 等待检查间隔
+            # Wait for check interval
             await asyncio.sleep(check_interval)
         else:
-            # 超时处理
+            # Timeout handling
             missing_feedback = [ws for ws, received in feedback_received.items() if not received]
             self.logger.warning(f"Logout feedback timeout for user {user_id} after {timeout}s")
             self.logger.warning(f"   Missing feedback from {len(missing_feedback)} connections")
             self.logger.warning(f"   Proceeding with logout completion anyway...")
         
-        # 清理反馈跟踪并标记连接为已关闭
+        # Clean up feedback tracking and mark connections as closed
         for websocket in user_websockets:
             if hasattr(websocket, '_logout_feedback_tracking'):
                 delattr(websocket, '_logout_feedback_tracking')
             
-            # 关键：标记连接为已关闭，防止重新使用
+            # Key: mark connection as closed to prevent reuse
             websocket._closed_by_logout = True
             self.logger.info(f"🔒 Marked connection as closed by logout: {websocket}")
             
-            # 同步连接状态到NodeManager池
+            # Sync connection status to NodeManager pools
             try:
                 await self._sync_connection_status_to_nodemanager_pools(websocket, 'closed_by_logout')
                 self.logger.info(f"🔗 ✅ Connection status synced to NodeManager pools")
@@ -2811,7 +2811,7 @@ class CClientWebSocketClient:
                     websocket._logout_feedback_tracking[websocket] = True
                     self.logger.info(f"IMMEDIATELY marked logout feedback as received")
                     
-                    # 显示当前反馈进度
+                    # Show current feedback progress
                     total_connections = len(websocket._logout_feedback_tracking)
                     received_count = sum(1 for received in websocket._logout_feedback_tracking.values() if received)
                     self.logger.info(f"Feedback progress: {received_count}/{total_connections} received")
@@ -2900,12 +2900,12 @@ class CClientWebSocketClient:
     async def send_session_to_client(self, user_id, session_data):
         """Send session data to C-Client for auto-login"""
         try:
-            # 查找该用户的WebSocket连接
+            # Find WebSocket connections for this user
             if user_id in self.user_connections:
                 connections = self.user_connections[user_id]
                 self.logger.info(f"Found {len(connections)} connections for user {user_id}")
                 
-                # 发送session数据给所有该用户的连接
+                # Send session data to all connections for this user
                 for websocket in connections:
                     try:
                         message = {

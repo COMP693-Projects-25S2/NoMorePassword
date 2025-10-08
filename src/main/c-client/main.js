@@ -11,21 +11,21 @@ const CClientApiServer = require('./api/cClientApiServer');
 const CClientWebSocketClient = require('./websocket/cClientWebSocketClient');
 const BClientConfigModal = require('./config/bClientConfigModal');
 
-// 导入日志系统
+// Import logging system
 const { getCClientLogger, setupConsoleRedirect } = require('./utils/logger');
 
-// 立即设置console重定向（在模块导入时就生效）
+// Set up console redirection immediately (takes effect on module import)
 const appLogger = getCClientLogger('app');
 const consoleRedirect = setupConsoleRedirect('app');
 
-// 重写全局console方法
+// Override global console methods
 Object.assign(console, consoleRedirect);
 
 appLogger.info("C-Client application module imported");
 
 class ElectronApp {
     constructor() {
-        // 初始化日志系统
+        // Initialize logging system
         this.logger = getCClientLogger('app');
 
         // Get C-Client ID from environment variable or generate one
@@ -547,7 +547,7 @@ class ElectronApp {
                                     initialTitle = currentTitle;
                                 }
 
-                                // 使用新的recordPageVisitWithContent方法记录访问并提取内容
+                                // Use new recordPageVisitWithContent method to record visit and extract content
                                 const record = await this.historyManager.recordPageVisitWithContent(url, viewId, contents);
                                 if (record) {
                                     if (initialTitle !== 'Loading...') {
@@ -584,18 +584,18 @@ class ElectronApp {
                     if (url && this.historyManager) {
                         const viewId = this.getViewIdFromWebContents(contents);
                         if (viewId) {
-                            // 更新标题
+                            // Update title
                             this.updateRecordTitle(url, viewId, title);
 
-                            // 页面加载完成后，再次提取更完整的内容信息
+                            // After page load completes, extract more complete content info
                             try {
                                 const PageContentExtractor = require('./utils/pageContentExtractor');
                                 const pageContent = await PageContentExtractor.extractNSNContent(contents, url);
 
-                                // 获取最近的访问记录
+                                // Get recent visit record
                                 const recentRecord = this.historyManager.getRecentRecordByViewId(viewId);
                                 if (recentRecord) {
-                                    // 更新描述为更完整的页面内容
+                                    // Update description with more complete page content
                                     this.historyManager.updateRecordDescription(recentRecord, JSON.stringify(pageContent));
                                     console.log(`✅ Main: Updated page content after did-finish-load for visit ID: ${recentRecord.id}`);
                                 }
@@ -936,7 +936,7 @@ class ElectronApp {
 
     async showSyncDataViewer() {
         try {
-            // 向渲染进程发送消息显示SyncData查看器
+            // Send message to renderer process to show SyncData viewer
             if (this.mainWindow && !this.mainWindow.isDestroyed()) {
                 this.mainWindow.webContents.send('show-sync-data-viewer');
             }

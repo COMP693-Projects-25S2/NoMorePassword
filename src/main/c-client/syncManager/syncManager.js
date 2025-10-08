@@ -189,7 +189,7 @@ class SyncManager {
             this.logger.info(`👤 [SyncManager] User ID: ${batchData.user_id}`);
             this.logger.info(`⏰ [SyncManager] Timestamp: ${batchData.timestamp}`);
 
-            // 详细记录发送的数据内容
+            // Log sent data content in detail
             if (batchData.activities && batchData.activities.length > 0) {
                 this.logger.info('📋 [SyncManager] ===== ACTIVITIES TO SEND =====');
                 batchData.activities.forEach((activity, index) => {
@@ -214,7 +214,7 @@ class SyncManager {
                 return;
             }
 
-            // 新的数据格式：{user_id, batch_id, sync_data: [user_activity1, user_activity2, ...]}
+            // New data format: {user_id, batch_id, sync_data: [user_activity1, user_activity2, ...]}
             const syncMessage = {
                 user_id: batchData.user_id,
                 batch_id: batchId,
@@ -226,7 +226,7 @@ class SyncManager {
                 data: syncMessage
             };
 
-            // 详细记录要发送的消息
+            // Log message to be sent in detail
             this.logger.info('📤 [SyncManager] ===== MESSAGE TO SEND =====');
             this.logger.info(`📤 [SyncManager] Message type: ${message.type}`);
             this.logger.info(`📤 [SyncManager] Sync message structure:`);
@@ -314,7 +314,7 @@ class SyncManager {
         this.logger.info('📥 [SyncManager] ===== RECEIVED INCOMING ACTIVITIES =====');
         this.logger.info('📥 [SyncManager] Raw batchData:', JSON.stringify(batchData, null, 2));
 
-        // 步骤1: 数据验证和提取
+        // Step 1: Data validation and extraction
         this.logger.info('📥 [SyncManager] ===== STEP 1: DATA VALIDATION AND EXTRACTION =====');
         const batchId = batchData.batch_id;
         const userId = batchData.user_id;
@@ -326,7 +326,7 @@ class SyncManager {
         this.logger.info(`📊 [SyncManager] Activities count: ${activitiesCount}`);
         this.logger.info(`📋 [SyncManager] Sync data type: ${Array.isArray(syncData) ? 'Array' : typeof syncData}`);
 
-        // 详细记录接收到的数据内容
+        // Log received data content in detail
         if (syncData.length > 0) {
             this.logger.info('📋 [SyncManager] ===== RECEIVED ACTIVITIES DETAILS =====');
             syncData.forEach((activity, index) => {
@@ -349,13 +349,13 @@ class SyncManager {
             this.logger.warn('⚠️ [SyncManager] No activities in received sync_data');
         }
 
-        // 步骤2: 检查sync_data结构
+        // Step 2: Check sync_data structure
         this.logger.info('📥 [SyncManager] ===== STEP 2: SYNC_DATA STRUCTURE CHECK =====');
         if (syncData.length > 0) {
             this.logger.info(`📝 [SyncManager] First activity keys: ${Object.keys(syncData[0])}`);
             this.logger.info(`📝 [SyncManager] First activity sample:`, JSON.stringify(syncData[0], null, 2));
 
-            // 检查是否包含必要的字段
+            // Check if necessary fields are included
             const requiredFields = ['user_id', 'username', 'url', 'title'];
             const firstActivity = syncData[0];
             this.logger.info('📝 [SyncManager] Required fields check:');
@@ -364,7 +364,7 @@ class SyncManager {
             });
         } else {
             this.logger.warn('⚠️ [SyncManager] sync_data is empty');
-            // 如果sync_data为空，直接返回成功，不进行后续处理
+            // If sync_data is empty, return success directly without further processing
             this.logger.info('📤 [SyncManager] Sending feedback for empty sync_data...');
             await this.sendBatchFeedback(batchId, true, 'Received empty sync_data successfully');
             this.logger.info('✅ [SyncManager] ===== EMPTY SYNC_DATA PROCESSED =====');
@@ -385,7 +385,7 @@ class SyncManager {
                 this.logger.info(`📊 [SyncManager] Duplicate batch detected - avoiding data redundancy`);
             } else {
                 this.logger.info(`💾 [SyncManager] Batch ${batchId} is new, proceeding to store...`);
-                // 处理接收到的同步数据，将每个activity转换为独立的sync_data记录
+                // Process received sync data, convert each activity to independent sync_data record
                 savePromise = this.processIncomingSyncData(userId, batchId, syncData)
                     .then((processedCount) => {
                         this.logger.info(`✅ [SyncManager] Successfully processed ${processedCount} activities into sync_data records`);
@@ -444,7 +444,7 @@ class SyncManager {
         this.logger.info('📥 [SyncManager] ===== PROCESSING INCOMING SYNC DATA =====');
         this.logger.info(`📥 [SyncManager] Processing ${syncData.length} activities for user ${userId}, batch ${batchId}`);
 
-        // 如果没有activities，直接返回成功
+        // If no activities, return success directly
         if (syncData.length === 0) {
             this.logger.info('📥 [SyncManager] No activities to process, returning success');
             return 0;
@@ -462,7 +462,7 @@ class SyncManager {
 
             this.logger.info(`📥 [SyncManager] Database insert query prepared`);
 
-            // 遍历sync_data中的每个activity，为每个创建一条独立的sync_data记录
+            // Iterate through each activity in sync_data, create independent sync_data record for each
             for (let i = 0; i < syncData.length; i++) {
                 const activity = syncData[i];
 
@@ -515,7 +515,7 @@ class SyncManager {
             const activities = batchData.activities || [];
             let savedCount = 0;
 
-            // 为每个activity创建一条sync_data记录
+            // Create a sync_data record for each activity
             for (const activity of activities) {
                 const insertQuery = `
                     INSERT INTO sync_data (

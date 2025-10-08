@@ -2,15 +2,15 @@ const VisitTracker = require('./visitTracker');
 const HistoryDatabase = require('../sqlite/historyDatabase');
 const UserActivityManager = require('./userActivityManager');
 
-// 导入日志系统
+// Import logging system
 const { getCClientLogger } = require('../utils/logger');
 
 // History Manager - Database version
 class HistoryManager {
     constructor(clientId = null) {
-        // 初始化日志系统
+        // Initialize logging system
         this.logger = getCClientLogger('history');
-        
+
         this.clientId = clientId;
         this.historyDB = new HistoryDatabase();
         this.visitTracker = new VisitTracker();
@@ -120,10 +120,10 @@ class HistoryManager {
         try {
             console.log(`🔍 HistoryManager: Recording page visit with content extraction for URL: ${url}`);
 
-            // 获取基础信息
+            // Get basic info
             const title = webContents ? webContents.getTitle() : 'Loading...';
 
-            // 提取页面内容信息
+            // Extract page content info
             let pageContent = {};
             if (webContents && !webContents.isDestroyed()) {
                 try {
@@ -139,17 +139,17 @@ class HistoryManager {
                 pageContent = { timestamp: Date.now(), note: 'Content extraction skipped - webContents unavailable' };
             }
 
-            // 记录访问
+            // Record visit
             const record = await this.recordVisit(url, viewId);
             if (record) {
                 console.log(`✅ HistoryManager: Visit recorded with ID: ${record.id}`);
 
-                // 更新标题
+                // Update title
                 if (title && title !== 'Loading...') {
                     this.updateRecordTitle(record, title);
                 }
 
-                // 更新描述为JSON格式的页面内容
+                // Update description with page content in JSON format
                 this.updateRecordDescription(record, JSON.stringify(pageContent));
 
                 console.log(`✅ HistoryManager: Page content saved to description for visit ID: ${record.id}`);

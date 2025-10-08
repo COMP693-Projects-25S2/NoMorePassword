@@ -1,7 +1,7 @@
 const { BrowserView } = require('electron');
 const path = require('path');
 
-// 导入日志系统
+// Import logging system
 const { getCClientLogger } = require('../utils/logger');
 
 /**
@@ -11,7 +11,7 @@ const { getCClientLogger } = require('../utils/logger');
 class TabManager {
     constructor(electronApp) {
         try {
-            // 初始化日志系统
+            // Initialize logging system
             this.logger = getCClientLogger('tabmanager');
 
             // Store reference to ElectronApp instance for sendToWindow functionality
@@ -634,7 +634,7 @@ class TabManager {
         this.onTabTitleUpdated = callbacks.onTabTitleUpdated;
     }
 
-    // ===== ViewManager兼容方法 =====
+    // ===== ViewManager compatibility methods =====
 
     /**
      * Get current tab data

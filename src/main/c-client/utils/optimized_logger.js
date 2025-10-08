@@ -10,11 +10,11 @@ class OptimizedCClientLogger {
         this.logDir = path.resolve(logDir);
         this.ensureLogDir();
 
-        // 生成日志文件名（模块_启动日期_时间）
+        // Generate log filename (module_startup_date_time)
         const startTime = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
         this.startTime = startTime;
 
-        // 日志文件路径
+        // Log file paths
         this.logFiles = {
             main: path.join(this.logDir, `cclient_main_${startTime}.log`),
             websocket: path.join(this.logDir, `cclient_websocket_${startTime}.log`),
@@ -26,7 +26,7 @@ class OptimizedCClientLogger {
             app: path.join(this.logDir, `cclient_app_${startTime}.log`)
         };
 
-        // 日志级别
+        // Log levels
         this.levels = {
             DEBUG: 0,
             INFO: 1,
@@ -34,10 +34,10 @@ class OptimizedCClientLogger {
             ERROR: 3
         };
 
-        // 只显示INFO及以上级别到控制台
+        // Only show INFO and above levels to console
         this.currentLevel = this.levels.INFO;
 
-        // 日志过滤器 - 过滤掉冗余的调试信息
+        // Log filter - filter out redundant debug info
         this.filters = [
             'Getting current user info',
             'Current user info:',
@@ -82,7 +82,7 @@ Log files created:
             return;
         }
 
-        // 过滤冗余信息
+        // Filter redundant info
         if (this.shouldFilterMessage(message)) {
             return;
         }
@@ -93,25 +93,25 @@ Log files created:
         try {
             fs.appendFileSync(this.logFiles[module] || this.logFiles.main, logEntry, 'utf8');
         } catch (error) {
-            // 如果写入失败，使用原始console
+            // If write fails, use original console
             console.error(`Failed to write to log file: ${error.message}`);
         }
     }
 
     shouldFilterMessage(message) {
-        // 过滤掉包含这些关键词的调试信息
+        // Filter out debug info containing these keywords
         return this.filters.some(filter => message.includes(filter));
     }
 
     setupModuleLogging(moduleName) {
         const logger = {
             debug: (message) => {
-                // DEBUG级别不显示到控制台，只写入文件
+                // DEBUG level not shown to console, only written to file
                 this.writeToLog(moduleName, 'DEBUG', message);
             },
             info: (message) => {
                 this.writeToLog(moduleName, 'INFO', message);
-                // 只显示关键信息到控制台
+                // Only show key info to console
                 if (!this.shouldFilterMessage(message)) {
                     console.info(`[${moduleName}] ${message}`);
                 }
@@ -134,10 +134,10 @@ Log files created:
     }
 }
 
-// 全局logger实例
+// Global logger instance
 const optimizedLogger = new OptimizedCClientLogger();
 
-// 导出便捷函数
+// Export convenience function
 function getOptimizedLogger(moduleName) {
     return optimizedLogger.getLogger(moduleName);
 }

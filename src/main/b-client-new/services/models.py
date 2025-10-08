@@ -6,7 +6,7 @@ Database table definitions for B-Client Flask Application
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 
-# 导入日志系统
+# Import logging system
 import sys
 import os
 sys.path.append(os.path.dirname(__file__))
