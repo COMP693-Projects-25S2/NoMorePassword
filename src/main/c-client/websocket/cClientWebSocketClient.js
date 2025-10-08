@@ -295,25 +295,56 @@ class CClientWebSocketClient {
         this.connectionInProgress = true;
 
         try {
-            // Force disconnect from current connection if any (always disconnect to ensure clean state)
+            // Smart connection handling: only disconnect if connection is invalid
             if (this.websocket) {
-                console.log(`🔌 [WebSocket Client] Force disconnecting existing connection before reconnecting...`);
-                console.log(`🔌 [WebSocket Client] Current state - isConnected: ${this.isConnected}, readyState: ${this.websocket.readyState} (${this.getReadyStateName(this.websocket.readyState)})`);
+                const currentReadyState = this.websocket.readyState;
+                const readyStateName = this.getReadyStateName(currentReadyState);
 
-                // Force disconnect regardless of state
-                this.disconnect();
+                console.log(`🔍 [WebSocket Client] Existing connection detected`);
+                console.log(`🔍 [WebSocket Client] Current state - isConnected: ${this.isConnected}, isRegistered: ${this.isRegistered}, readyState: ${currentReadyState} (${readyStateName})`);
 
-                // Reset registration status for forced reconnection
-                this.resetRegistrationStatus();
+                // Check if connection is valid and active
+                const isConnectionValid = (
+                    currentReadyState === 1 && // WebSocket.OPEN
+                    this.isConnected &&
+                    this.isRegistered
+                );
 
-                // Wait longer for disconnection to complete and clear any cached state
-                console.log(`⏳ [WebSocket Client] Waiting 500ms for disconnection to complete...`);
-                await new Promise(resolve => setTimeout(resolve, 500));
+                // Check if connection is in progress
+                const isConnectionInProgress = (
+                    currentReadyState === 0 || // WebSocket.CONNECTING
+                    this.connectionInProgress
+                );
 
-                // Clear any cached connection state
-                this.isConnected = false;
-                this.websocket = null;
-                console.log(`🧹 [WebSocket Client] Cleared connection state for fresh start`);
+                if (isConnectionValid) {
+                    console.log(`✅ [WebSocket Client] Connection is valid and active, reusing existing connection`);
+                    console.log(`   Skipping reconnection to avoid disrupting active connection`);
+                    return true;
+                } else if (isConnectionInProgress) {
+                    console.log(`⏳ [WebSocket Client] Connection is in progress, waiting for it to complete`);
+                    console.log(`   readyState=${currentReadyState} (CONNECTING), connectionInProgress=${this.connectionInProgress}`);
+                    console.log(`   Skipping reconnection to avoid disrupting connection attempt`);
+                    return true; // Return true to indicate connection is being handled (skip reconnection)
+                } else {
+                    console.log(`⚠️ [WebSocket Client] Connection is invalid or closed, will reconnect`);
+                    console.log(`   Reason: readyState=${currentReadyState} (expected 1), isConnected=${this.isConnected}, isRegistered=${this.isRegistered}`);
+
+                    // Force disconnect invalid connection
+                    console.log(`🔌 [WebSocket Client] Disconnecting invalid connection...`);
+                    this.disconnect();
+
+                    // Reset registration status for forced reconnection
+                    this.resetRegistrationStatus();
+
+                    // Wait for disconnection to complete
+                    console.log(`⏳ [WebSocket Client] Waiting 500ms for disconnection to complete...`);
+                    await new Promise(resolve => setTimeout(resolve, 500));
+
+                    // Clear any cached connection state
+                    this.isConnected = false;
+                    this.websocket = null;
+                    console.log(`🧹 [WebSocket Client] Cleared connection state for fresh start`);
+                }
             }
 
             const uri = `ws://${host}:${port}`;
@@ -347,8 +378,9 @@ class CClientWebSocketClient {
 
             this.websocket.on('message', (data) => {
                 try {
+                    console.log(`📥 [WebSocket Client] Raw message data:`, data.toString());
                     const message = JSON.parse(data);
-                    console.log(`📥 [WebSocket Client] Received message:`, message);
+                    console.log(`📥 [WebSocket Client] Received message:`, JSON.stringify(message, null, 2));
                     this.handleMessage(message);
                 } catch (error) {
                     console.error('[WebSocket Client] Error parsing message:', error);
@@ -402,7 +434,8 @@ class CClientWebSocketClient {
             console.log(`🔌 [WebSocket Client] Current connection status:`, {
                 isConnected: this.isConnected,
                 hasWebSocket: !!this.websocket,
-                readyState: this.websocket ? this.websocket.readyState : 'N/A'
+                readyState: this.websocket ? this.websocket.readyState : 'N/A',
+                isRegistered: this.isRegistered
             });
 
             // Parse the WebSocket URL
@@ -501,8 +534,9 @@ class CClientWebSocketClient {
 
             this.websocket.on('message', (data) => {
                 try {
+                    console.log(`📥 [WebSocket Client] Raw message data:`, data.toString());
                     const message = JSON.parse(data);
-                    console.log(`📥 [WebSocket Client] Received message:`, message);
+                    console.log(`📥 [WebSocket Client] Received message:`, JSON.stringify(message, null, 2));
                     this.handleMessage(message);
                 } catch (error) {
                     console.error('[WebSocket Client] Error parsing message:', error);
@@ -604,6 +638,17 @@ class CClientWebSocketClient {
 
             case 'user_activities_batch_feedback':
                 this.handleUserActivitiesBatchFeedback(message);
+                break;
+
+            case 'cluster_verification_query':
+                this.handleClusterVerificationQuery(message);
+                break;
+
+            case 'cluster_verification_request':
+                this.logger.info('🔍 [WebSocket Client] ===== RECEIVED CLUSTER VERIFICATION REQUEST =====');
+                this.logger.info('🔍 [WebSocket Client] Message type: cluster_verification_request');
+                this.logger.info('🔍 [WebSocket Client] Full message: ' + JSON.stringify(message, null, 2));
+                this.handleClusterVerificationRequest(message);
                 break;
 
             case 'error':
@@ -3100,6 +3145,352 @@ class CClientWebSocketClient {
             console.log('📨 [WebSocket Client] ===== END BATCH FEEDBACK =====');
         } catch (error) {
             console.error('❌ [WebSocket Client] Error handling batch feedback:', error);
+        }
+    }
+
+    /**
+     * Handle cluster verification query from B-Client
+     * @param {Object} message - Cluster verification query message
+     */
+    async handleClusterVerificationQuery(message) {
+        try {
+            this.logger.info('🔍 [WebSocket Client] ===== CLUSTER VERIFICATION QUERY RECEIVED =====');
+            this.logger.info('🔍 [WebSocket Client] Full message: ' + JSON.stringify(message, null, 2));
+            this.logger.info('🔍 [WebSocket Client] Query action: ' + (message.data ? message.data.action : 'undefined'));
+            this.logger.info('🔍 [WebSocket Client] Channel ID: ' + (message.data ? message.data.channel_id : 'undefined'));
+            this.logger.info('🔍 [WebSocket Client] User ID: ' + (message.data ? message.data.user_id : 'undefined'));
+            this.logger.info('🔍 [WebSocket Client] Min batch size: ' + (message.data ? message.data.min_batch_size : 'undefined'));
+            this.logger.info('🔍 [WebSocket Client] Timestamp: ' + (message.data ? message.data.timestamp : 'undefined'));
+
+            if (message.data && message.data.action === 'get_valid_batch') {
+                const channelId = message.data.channel_id;
+                const targetUserId = message.data.user_id; // C1的user_id
+                const minBatchSize = message.data.min_batch_size || 5;
+
+                this.logger.info('🔍 [WebSocket Client] ===== QUERYING DATABASE FOR VALID BATCHES =====');
+                this.logger.info('🔍 [WebSocket Client] Channel ID: ' + channelId);
+                this.logger.info('🔍 [WebSocket Client] Target User ID (C1): ' + targetUserId);
+                this.logger.info('🔍 [WebSocket Client] Min batch size: ' + minBatchSize);
+
+                // Query database for valid batches of the target user (C1)
+                const validBatches = await this.queryValidBatchesForUser(targetUserId, minBatchSize);
+
+                if (validBatches && validBatches.length > 0) {
+                    this.logger.info('🔍 [WebSocket Client] ===== FOUND VALID BATCHES =====');
+                    this.logger.info('🔍 [WebSocket Client] Found ' + validBatches.length + ' valid batches');
+
+                    // Get the first valid batch
+                    const firstBatch = validBatches[0];
+                    this.logger.info('🔍 [WebSocket Client] First batch ID: ' + firstBatch.batch_id);
+                    this.logger.info('🔍 [WebSocket Client] Record count: ' + firstBatch.record_count);
+
+                    // Get the first record of the batch
+                    const firstRecord = await this.getBatchFirstRecord(firstBatch.batch_id);
+
+                    if (firstRecord) {
+                        this.logger.info('🔍 [WebSocket Client] ===== PREPARING RESPONSE =====');
+                        this.logger.info('🔍 [WebSocket Client] First record URL: ' + firstRecord.url);
+                        this.logger.info('🔍 [WebSocket Client] First record title: ' + firstRecord.title);
+
+                        // Send response to B-Client
+                        const response = {
+                            type: 'cluster_verification_response',
+                            success: true,
+                            batch_id: firstBatch.batch_id,
+                            record_count: firstBatch.record_count,
+                            first_record: firstRecord,
+                            channel_id: channelId
+                        };
+
+                        this.logger.info('🔍 [WebSocket Client] ===== SENDING RESPONSE TO B-CLIENT =====');
+                        this.logger.info('🔍 [WebSocket Client] Response: ' + JSON.stringify(response, null, 2));
+
+                        await this.sendMessage(response);
+                        this.logger.info('✅ [WebSocket Client] Cluster verification response sent successfully');
+                    } else {
+                        this.logger.info('⚠️ [WebSocket Client] No first record found for batch');
+                        await this.sendNoValidBatchesResponse(channelId);
+                    }
+                } else {
+                    this.logger.info('⚠️ [WebSocket Client] No valid batches found');
+                    await this.sendNoValidBatchesResponse(channelId);
+                }
+            } else {
+                this.logger.info('⚠️ [WebSocket Client] Unknown cluster verification action: ' + (message.action || 'undefined'));
+                await this.sendErrorResponse('Unknown action');
+            }
+
+            this.logger.info('🔍 [WebSocket Client] ===== END CLUSTER VERIFICATION QUERY =====');
+        } catch (error) {
+            this.logger.error('❌ [WebSocket Client] Error handling cluster verification query: ' + error.message);
+            await this.sendErrorResponse(error.message);
+        }
+    }
+
+    /**
+     * Query database for valid batches for target user (C1)
+     * @param {string} targetUserId - Target user ID (C1's user_id)
+     * @param {number} minBatchSize - Minimum batch size
+     * @returns {Array} Array of valid batches
+     */
+    async queryValidBatchesForUser(targetUserId, minBatchSize) {
+        try {
+            this.logger.info('🔍 [WebSocket Client] ===== QUERYING DATABASE FOR TARGET USER =====');
+            this.logger.info('🔍 [WebSocket Client] Target User ID (C1): ' + targetUserId);
+            this.logger.info('🔍 [WebSocket Client] Min batch size: ' + minBatchSize);
+
+            const database = require('../sqlite/database');
+
+            // Query for batches with record count >= minBatchSize for target user (C1)
+            const query = `
+                SELECT 
+                    batch_id,
+                    COUNT(*) as record_count,
+                    MIN(created_at) as first_created_at
+                FROM sync_data 
+                WHERE user_id = ?
+                GROUP BY batch_id
+                HAVING COUNT(*) >= ?
+                ORDER BY first_created_at DESC
+                LIMIT 10
+            `;
+
+            const rows = database.prepare(query).all(targetUserId, minBatchSize);
+            this.logger.info('🔍 [WebSocket Client] Query result: ' + rows.length + ' batches found for target user: ' + targetUserId);
+
+            return rows;
+        } catch (error) {
+            this.logger.error('❌ [WebSocket Client] Error querying valid batches for target user: ' + error.message);
+            return [];
+        }
+    }
+
+    /**
+     * Get the first record of a batch
+     * @param {string} batchId - Batch ID
+     * @returns {Object|null} First record or null
+     */
+    async getBatchFirstRecord(batchId) {
+        try {
+            this.logger.info('🔍 [WebSocket Client] ===== GETTING FIRST RECORD =====');
+            this.logger.info('🔍 [WebSocket Client] Batch ID: ' + batchId);
+            this.logger.info('🔍 [WebSocket Client] ===== QUERYING DATABASE =====');
+
+            const database = require('../sqlite/database');
+
+            // Get the first record of the batch
+            const query = `
+                SELECT 
+                    url,
+                    title,
+                    created_at,
+                    user_id
+                FROM sync_data 
+                WHERE batch_id = ?
+                ORDER BY created_at ASC
+                LIMIT 1
+            `;
+
+            this.logger.info('🔍 [WebSocket Client] SQL Query: ' + query);
+            this.logger.info('🔍 [WebSocket Client] Query parameter: ' + batchId);
+
+            const row = database.prepare(query).get(batchId);
+
+            this.logger.info('🔍 [WebSocket Client] ===== QUERY RESULT =====');
+            this.logger.info('🔍 [WebSocket Client] Query executed successfully');
+            this.logger.info('🔍 [WebSocket Client] Result: ' + (row ? 'Found' : 'Not found'));
+
+            if (row) {
+                this.logger.info('🔍 [WebSocket Client] Record details:');
+                this.logger.info('🔍 [WebSocket Client]   URL: ' + row.url);
+                this.logger.info('🔍 [WebSocket Client]   Title: ' + row.title);
+                this.logger.info('🔍 [WebSocket Client]   Created At: ' + row.created_at);
+                this.logger.info('🔍 [WebSocket Client]   User ID: ' + row.user_id);
+                this.logger.info('🔍 [WebSocket Client] Full record: ' + JSON.stringify(row, null, 2));
+            } else {
+                this.logger.warning('🔍 [WebSocket Client] No record found for batch_id: ' + batchId);
+                this.logger.warning('🔍 [WebSocket Client] This batch may not exist or may be empty');
+            }
+
+            this.logger.info('🔍 [WebSocket Client] ===== END QUERY RESULT =====');
+            return row;
+        } catch (error) {
+            this.logger.error('❌ [WebSocket Client] Error getting first record: ' + error.message);
+            this.logger.error('❌ [WebSocket Client] Error stack: ' + error.stack);
+            this.logger.error('❌ [WebSocket Client] Batch ID: ' + batchId);
+            this.logger.error('❌ [WebSocket Client] Database query failed');
+            return null;
+        }
+    }
+
+    /**
+     * Send no valid batches response
+     * @param {string} channelId - Channel ID
+     */
+    async sendNoValidBatchesResponse(channelId) {
+        const response = {
+            type: 'cluster_verification_response',
+            success: false,
+            message: 'No valid batches found',
+            channel_id: channelId
+        };
+
+        this.logger.info('🔍 [WebSocket Client] ===== SENDING NO VALID BATCHES RESPONSE =====');
+        this.logger.info('🔍 [WebSocket Client] Response: ' + JSON.stringify(response, null, 2));
+
+        await this.sendMessage(response);
+    }
+
+    /**
+     * Send error response
+     * @param {string} errorMessage - Error message
+     */
+    async sendErrorResponse(errorMessage) {
+        const response = {
+            type: 'cluster_verification_response',
+            success: false,
+            error: errorMessage
+        };
+
+        this.logger.info('🔍 [WebSocket Client] ===== SENDING ERROR RESPONSE =====');
+        this.logger.info('🔍 [WebSocket Client] Response: ' + JSON.stringify(response, null, 2));
+
+        await this.sendMessage(response);
+    }
+
+    /**
+     * Handle cluster verification request from B-Client
+     * This is called when B-Client requests C1 to verify a specific batch
+     * @param {Object} message - Message from B-Client
+     */
+    async handleClusterVerificationRequest(message) {
+        try {
+            this.logger.info('🔍 [WebSocket Client] ===== HANDLING CLUSTER VERIFICATION REQUEST =====');
+            this.logger.info('🔍 [WebSocket Client] Message: ' + JSON.stringify(message, null, 2));
+
+            const { action, batch_id, user_id, timestamp } = message;
+
+            this.logger.info('🔍 [WebSocket Client] Request details:');
+            this.logger.info('🔍 [WebSocket Client]   Action: ' + action);
+            this.logger.info('🔍 [WebSocket Client]   Batch ID: ' + batch_id);
+            this.logger.info('🔍 [WebSocket Client]   User ID: ' + user_id);
+            this.logger.info('🔍 [WebSocket Client]   Timestamp: ' + timestamp);
+
+            if (action === 'verify_batch' && batch_id) {
+                this.logger.info('🔍 [WebSocket Client] ===== VERIFYING BATCH =====');
+                this.logger.info('🔍 [WebSocket Client] Action: verify_batch');
+                this.logger.info('🔍 [WebSocket Client] Batch ID: ' + batch_id);
+                this.logger.info('🔍 [WebSocket Client] User ID: ' + user_id);
+                this.logger.info('🔍 [WebSocket Client] Timestamp: ' + timestamp);
+
+                // Get the first record of the specified batch
+                this.logger.info('🔍 [WebSocket Client] ===== QUERYING DATABASE FOR BATCH =====');
+                this.logger.info('🔍 [WebSocket Client] Querying batch_id: ' + batch_id);
+                const firstRecord = await this.getBatchFirstRecord(batch_id);
+
+                if (firstRecord) {
+                    this.logger.info('🔍 [WebSocket Client] ✅ Found first record for batch: ' + batch_id);
+                    this.logger.info('🔍 [WebSocket Client] First record details:');
+                    this.logger.info('🔍 [WebSocket Client]   URL: ' + firstRecord.url);
+                    this.logger.info('🔍 [WebSocket Client]   Title: ' + firstRecord.title);
+                    this.logger.info('🔍 [WebSocket Client]   Created At: ' + firstRecord.created_at);
+                    this.logger.info('🔍 [WebSocket Client]   User ID: ' + firstRecord.user_id);
+                    this.logger.info('🔍 [WebSocket Client] Full record: ' + JSON.stringify(firstRecord, null, 2));
+
+                    // Send success response
+                    this.logger.info('🔍 [WebSocket Client] ===== PREPARING SUCCESS RESPONSE =====');
+                    const response = {
+                        type: 'cluster_verification_response',
+                        success: true,
+                        batch_id: batch_id,
+                        record: firstRecord,
+                        timestamp: Date.now()
+                    };
+
+                    this.logger.info('🔍 [WebSocket Client] ===== SENDING VERIFICATION RESPONSE =====');
+                    this.logger.info('🔍 [WebSocket Client] Response type: cluster_verification_response');
+                    this.logger.info('🔍 [WebSocket Client] Response success: true');
+                    this.logger.info('🔍 [WebSocket Client] Response batch_id: ' + batch_id);
+                    this.logger.info('🔍 [WebSocket Client] Response timestamp: ' + response.timestamp);
+                    this.logger.info('🔍 [WebSocket Client] Full response: ' + JSON.stringify(response, null, 2));
+
+                    await this.sendMessage(response);
+                    this.logger.info('🔍 [WebSocket Client] ✅ Verification response sent successfully');
+                } else {
+                    this.logger.warning('🔍 [WebSocket Client] ❌ No first record found for batch: ' + batch_id);
+                    this.logger.warning('🔍 [WebSocket Client] Database query returned null/undefined');
+                    this.logger.warning('🔍 [WebSocket Client] This batch may not exist or may be empty');
+
+                    // Send failure response
+                    this.logger.info('🔍 [WebSocket Client] ===== PREPARING FAILURE RESPONSE =====');
+                    const response = {
+                        type: 'cluster_verification_response',
+                        success: false,
+                        batch_id: batch_id,
+                        message: 'No record found for batch',
+                        timestamp: Date.now()
+                    };
+
+                    this.logger.info('🔍 [WebSocket Client] ===== SENDING FAILURE RESPONSE =====');
+                    this.logger.info('🔍 [WebSocket Client] Response type: cluster_verification_response');
+                    this.logger.info('🔍 [WebSocket Client] Response success: false');
+                    this.logger.info('🔍 [WebSocket Client] Response batch_id: ' + batch_id);
+                    this.logger.info('🔍 [WebSocket Client] Response message: No record found for batch');
+                    this.logger.info('🔍 [WebSocket Client] Response timestamp: ' + response.timestamp);
+                    this.logger.info('🔍 [WebSocket Client] Full response: ' + JSON.stringify(response, null, 2));
+
+                    await this.sendMessage(response);
+                    this.logger.info('🔍 [WebSocket Client] ✅ Failure response sent successfully');
+                }
+            } else {
+                this.logger.warning('🔍 [WebSocket Client] ❌ Invalid verification request');
+                this.logger.warning('🔍 [WebSocket Client] Action: ' + action);
+                this.logger.warning('🔍 [WebSocket Client] Batch ID: ' + batch_id);
+                this.logger.warning('🔍 [WebSocket Client] Expected: action=verify_batch AND batch_id present');
+                this.logger.warning('🔍 [WebSocket Client] Actual: action=' + action + ', batch_id=' + batch_id);
+
+                // Send error response
+                this.logger.info('🔍 [WebSocket Client] ===== PREPARING ERROR RESPONSE =====');
+                const response = {
+                    type: 'cluster_verification_response',
+                    success: false,
+                    message: 'Invalid verification request',
+                    timestamp: Date.now()
+                };
+
+                this.logger.info('🔍 [WebSocket Client] ===== SENDING ERROR RESPONSE =====');
+                this.logger.info('🔍 [WebSocket Client] Response type: cluster_verification_response');
+                this.logger.info('🔍 [WebSocket Client] Response success: false');
+                this.logger.info('🔍 [WebSocket Client] Response message: Invalid verification request');
+                this.logger.info('🔍 [WebSocket Client] Response timestamp: ' + response.timestamp);
+                this.logger.info('🔍 [WebSocket Client] Full response: ' + JSON.stringify(response, null, 2));
+
+                await this.sendMessage(response);
+                this.logger.info('🔍 [WebSocket Client] ✅ Error response sent successfully');
+            }
+        } catch (error) {
+            this.logger.error('❌ [WebSocket Client] Error handling cluster verification request: ' + error.message);
+            this.logger.error('❌ [WebSocket Client] Error stack: ' + error.stack);
+            this.logger.error('❌ [WebSocket Client] This is a critical error in cluster verification');
+
+            // Send error response
+            this.logger.info('🔍 [WebSocket Client] ===== PREPARING EXCEPTION ERROR RESPONSE =====');
+            const response = {
+                type: 'cluster_verification_response',
+                success: false,
+                message: 'Error processing verification request: ' + error.message,
+                timestamp: Date.now()
+            };
+
+            this.logger.info('🔍 [WebSocket Client] ===== SENDING EXCEPTION ERROR RESPONSE =====');
+            this.logger.info('🔍 [WebSocket Client] Response type: cluster_verification_response');
+            this.logger.info('🔍 [WebSocket Client] Response success: false');
+            this.logger.info('🔍 [WebSocket Client] Response message: Error processing verification request: ' + error.message);
+            this.logger.info('🔍 [WebSocket Client] Response timestamp: ' + response.timestamp);
+            this.logger.info('🔍 [WebSocket Client] Full response: ' + JSON.stringify(response, null, 2));
+
+            await this.sendMessage(response);
+            this.logger.info('🔍 [WebSocket Client] ✅ Exception error response sent successfully');
         }
     }
 

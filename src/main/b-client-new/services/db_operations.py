@@ -5,10 +5,11 @@ Handles all database CRUD operations for B-Client
 from datetime import datetime
 import json
 import time
-
-# Import logging system
 import sys
 import os
+import traceback
+
+# Import logging system
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.logger import get_bclient_logger
 
@@ -77,7 +78,6 @@ def save_cookie_to_db(db, UserCookie, user_id, username, raw_session_cookie, nod
         logger.error(f"Failed to save cookie to database: {e}")
         logger.info(f"Rolling back transaction...")
         db.session.rollback()
-        import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise e
 
@@ -135,7 +135,6 @@ def save_account_to_db(db, UserAccount, user_id, username, account, password, ac
         logger.error(f"Failed to save account to database: {e}")
         logger.info(f"Rolling back transaction...")
         db.session.rollback()
-        import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise e
 

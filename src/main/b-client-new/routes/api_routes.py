@@ -6,10 +6,10 @@ from flask import Blueprint, request, jsonify
 from datetime import datetime
 import os
 import json
+import sys
+import asyncio
 
 # 导入日志系统
-import sys
-import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from utils.logger import get_bclient_logger
 
@@ -413,7 +413,6 @@ def trigger_node_offline():
             return jsonify({'error': 'node_id is required'}), 400
         
         # Trigger node offline cleanup
-        import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         

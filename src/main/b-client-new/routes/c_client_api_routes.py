@@ -4,10 +4,11 @@ Handles C-Client WebSocket communication API endpoints
 """
 from flask import Blueprint, request, jsonify
 from datetime import datetime
-
-# 导入日志系统
 import sys
 import os
+import asyncio
+
+# 导入日志系统
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from utils.logger import get_bclient_logger
 
@@ -68,7 +69,6 @@ def c_client_update_cookie():
             return jsonify({'success': False, 'error': 'user_id, username, and cookie are required'}), 400
 
         # Send WebSocket message
-        import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(c_client_ws.update_cookie(user_id, username, cookie, auto_refresh))
@@ -98,7 +98,6 @@ def c_client_notify_login():
             return jsonify({'success': False, 'error': 'user_id and username are required'}), 400
 
         # Send WebSocket message
-        import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(c_client_ws.notify_user_login(user_id, username, session_data))
@@ -127,7 +126,6 @@ def c_client_notify_logout():
             return jsonify({'success': False, 'error': 'user_id and username are required'}), 400
 
         # Send WebSocket message
-        import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(c_client_ws.notify_user_logout(user_id, username))
@@ -156,7 +154,6 @@ def c_client_sync_session():
             return jsonify({'success': False, 'error': 'user_id is required'}), 400
 
         # Send WebSocket message
-        import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(c_client_ws.sync_session(user_id, session_data))

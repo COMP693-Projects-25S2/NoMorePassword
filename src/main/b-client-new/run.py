@@ -12,6 +12,8 @@ from services.models import db
 # 导入日志系统
 from utils.logger import get_bclient_logger, setup_print_redirect
 
+# 集群验证服务现在在websocket_client.py中处理
+
 # 立即设置日志重定向（在模块导入时就生效）
 logger = get_bclient_logger('main')
 print_redirect = setup_print_redirect('main')

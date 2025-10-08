@@ -377,7 +377,6 @@ class SyncManager:
         Args:
             max_age_hours: Maximum age in hours before cleanup
         """
-        from datetime import timedelta
         
         self.logger.info(f"🧹 [SyncManager] ===== CLEANING UP OLD BATCHES =====")
         self.logger.info(f"⏰ [SyncManager] Max age threshold: {max_age_hours} hours")

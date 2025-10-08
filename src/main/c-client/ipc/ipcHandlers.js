@@ -1116,20 +1116,18 @@ class IpcHandlers {
                             console.log('🔍 C-Client IPC: clearAllSessions method available:', typeof this.tabManager.clearAllSessions);
                             console.log('🔍 C-Client IPC: closeAllTabsAndCreateDefault method available:', typeof this.tabManager.closeAllTabsAndCreateDefault);
 
-                            // First, clear all sessions (including persistent partitions) - same as user switch
+                            // Clear all sessions and close all tabs (clearAllSessions already closes tabs)
                             console.log('🧹 C-Client IPC: Clearing all sessions including persistent partitions...');
                             await this.tabManager.clearAllSessions();
-                            console.log('✅ C-Client IPC: All sessions cleared after user registration');
+                            console.log('✅ C-Client IPC: All sessions cleared and tabs closed after user registration');
 
-                            // Then close all tabs and create new default page
+                            // Create new default tab (tabs were already closed by clearAllSessions)
                             if (this.tabManager) {
-                                await this.tabManager.closeAllTabs();
                                 // Create a new default tab
                                 await this.tabManager.createTab();
-                                console.log('✅ C-Client IPC: All tabs closed and new default tab created after registration (using TabManager)');
+                                console.log('✅ C-Client IPC: New default tab created after registration');
                             } else {
-                                await this.tabManager.closeAllTabsAndCreateDefault();
-                                console.log('✅ C-Client IPC: All tabs closed and new default page created after registration (using ViewManager)');
+                                console.warn('⚠️ C-Client IPC: TabManager not available, cannot create default tab');
                             }
                         } catch (viewError) {
                             console.error('❌ C-Client IPC: Error managing views after user registration:', viewError);

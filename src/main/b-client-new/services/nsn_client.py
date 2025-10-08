@@ -9,10 +9,10 @@ import re
 import time
 import secrets
 import string
+import sys
+import traceback
 
 # Import logging system
-import sys
-import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.logger import get_bclient_logger
 
@@ -174,8 +174,6 @@ class NSNClient:
             self.logger.info(f"NMP params: {nmp_params}")
             
             # Generate a secure password for NMP registration
-            import secrets
-            import string
             
             # Generate a password that meets NSN requirements:
             # - At least 8 characters
@@ -211,9 +209,6 @@ class NSNClient:
             self.logger.info(f"Generated secure password for NMP registration: {generated_password}")
             
             # Generate unique username to avoid conflicts
-            import secrets
-            import string
-            import re
             
             base_username = signup_data.get('username')
             
@@ -353,7 +348,6 @@ class NSNClient:
                 
         except Exception as e:
             self.logger.error(f"Registration error: {e}")
-            import traceback
             self.logger.error(f"Traceback: {traceback.format_exc()}")
             return {'success': False, 'error': str(e)}
 

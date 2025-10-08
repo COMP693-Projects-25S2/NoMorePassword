@@ -6,20 +6,24 @@ from datetime import datetime
 import json
 import os
 import time
+import sys
+import asyncio
+import threading
+import traceback
 
 # 导入日志系统
-import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from utils.logger import get_bclient_logger
+
 try:
     import websockets
-    import asyncio
-    import threading
 except ImportError:
     # WebSocket dependencies not available - will be handled by logger when available
     websockets = None
-    asyncio = None
-    threading = None
+
+# Import cluster verification
+from .cluster_verification import verify_user_cluster, ClusterVerificationService, get_cluster_verification_service
+from .nodeManager import ClientConnection
 
 # These will be injected when initialized
 app = None
@@ -55,10 +59,570 @@ class CClientWebSocketClient:
         self.config = self.load_websocket_config()
         self.reconnect_interval = self.config.get('reconnect_interval', 30)
         
+        # Initialize cluster verification service reference
+        self.cluster_verification_service = None
+        # Store cluster verification instances per connection
+        self.connection_cluster_verification = {}
+        
         # Initialize dual connection pools for C-Client connections with pre-allocation
         self.node_connections = {}     # Node-based connection pool (node_id -> websocket)
         self.user_connections = {}    # User-based connection pool (user_id -> list of websockets)
         self.client_connections = {}  # Client-based connection pool (client_id -> list of websockets)
+    
+    def _init_cluster_verification_for_connection(self, websocket, user_id, node_id, channel_id):
+        """Initialize cluster verification instance for a specific C-Client connection"""
+        try:
+            # Create a unique connection identifier
+            connection_id = id(websocket)
+            
+            # Initialize cluster verification instance for this connection
+            cluster_verification_instance = ClusterVerificationService(self, db)
+            
+            # Store the instance for this connection
+            self.connection_cluster_verification[connection_id] = cluster_verification_instance
+            
+            # Set the instance on the websocket object for easy access
+            websocket.cluster_verification_instance = cluster_verification_instance
+            
+            self.logger.info(f"===== CLUSTER VERIFICATION INSTANCE INITIALIZED =====")
+            self.logger.info(f"Connection ID: {connection_id}")
+            self.logger.info(f"User ID: {user_id}")
+            self.logger.info(f"Node ID: {node_id}")
+            self.logger.info(f"Channel ID: {channel_id}")
+            self.logger.info(f"Instance: {cluster_verification_instance}")
+            self.logger.info(f"===== END CLUSTER VERIFICATION INITIALIZATION =====")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize cluster verification for connection: {e}")
+            self.logger.error(f"User ID: {user_id}, Node ID: {node_id}, Channel ID: {channel_id}")
+            # Set a None instance to avoid errors
+            websocket.cluster_verification_instance = None
+    
+    def _cleanup_cluster_verification_for_connection(self, websocket):
+        """Clean up cluster verification instance for a specific C-Client connection"""
+        try:
+            connection_id = id(websocket)
+            
+            if connection_id in self.connection_cluster_verification:
+                # Remove the instance from our tracking
+                del self.connection_cluster_verification[connection_id]
+                self.logger.info(f"===== CLUSTER VERIFICATION INSTANCE CLEANED UP =====")
+                self.logger.info(f"Connection ID: {connection_id}")
+                self.logger.info(f"===== END CLUSTER VERIFICATION CLEANUP =====")
+            else:
+                self.logger.debug(f"No cluster verification instance found for connection {connection_id}")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to cleanup cluster verification for connection: {e}")
+            self.logger.error(f"Connection ID: {id(websocket)}")
+    
+    async def _sync_connection_to_nodemanager(self, websocket, connection_data):
+        """Sync WebSocket connection to NodeManager with comprehensive error handling"""
+        try:
+            self.logger.info(f"🔗 ===== SYNCING CONNECTION TO NODEMANAGER =====")
+            self.logger.info(f"🔗 WebSocket: {websocket}")
+            self.logger.info(f"🔗 Connection data: {connection_data}")
+            
+            # Check if NodeManager is available
+            if not hasattr(self, 'node_manager') or not self.node_manager:
+                self.logger.error(f"🔗 ❌ NodeManager not available for connection sync")
+                return False
+            
+            # Prepare NMP parameters for NodeManager
+            nmp_params = {
+                'nmp_user_id': connection_data.get('user_id'),
+                'nmp_username': connection_data.get('username'),
+                'nmp_node_id': connection_data.get('node_id'),
+                'nmp_domain_main_node_id': connection_data.get('domain_main_node_id'),
+                'nmp_cluster_main_node_id': connection_data.get('cluster_main_node_id'),
+                'nmp_channel_main_node_id': connection_data.get('channel_main_node_id'),
+                'nmp_domain_id': connection_data.get('domain_id'),
+                'nmp_cluster_id': connection_data.get('cluster_id'),
+                'nmp_channel_id': connection_data.get('channel_id')
+            }
+            
+            self.logger.info(f"🔗 NMP parameters for NodeManager sync:")
+            for key, value in nmp_params.items():
+                self.logger.info(f"🔗   {key}: {value}")
+            
+            # Call NodeManager's handle_new_connection method
+            self.logger.info(f"🔗 Calling NodeManager.handle_new_connection()...")
+            connection = await self.node_manager.handle_new_connection(websocket, nmp_params)
+            
+            if connection:
+                self.logger.info(f"🔗 ✅ NodeManager connection sync successful")
+                self.logger.info(f"🔗 NodeManager connection: {connection}")
+                self.logger.info(f"🔗 Node ID: {connection.node_id}")
+                self.logger.info(f"🔗 Domain ID: {connection.domain_id}")
+                self.logger.info(f"🔗 Cluster ID: {connection.cluster_id}")
+                self.logger.info(f"🔗 Channel ID: {connection.channel_id}")
+                
+                # Store the NodeManager connection reference on the websocket
+                websocket.nodemanager_connection = connection
+                self.logger.info(f"🔗 ✅ NodeManager connection reference stored on websocket")
+                
+                return True
+            else:
+                self.logger.error(f"🔗 ❌ NodeManager.handle_new_connection() returned None")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"🔗 ❌ Error syncing connection to NodeManager: {e}")
+            self.logger.error(f"🔗 ❌ Traceback: {traceback.format_exc()}")
+            return False
+        finally:
+            self.logger.info(f"🔗 ===== END NODEMANAGER SYNC =====")
+    
+    async def _sync_disconnection_to_nodemanager(self, websocket):
+        """Sync WebSocket disconnection to NodeManager with comprehensive error handling"""
+        try:
+            self.logger.info(f"🔗 ===== SYNCING DISCONNECTION TO NODEMANAGER =====")
+            self.logger.info(f"🔗 WebSocket: {websocket}")
+            
+            # Check if NodeManager is available
+            if not hasattr(self, 'node_manager') or not self.node_manager:
+                self.logger.warning(f"🔗 ⚠️ NodeManager not available for disconnection sync")
+                return False
+            
+            # Get NodeManager connection reference from websocket
+            nodemanager_connection = getattr(websocket, 'nodemanager_connection', None)
+            
+            if nodemanager_connection:
+                self.logger.info(f"🔗 Found NodeManager connection reference: {nodemanager_connection}")
+                self.logger.info(f"🔗 Node ID: {nodemanager_connection.node_id}")
+                self.logger.info(f"🔗 Domain ID: {nodemanager_connection.domain_id}")
+                self.logger.info(f"🔗 Cluster ID: {nodemanager_connection.cluster_id}")
+                self.logger.info(f"🔗 Channel ID: {nodemanager_connection.channel_id}")
+                
+                # Call NodeManager's remove_connection method
+                self.logger.info(f"🔗 Calling NodeManager.remove_connection()...")
+                self.node_manager.remove_connection(nodemanager_connection)
+                
+                # Clear the reference
+                websocket.nodemanager_connection = None
+                self.logger.info(f"🔗 ✅ NodeManager disconnection sync successful")
+                return True
+            else:
+                self.logger.warning(f"🔗 ⚠️ No NodeManager connection reference found on websocket")
+                # Try to create a minimal connection object for cleanup
+                try:
+                    minimal_connection = ClientConnection(
+                        websocket=websocket,
+                        node_id=getattr(websocket, 'node_id', None),
+                        user_id=getattr(websocket, 'user_id', None),
+                        username=getattr(websocket, 'username', None),
+                        domain_id=getattr(websocket, 'domain_id', None),
+                        cluster_id=getattr(websocket, 'cluster_id', None),
+                        channel_id=getattr(websocket, 'channel_id', None),
+                        is_domain_main_node=getattr(websocket, 'is_domain_main_node', False),
+                        is_cluster_main_node=getattr(websocket, 'is_cluster_main_node', False),
+                        is_channel_main_node=getattr(websocket, 'is_channel_main_node', False)
+                    )
+                    
+                    self.logger.info(f"🔗 Created minimal connection object for cleanup: {minimal_connection}")
+                    self.node_manager.remove_connection(minimal_connection)
+                    self.logger.info(f"🔗 ✅ NodeManager disconnection sync with minimal connection successful")
+                    return True
+                except Exception as e:
+                    self.logger.error(f"🔗 ❌ Error creating minimal connection for cleanup: {e}")
+                    return False
+                
+        except Exception as e:
+            self.logger.error(f"🔗 ❌ Error syncing disconnection to NodeManager: {e}")
+            self.logger.error(f"🔗 ❌ Traceback: {traceback.format_exc()}")
+            return False
+        finally:
+            self.logger.info(f"🔗 ===== END NODEMANAGER DISCONNECTION SYNC =====")
+    
+    async def _sync_connection_status_to_nodemanager_pools(self, websocket, status):
+        """Sync connection status changes to NodeManager pools"""
+        try:
+            self.logger.info(f"🔗 ===== SYNCING CONNECTION STATUS TO NODEMANAGER POOLS =====")
+            self.logger.info(f"🔗 WebSocket: {websocket}")
+            self.logger.info(f"🔗 Status: {status}")
+            
+            # Check if NodeManager is available
+            if not hasattr(self, 'node_manager') or not self.node_manager:
+                self.logger.warning(f"🔗 ⚠️ NodeManager not available for status sync")
+                return False
+            
+            # Get NodeManager connection reference
+            nodemanager_connection = getattr(websocket, 'nodemanager_connection', None)
+            if not nodemanager_connection:
+                self.logger.warning(f"🔗 ⚠️ No NodeManager connection reference found")
+                return False
+            
+            # Update connection status in NodeManager
+            if status == 'closed_by_logout':
+                # Mark the websocket as closed in NodeManager's connection
+                nodemanager_connection.websocket._closed_by_logout = True
+                self.logger.info(f"🔗 ✅ Marked NodeManager connection as closed by logout")
+                
+                # Trigger cleanup of invalid connections in NodeManager
+                await self.node_manager.cleanup_disconnected_connections()
+                self.logger.info(f"🔗 ✅ Triggered NodeManager cleanup of invalid connections")
+                
+            elif status == 'reconnected':
+                # Clear logout flag if reconnected
+                if hasattr(nodemanager_connection.websocket, '_closed_by_logout'):
+                    nodemanager_connection.websocket._closed_by_logout = False
+                    self.logger.info(f"🔗 ✅ Cleared logout flag for reconnected connection")
+            
+            # Get updated pool statistics
+            valid_counts = self.node_manager.get_valid_connections_count()
+            self.logger.info(f"🔗 NodeManager pool status after sync:")
+            self.logger.info(f"🔗   Valid connections: {valid_counts.get('total_valid', 0)}")
+            self.logger.info(f"🔗   Invalid connections: {valid_counts.get('total_invalid', 0)}")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"🔗 ❌ Error syncing connection status to NodeManager pools: {e}")
+            self.logger.error(f"🔗 ❌ Traceback: {traceback.format_exc()}")
+            return False
+        finally:
+            self.logger.info(f"🔗 ===== END NODEMANAGER POOL STATUS SYNC =====")
+    
+    async def _monitor_connection_health(self, websocket):
+        """Monitor connection health and sync status with NodeManager"""
+        try:
+            self.logger.info(f"🔍 ===== MONITORING CONNECTION HEALTH =====")
+            self.logger.info(f"🔍 WebSocket: {websocket}")
+            
+            # Check if websocket is still valid
+            if not self.is_connection_valid(websocket):
+                self.logger.warning(f"🔍 ⚠️ Connection is invalid, triggering cleanup")
+                await self._sync_disconnection_to_nodemanager(websocket)
+                return False
+            
+            # Check NodeManager connection reference
+            nodemanager_connection = getattr(websocket, 'nodemanager_connection', None)
+            if not nodemanager_connection:
+                self.logger.warning(f"🔍 ⚠️ No NodeManager connection reference found")
+                return False
+            
+            # Verify NodeManager connection is still in pools
+            if hasattr(self, 'node_manager') and self.node_manager:
+                # Check if connection exists in NodeManager pools
+                found_in_pools = False
+                for pool_name, pool in [
+                    ('domain_pool', self.node_manager.domain_pool),
+                    ('cluster_pool', self.node_manager.cluster_pool),
+                    ('channel_pool', self.node_manager.channel_pool)
+                ]:
+                    for pool_id, connections in pool.items():
+                        if nodemanager_connection in connections:
+                            found_in_pools = True
+                            self.logger.debug(f"🔍 ✅ Connection found in {pool_name}[{pool_id}]")
+                            break
+                    if found_in_pools:
+                        break
+                
+                if not found_in_pools:
+                    self.logger.warning(f"🔍 ⚠️ Connection not found in any NodeManager pools")
+                    return False
+            
+            self.logger.info(f"🔍 ✅ Connection health check passed")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"🔍 ❌ Error monitoring connection health: {e}")
+            return False
+        finally:
+            self.logger.info(f"🔍 ===== END CONNECTION HEALTH MONITORING =====")
+    
+    async def _sync_connection_status_to_nodemanager(self, websocket, status_change):
+        """Sync connection status changes to NodeManager"""
+        try:
+            self.logger.info(f"🔗 ===== SYNCING CONNECTION STATUS CHANGE =====")
+            self.logger.info(f"🔗 WebSocket: {websocket}")
+            self.logger.info(f"🔗 Status change: {status_change}")
+            
+            # Check if NodeManager is available
+            if not hasattr(self, 'node_manager') or not self.node_manager:
+                self.logger.warning(f"🔗 ⚠️ NodeManager not available for status sync")
+                return False
+            
+            # Get NodeManager connection reference
+            nodemanager_connection = getattr(websocket, 'nodemanager_connection', None)
+            if not nodemanager_connection:
+                self.logger.warning(f"🔗 ⚠️ No NodeManager connection reference found")
+                return False
+            
+            # Handle different status changes
+            if status_change == 'reconnected':
+                self.logger.info(f"🔗 Handling reconnection status")
+                # Update connection attributes if needed
+                nodemanager_connection.user_id = getattr(websocket, 'user_id', nodemanager_connection.user_id)
+                nodemanager_connection.username = getattr(websocket, 'username', nodemanager_connection.username)
+                nodemanager_connection.node_id = getattr(websocket, 'node_id', nodemanager_connection.node_id)
+                
+            elif status_change == 'user_changed':
+                self.logger.info(f"🔗 Handling user change status")
+                # Update user-related attributes
+                nodemanager_connection.user_id = getattr(websocket, 'user_id', nodemanager_connection.user_id)
+                nodemanager_connection.username = getattr(websocket, 'username', nodemanager_connection.username)
+                
+            elif status_change == 'node_assigned':
+                self.logger.info(f"🔗 Handling node assignment status")
+                # Update node-related attributes
+                nodemanager_connection.domain_id = getattr(websocket, 'domain_id', nodemanager_connection.domain_id)
+                nodemanager_connection.cluster_id = getattr(websocket, 'cluster_id', nodemanager_connection.cluster_id)
+                nodemanager_connection.channel_id = getattr(websocket, 'channel_id', nodemanager_connection.channel_id)
+                nodemanager_connection.is_domain_main_node = getattr(websocket, 'is_domain_main_node', nodemanager_connection.is_domain_main_node)
+                nodemanager_connection.is_cluster_main_node = getattr(websocket, 'is_cluster_main_node', nodemanager_connection.is_cluster_main_node)
+                nodemanager_connection.is_channel_main_node = getattr(websocket, 'is_channel_main_node', nodemanager_connection.is_channel_main_node)
+            
+            self.logger.info(f"🔗 ✅ Connection status sync completed")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"🔗 ❌ Error syncing connection status: {e}")
+            self.logger.error(f"🔗 ❌ Traceback: {traceback.format_exc()}")
+            return False
+        finally:
+            self.logger.info(f"🔗 ===== END CONNECTION STATUS SYNC =====")
+    
+    async def _test_connection_management_integrity(self):
+        """Test the integrity of connection management between WebSocket and NodeManager"""
+        try:
+            self.logger.info(f"🧪 ===== TESTING CONNECTION MANAGEMENT INTEGRITY =====")
+            
+            # Test 1: Check WebSocket connection pools
+            websocket_stats = {
+                'node_connections': len(self.node_connections) if hasattr(self, 'node_connections') else 0,
+                'user_connections': len(self.user_connections) if hasattr(self, 'user_connections') else 0,
+                'client_connections': len(self.client_connections) if hasattr(self, 'client_connections') else 0
+            }
+            
+            self.logger.info(f"🧪 WebSocket connection pools:")
+            self.logger.info(f"   Node connections: {websocket_stats['node_connections']}")
+            self.logger.info(f"   User connections: {websocket_stats['user_connections']}")
+            self.logger.info(f"   Client connections: {websocket_stats['client_connections']}")
+            
+            # Test 2: Check NodeManager connection pools
+            if hasattr(self, 'node_manager') and self.node_manager:
+                nodemanager_stats = self.node_manager.get_pool_stats()
+                self.logger.info(f"🧪 NodeManager connection pools:")
+                self.logger.info(f"   Domains: {nodemanager_stats['domains']}")
+                self.logger.info(f"   Clusters: {nodemanager_stats['clusters']}")
+                self.logger.info(f"   Channels: {nodemanager_stats['channels']}")
+                self.logger.info(f"   Total connections: {nodemanager_stats['total_connections']}")
+            else:
+                self.logger.warning(f"🧪 ⚠️ NodeManager not available for integrity test")
+                return False
+            
+            # Test 3: Cross-reference connections
+            websocket_connections = set()
+            nodemanager_connections = set()
+            
+            # Collect WebSocket connections
+            for node_id, connections in self.node_connections.items():
+                websocket_connections.update(connections)
+            
+            # Collect NodeManager connections
+            for pool_name, pool in [
+                ('domain_pool', self.node_manager.domain_pool),
+                ('cluster_pool', self.node_manager.cluster_pool),
+                ('channel_pool', self.node_manager.channel_pool)
+            ]:
+                for pool_id, connections in pool.items():
+                    for conn in connections:
+                        nodemanager_connections.add(conn.websocket)
+            
+            # Test 4: Check for orphaned connections
+            orphaned_websockets = websocket_connections - nodemanager_connections
+            orphaned_nodemanager = nodemanager_connections - websocket_connections
+            
+            if orphaned_websockets:
+                self.logger.warning(f"🧪 ⚠️ Found {len(orphaned_websockets)} orphaned WebSocket connections")
+                for ws in list(orphaned_websockets)[:5]:  # Show first 5
+                    self.logger.warning(f"   Orphaned WebSocket: {ws}")
+            
+            if orphaned_nodemanager:
+                self.logger.warning(f"🧪 ⚠️ Found {len(orphaned_nodemanager)} orphaned NodeManager connections")
+                for ws in list(orphaned_nodemanager)[:5]:  # Show first 5
+                    self.logger.warning(f"   Orphaned NodeManager: {ws}")
+            
+            # Test 5: Check connection references
+            reference_issues = 0
+            for node_id, connections in self.node_connections.items():
+                for websocket in connections:
+                    nodemanager_ref = getattr(websocket, 'nodemanager_connection', None)
+                    if not nodemanager_ref:
+                        reference_issues += 1
+                        self.logger.warning(f"🧪 ⚠️ WebSocket {websocket} missing NodeManager reference")
+            
+            # Test 6: Summary
+            integrity_score = 100
+            if orphaned_websockets:
+                integrity_score -= len(orphaned_websockets) * 10
+            if orphaned_nodemanager:
+                integrity_score -= len(orphaned_nodemanager) * 10
+            if reference_issues:
+                integrity_score -= reference_issues * 5
+            
+            integrity_score = max(0, integrity_score)
+            
+            self.logger.info(f"🧪 ===== INTEGRITY TEST RESULTS =====")
+            self.logger.info(f"🧪 Integrity Score: {integrity_score}/100")
+            self.logger.info(f"🧪 Orphaned WebSocket connections: {len(orphaned_websockets)}")
+            self.logger.info(f"🧪 Orphaned NodeManager connections: {len(orphaned_nodemanager)}")
+            self.logger.info(f"🧪 Missing references: {reference_issues}")
+            
+            if integrity_score >= 90:
+                self.logger.info(f"🧪 ✅ Connection management integrity: EXCELLENT")
+            elif integrity_score >= 70:
+                self.logger.info(f"🧪 ⚠️ Connection management integrity: GOOD")
+            elif integrity_score >= 50:
+                self.logger.info(f"🧪 ⚠️ Connection management integrity: FAIR")
+            else:
+                self.logger.warning(f"🧪 ❌ Connection management integrity: POOR")
+            
+            return integrity_score >= 70
+            
+        except Exception as e:
+            self.logger.error(f"🧪 ❌ Error testing connection management integrity: {e}")
+            self.logger.error(f"🧪 ❌ Traceback: {traceback.format_exc()}")
+            return False
+        finally:
+            self.logger.info(f"🧪 ===== END CONNECTION MANAGEMENT INTEGRITY TEST =====")
+    
+    async def test_connection_management(self):
+        """Public method to test connection management integrity"""
+        return await self._test_connection_management_integrity()
+    
+    async def get_connection_status_report(self):
+        """Get a comprehensive status report of all connections"""
+        try:
+            self.logger.info(f"📊 ===== GENERATING CONNECTION STATUS REPORT =====")
+            
+            report = {
+                'timestamp': datetime.now().isoformat(),
+                'websocket_pools': {},
+                'nodemanager_pools': {},
+                'connection_health': {},
+                'recommendations': []
+            }
+            
+            # WebSocket pool status
+            if hasattr(self, 'node_connections'):
+                report['websocket_pools']['node_connections'] = {
+                    'count': len(self.node_connections),
+                    'nodes': list(self.node_connections.keys())
+                }
+            
+            if hasattr(self, 'user_connections'):
+                report['websocket_pools']['user_connections'] = {
+                    'count': len(self.user_connections),
+                    'users': list(self.user_connections.keys())
+                }
+            
+            if hasattr(self, 'client_connections'):
+                report['websocket_pools']['client_connections'] = {
+                    'count': len(self.client_connections),
+                    'clients': list(self.client_connections.keys())
+                }
+            
+            # NodeManager pool status
+            if hasattr(self, 'node_manager') and self.node_manager:
+                nodemanager_stats = self.node_manager.get_pool_stats()
+                report['nodemanager_pools'] = nodemanager_stats
+            else:
+                report['nodemanager_pools'] = {'error': 'NodeManager not available'}
+            
+            # Connection health check
+            health_score = await self._test_connection_management_integrity()
+            report['connection_health'] = {
+                'score': health_score,
+                'status': 'EXCELLENT' if health_score >= 90 else 'GOOD' if health_score >= 70 else 'FAIR' if health_score >= 50 else 'POOR'
+            }
+            
+            # Generate recommendations
+            if health_score < 90:
+                report['recommendations'].append("Consider running connection cleanup")
+            if health_score < 70:
+                report['recommendations'].append("Investigate orphaned connections")
+            if health_score < 50:
+                report['recommendations'].append("Critical: Connection management needs immediate attention")
+            
+            self.logger.info(f"📊 Connection status report generated")
+            self.logger.info(f"📊 Health score: {health_score}/100")
+            self.logger.info(f"📊 Status: {report['connection_health']['status']}")
+            
+            return report
+            
+        except Exception as e:
+            self.logger.error(f"📊 ❌ Error generating connection status report: {e}")
+            return {'error': str(e)}
+        finally:
+            self.logger.info(f"📊 ===== END CONNECTION STATUS REPORT =====")
+    
+    async def get_nodemanager_connection_status(self):
+        """Get NodeManager connection status with valid/invalid connection counts"""
+        try:
+            self.logger.info(f"📊 ===== GETTING NODEMANAGER CONNECTION STATUS =====")
+            
+            if not hasattr(self, 'node_manager') or not self.node_manager:
+                return {'error': 'NodeManager not available'}
+            
+            # Get valid connection counts
+            valid_counts = self.node_manager.get_valid_connections_count()
+            
+            # Get pool statistics
+            pool_stats = self.node_manager.get_pool_stats()
+            
+            status = {
+                'timestamp': datetime.now().isoformat(),
+                'pool_statistics': pool_stats,
+                'valid_connections': valid_counts,
+                'health_score': 0
+            }
+            
+            # Calculate health score
+            total_connections = valid_counts.get('total_valid', 0) + valid_counts.get('total_invalid', 0)
+            if total_connections > 0:
+                health_score = (valid_counts.get('total_valid', 0) / total_connections) * 100
+                status['health_score'] = round(health_score, 2)
+            
+            self.logger.info(f"📊 NodeManager connection status:")
+            self.logger.info(f"📊   Total valid connections: {valid_counts.get('total_valid', 0)}")
+            self.logger.info(f"📊   Total invalid connections: {valid_counts.get('total_invalid', 0)}")
+            self.logger.info(f"📊   Health score: {status['health_score']}%")
+            
+            return status
+            
+        except Exception as e:
+            self.logger.error(f"📊 ❌ Error getting NodeManager connection status: {e}")
+            return {'error': str(e)}
+        finally:
+            self.logger.info(f"📊 ===== END NODEMANAGER CONNECTION STATUS =====")
+    
+    async def cleanup_nodemanager_invalid_connections(self):
+        """Clean up invalid connections from NodeManager pools"""
+        try:
+            self.logger.info(f"🧹 ===== CLEANING UP NODEMANAGER INVALID CONNECTIONS =====")
+            
+            if not hasattr(self, 'node_manager') or not self.node_manager:
+                self.logger.warning(f"🧹 ⚠️ NodeManager not available for cleanup")
+                return False
+            
+            # Trigger cleanup
+            await self.node_manager.cleanup_disconnected_connections()
+            
+            # Get updated statistics
+            valid_counts = self.node_manager.get_valid_connections_count()
+            self.logger.info(f"🧹 Cleanup completed:")
+            self.logger.info(f"🧹   Valid connections: {valid_counts.get('total_valid', 0)}")
+            self.logger.info(f"🧹   Invalid connections: {valid_counts.get('total_invalid', 0)}")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"🧹 ❌ Error cleaning up NodeManager invalid connections: {e}")
+            return False
+        finally:
+            self.logger.info(f"🧹 ===== END NODEMANAGER CLEANUP =====")
         
         # Connection state cache for faster lookups
         self.connection_cache = {}
@@ -185,36 +749,51 @@ class CClientWebSocketClient:
     async def _handle_node_management_async(self, websocket, nmp_params):
         """Handle node management in background to allow WebSocket message loop to run"""
         try:
-            self.logger.info(f"Background task: Calling node_manager.handle_new_connection()...")
-            connection = await self.node_manager.handle_new_connection(
-                websocket,
-                nmp_params
-            )
+            self.logger.info(f"Background task: Starting NodeManager connection sync...")
             
-            self.logger.info(f"Background task: NodeManager.handle_new_connection() completed successfully")
-            if connection:
-                self.logger.info(f"Background task: Connection result:")
-                self.logger.info(f"   Node ID: {getattr(connection, 'node_id', 'N/A')}")
-                self.logger.info(f"   Domain ID: {getattr(connection, 'domain_id', 'N/A')}")
-                self.logger.info(f"   Cluster ID: {getattr(connection, 'cluster_id', 'N/A')}")
-                self.logger.info(f"   Channel ID: {getattr(connection, 'channel_id', 'N/A')}")
-                self.logger.info(f"   Is Domain Main: {getattr(connection, 'is_domain_main_node', 'N/A')}")
-                self.logger.info(f"   Is Cluster Main: {getattr(connection, 'is_cluster_main_node', 'N/A')}")
-                self.logger.info(f"   Is Channel Main: {getattr(connection, 'is_channel_main_node', 'N/A')}")
+            # Prepare connection data for sync
+            connection_data = {
+                'user_id': nmp_params.get('nmp_user_id'),
+                'username': nmp_params.get('nmp_username'),
+                'node_id': nmp_params.get('nmp_node_id'),
+                'domain_main_node_id': nmp_params.get('nmp_domain_main_node_id'),
+                'cluster_main_node_id': nmp_params.get('nmp_cluster_main_node_id'),
+                'channel_main_node_id': nmp_params.get('nmp_channel_main_node_id'),
+                'domain_id': nmp_params.get('nmp_domain_id'),
+                'cluster_id': nmp_params.get('nmp_cluster_id'),
+                'channel_id': nmp_params.get('nmp_channel_id')
+            }
+            
+            # Use the new comprehensive sync method
+            sync_success = await self._sync_connection_to_nodemanager(websocket, connection_data)
+            
+            if sync_success:
+                self.logger.info(f"Background task: ✅ NodeManager connection sync successful")
+                
+                # Get the connection reference for logging
+                nodemanager_connection = getattr(websocket, 'nodemanager_connection', None)
+                if nodemanager_connection:
+                    self.logger.info(f"Background task: Connection details:")
+                    self.logger.info(f"   Node ID: {nodemanager_connection.node_id}")
+                    self.logger.info(f"   Domain ID: {nodemanager_connection.domain_id}")
+                    self.logger.info(f"   Cluster ID: {nodemanager_connection.cluster_id}")
+                    self.logger.info(f"   Channel ID: {nodemanager_connection.channel_id}")
+                    self.logger.info(f"   Is Domain Main: {nodemanager_connection.is_domain_main_node}")
+                    self.logger.info(f"   Is Cluster Main: {nodemanager_connection.is_cluster_main_node}")
+                    self.logger.info(f"   Is Channel Main: {nodemanager_connection.is_channel_main_node}")
+                
+                # Log pool statistics
+                stats = self.node_manager.get_pool_stats()
+                self.logger.info(f"Background task: NodeManager pool stats:")
+                self.logger.info(f"   Domains: {stats['domains']}")
+                self.logger.info(f"   Clusters: {stats['clusters']}")
+                self.logger.info(f"   Channels: {stats['channels']}")
+                self.logger.info(f"   Total connections: {stats['total_connections']}")
             else:
-                self.logger.warning(f"Background task: NodeManager.handle_new_connection() returned None")
-            
-            # Get and display pool stats
-            stats = self.node_manager.get_pool_stats()
-            self.logger.info(f"Background task: NodeManager pool stats:")
-            self.logger.info(f"   Domains: {stats['domains']}")
-            self.logger.info(f"   Clusters: {stats['clusters']}")
-            self.logger.info(f"   Channels: {stats['channels']}")
-            self.logger.info(f"   Total connections: {stats['total_connections']}")
+                self.logger.error(f"Background task: ❌ NodeManager connection sync failed")
             
         except Exception as e:
             self.logger.error(f"Background task: Error in node management: {e}")
-            import traceback
             self.logger.error(f"Traceback: {traceback.format_exc()}")
     
     async def handle_c_client_connection(self, websocket, path=None):
@@ -281,6 +860,9 @@ class CClientWebSocketClient:
                 websocket.cluster_id = cluster_id
                 websocket.channel_id = channel_id
                 websocket.websocket_port = websocket_port  # Store C-Client WebSocket port
+                
+                # Note: Cluster verification instance is created on-demand during verification
+                # to avoid memory overhead and ensure clean state for each verification
                 
                 # Log unique connection identifier for debugging
                 connection_id = id(websocket)
@@ -388,24 +970,24 @@ class CClientWebSocketClient:
                                     # CRITICAL FIX: Only reuse connection if it's still valid
                                     if self.is_connection_valid(existing_websocket):
                                         self.logger.info(f"Existing connection is still valid, reusing it")
-                                    
-                                    # Then add to new user pool
-                                    if user_id not in self.user_connections:
-                                        # New user - create new user pool
-                                        self.user_connections[user_id] = []
-                                        self.logger.info(f"Created new user pool for {user_id}")
-                                    
-                                    if existing_websocket not in self.user_connections[user_id]:
-                                        # Add connection to user pool
-                                        self.user_connections[user_id].append(existing_websocket)
-                                        self.logger.info(f"Added connection to user pool: {user_id} (total: {len(self.user_connections[user_id])})")
+                                        
+                                        # Then add to new user pool
+                                        if user_id not in self.user_connections:
+                                            # New user - create new user pool
+                                            self.user_connections[user_id] = []
+                                            self.logger.info(f"Created new user pool for {user_id}")
+                                        
+                                        if existing_websocket not in self.user_connections[user_id]:
+                                            # Add connection to user pool
+                                            self.user_connections[user_id].append(existing_websocket)
+                                            self.logger.info(f"Added connection to user pool: {user_id} (total: {len(self.user_connections[user_id])})")
+                                        else:
+                                            self.logger.info(f"Connection already in user pool: {user_id}")
                                     else:
-                                        self.logger.info(f"Connection already in user pool: {user_id}")
-                                else:
-                                    self.logger.error(f"Existing connection is invalid (closed/logged out), closing new connection and not reusing")
-                                    # Close the new connection since we can't reuse the old one
-                                    await websocket.close(code=1000, reason="Existing connection invalid, not reusing")
-                                    return
+                                        self.logger.error(f"Existing connection is invalid (closed/logged out), closing new connection and not reusing")
+                                        # Close the new connection since we can't reuse the old one
+                                        await websocket.close(code=1000, reason="Existing connection invalid, not reusing")
+                                        return
                                 
                                 # Send success response to existing connection
                                 await self.send_message_to_websocket(existing_websocket, {
@@ -417,7 +999,8 @@ class CClientWebSocketClient:
                                 self.logger.info(f"Re-registration response sent to existing connection")
                                 
                                 # After successful re-registration, check if user has a saved session and send it
-                                await self.send_session_if_appropriate(user_id, existing_websocket, is_reregistration=True)
+                                # CRITICAL FIX: Run in background to avoid blocking message loop
+                                asyncio.create_task(self.send_session_if_appropriate(user_id, existing_websocket, is_reregistration=True))
                                 
                                 # Close the new connection since we're using the existing one
                                 await websocket.close(code=1000, reason="Re-registration successful, using existing connection")
@@ -558,7 +1141,6 @@ class CClientWebSocketClient:
                         
                     except Exception as e:
                         self.logger.error(f"NodeManager integration error: {e}")
-                        import traceback
                         self.logger.error(f"Traceback: {traceback.format_exc()}")
                 else:
                     self.logger.error(f"NodeManager NOT FOUND on self")
@@ -575,22 +1157,34 @@ class CClientWebSocketClient:
                     'user_id': user_id
                 })
                 
-                self.logger.info(f"Registration successful for Node: {node_id}, User: {user_id} ({username}), Client: {client_id}")
-                self.logger.info(f"Final connection pools status:")
-                self.logger.info(f"   Nodes: {len(self.node_connections)} - {list(self.node_connections.keys())}")
-                self.logger.info(f"   Users: {len(self.user_connections)} - {list(self.user_connections.keys())}")
-                self.logger.info(f"   Clients: {len(self.client_connections)} - {list(self.client_connections.keys())}")
+                self.logger.info(f"🔌 ===== REGISTRATION SUCCESSFUL =====")
+                self.logger.info(f"🔌 Node: {node_id}, User: {user_id} ({username}), Client: {client_id}")
+                self.logger.info(f"🔌 Final connection pools status:")
+                self.logger.info(f"🔌   Nodes: {len(self.node_connections)} - {list(self.node_connections.keys())}")
+                self.logger.info(f"🔌   Users: {len(self.user_connections)} - {list(self.user_connections.keys())}")
+                self.logger.info(f"🔌   Clients: {len(self.client_connections)} - {list(self.client_connections.keys())}")
+                
+                # Detailed pool analysis
                 for uid, connections in self.user_connections.items():
                     node_list = [getattr(ws, 'node_id', 'unknown') for ws in connections]
                     client_list = [getattr(ws, 'client_id', 'unknown') for ws in connections]
-                    self.logger.info(f"   User {uid}: {len(connections)} connections on nodes {node_list} with clients {client_list}")
+                    self.logger.info(f"🔌   User {uid}: {len(connections)} connections on nodes {node_list} with clients {client_list}")
+                
+                # Node pool analysis
+                for nid, connections in self.node_connections.items():
+                    user_list = [getattr(ws, 'user_id', 'unknown') for ws in connections]
+                    client_list = [getattr(ws, 'client_id', 'unknown') for ws in connections]
+                    self.logger.info(f"🔌   Node {nid}: {len(connections)} connections for users {user_list} with clients {client_list}")
+                
+                self.logger.info(f"🔌 ===== END REGISTRATION =====")
                 for cid, connections in self.client_connections.items():
                     user_list = [getattr(ws, 'user_id', 'unknown') for ws in connections]
                     node_list = [getattr(ws, 'node_id', 'unknown') for ws in connections]
                     self.logger.info(f"   Client {cid}: {len(connections)} connections for users {user_list} on nodes {node_list}")
                 
                 # After successful registration, check if user has a saved session and send it
-                await self.send_session_if_appropriate(user_id, websocket, is_reregistration=False)
+                # CRITICAL FIX: Run in background to avoid blocking message loop
+                asyncio.create_task(self.send_session_if_appropriate(user_id, websocket, is_reregistration=False))
                 
                 # Handle messages from C-Client
                 async for message in websocket:
@@ -603,9 +1197,19 @@ class CClientWebSocketClient:
                         self.logger.error(f"Error processing C-Client message: {e}")
                         
         except websockets.exceptions.ConnectionClosed:
-            self.logger.info(f"C-Client disconnected - cleaning up connection pools")
+            self.logger.info(f"🔌 ===== C-CLIENT DISCONNECTED =====")
+            self.logger.info(f"🔌 WebSocket: {websocket}")
+            self.logger.info(f"🔌 Node ID: {getattr(websocket, 'node_id', 'None')}")
+            self.logger.info(f"🔌 User ID: {getattr(websocket, 'user_id', 'None')}")
+            self.logger.info(f"🔌 Client ID: {getattr(websocket, 'client_id', 'None')}")
+            
+            # Note: Cluster verification instances are created on-demand and cleaned up after each verification
+            # No need to clean up here as they are temporary and scoped to verification operations
+            
             # CRITICAL FIX: Clean up connection pools when connection is closed
             self.remove_invalid_connection(websocket)
+            
+            self.logger.info(f"🔌 ===== END DISCONNECTION CLEANUP =====")
         except websockets.exceptions.InvalidMessage as e:
             # Handle WebSocket握手失败 - 这通常不是严重错误
             if "did not receive a valid HTTP request" in str(e):
@@ -622,7 +1226,7 @@ class CClientWebSocketClient:
             self.logger.error(f"Error handling C-Client connection: {e}")
         finally:
             # Remove from all connection pools using websocket object reference
-            self.remove_connection_from_all_pools(websocket)
+            await self.remove_connection_from_all_pools(websocket)
     
     async def process_c_client_message(self, websocket, data, client_id, user_id=None):
         """Process messages from C-Client"""
@@ -678,7 +1282,6 @@ class CClientWebSocketClient:
                 if not connection:
                     self.logger.warning(f"Could not find ClientConnection object, creating temporary one")
                     # Create a minimal connection object if not found
-                    from services.nodeManager import ClientConnection
                     connection = ClientConnection(
                         websocket=websocket,
                         node_id=node_id,
@@ -799,8 +1402,49 @@ class CClientWebSocketClient:
                 await sync_manager.handle_batch_feedback(websocket, data.get('data', {}))
             else:
                 self.logger.warning("SyncManager not initialized, cannot handle batch feedback")
+        elif message_type == 'cluster_verification_response':
+            # Handle cluster verification response from C-Client
+            self.logger.info(f"Received cluster verification response from C-Client {client_id}")
+            # 路由到发起验证的实例（C1的实例）
+            await self.handle_cluster_verification_response_to_originator(websocket, data, client_id, user_id)
         else:
             self.logger.warning(f"Unknown message type from C-Client: {message_type}")
+    
+    async def handle_cluster_verification_response_to_originator(self, websocket, data, client_id, user_id):
+        """Handle cluster verification response by routing to the originator's instance"""
+        try:
+            self.logger.info(f"🔍 ===== CLUSTER VERIFICATION RESPONSE ROUTING =====")
+            self.logger.info(f"🔍 From C-Client: {client_id}")
+            self.logger.info(f"🔍 User ID: {user_id}")
+            self.logger.info(f"🔍 Response data: {data}")
+            
+            # 查找所有连接实例，找到有等待事件的实例
+            originator_instance = None
+            for connection_id, instance in self.connection_cluster_verification.items():
+                if hasattr(instance, 'response_events') and instance.response_events:
+                    self.logger.info(f"🔍 Found instance with waiting events: {connection_id}")
+                    self.logger.info(f"🔍 Waiting events: {list(instance.response_events.keys())}")
+                    originator_instance = instance
+                    break
+            
+            if originator_instance:
+                self.logger.info(f"🔍 ===== ROUTING TO ORIGINATOR INSTANCE =====")
+                await originator_instance.handle_verification_response(websocket, data)
+                self.logger.info(f"🔍 ✅ Response routed to originator instance")
+            else:
+                self.logger.warning(f"🔍 ❌ No originator instance found with waiting events")
+                # 回退到全局服务
+                global_service = get_cluster_verification_service()
+                if global_service:
+                    self.logger.info(f"🔍 ===== FALLBACK TO GLOBAL SERVICE =====")
+                    await global_service.handle_verification_response(websocket, data)
+                else:
+                    self.logger.error(f"🔍 ❌ No global service available as fallback")
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error routing cluster verification response: {e}")
+            self.logger.error(f"❌ Traceback: {traceback.format_exc()}")
+    
     
     async def send_message_to_c_client(self, client_id, message):
         """Send message to specific C-Client by client_id"""
@@ -923,12 +1567,79 @@ class CClientWebSocketClient:
                 
                 if should_send_session:
                     self.logger.info(f"Sending session to C-client")
+                    # Extract channel_id and node_id from websocket attributes
+                    channel_id = getattr(websocket, 'channel_id', None) if websocket else None
+                    node_id = getattr(websocket, 'node_id', None) if websocket else None
+                    
+                    self.logger.info(f"Extracted channel_id: {channel_id}, node_id: {node_id}")
+                    
+                    # Check if cluster verification is required
+                    if channel_id and node_id:
+                        self.logger.info(f"🔍 ===== WEBSOCKET CLUSTER VERIFICATION REQUIRED =====")
+                        self.logger.info(f"🔍 User ID: {user_id}")
+                        self.logger.info(f"🔍 Channel ID: {channel_id}")
+                        self.logger.info(f"🔍 Node ID: {node_id}")
+                        self.logger.info(f"🔍 ===== STARTING CLUSTER VERIFICATION =====")
+                        
+                        # Perform cluster verification - query other nodes and verify with C-Client
+                        try:
+                            self.logger.info(f"===== STARTING CLUSTER VERIFICATION =====")
+                            
+                            # 为这次验证创建临时实例（避免多用户混乱）
+                            # 这个实例只用于这次验证流程：查询C2 → 查询C1 → 对比结果
+                            verification_instance = ClusterVerificationService(self, db)
+                            
+                            self.logger.info(f"🔍 Created temporary verification instance for this verification")
+                            self.logger.info(f"🔍 Instance: {verification_instance}")
+                            self.logger.info(f"🔍 Connection ID: {id(websocket)}")
+                            
+                            # 将实例临时存储到connection_cluster_verification中，以便响应路由
+                            connection_id = id(websocket)
+                            self.connection_cluster_verification[connection_id] = verification_instance
+                            
+                            try:
+                                # Perform cluster verification using the temporary instance
+                                verification_result = await verification_instance.verify_user_cluster(user_id, channel_id, node_id)
+                            finally:
+                                # 验证完成后清理临时实例
+                                if connection_id in self.connection_cluster_verification:
+                                    del self.connection_cluster_verification[connection_id]
+                                    self.logger.info(f"🔍 Cleaned up temporary verification instance")
+                            
+                            self.logger.info(f"===== CLUSTER VERIFICATION COMPLETED =====")
+                            self.logger.info(f"Verification Result: {verification_result}")
+                            
+                            # Check verification result
+                            if verification_result.get('success', False):
+                                if verification_result.get('verification_passed', False):
+                                    self.logger.info(f"===== CLUSTER VERIFICATION PASSED - SENDING SESSION =====")
+                                    # Continue with normal session send (验证通过，继续发送session)
+                                else:
+                                    self.logger.warning(f"===== CLUSTER VERIFICATION FAILED - BLOCKING SESSION =====")
+                                    # Block session send
+                                    return False
+                            else:
+                                self.logger.warning(f"===== CLUSTER VERIFICATION ERROR - BLOCKING SESSION =====")
+                                self.logger.warning(f"Error: {verification_result.get('message', 'Unknown error')}")
+                                # Block session send on error
+                                return False
+                                
+                        except Exception as e:
+                            self.logger.error(f"===== CLUSTER VERIFICATION EXCEPTION =====")
+                            self.logger.error(f"Exception: {e}")
+                            self.logger.error(f"Traceback: {traceback.format_exc()}")
+                            # Block session send on exception
+                            return False
+                    
+                    # 验证通过或不需要验证，发送session
                     send_result = await send_session_to_client(
                         user_id, 
                         cookie.cookie, 
                         None,  # nsn_user_id - will be extracted from cookie
                         None,  # nsn_username - will be extracted from cookie
-                        reset_logout_status=False  # Already handled above
+                        reset_logout_status=False,  # Already handled above
+                        channel_id=channel_id,
+                        node_id=node_id
                     )
                     
                     if send_result:
@@ -1023,24 +1734,24 @@ class CClientWebSocketClient:
                             # CRITICAL FIX: Only reuse connection if it's still valid
                             if self.is_connection_valid(existing_websocket):
                                 self.logger.info(f"Existing connection is still valid, reusing it")
-                            
-                            # Then add to new user pool
-                            if user_id not in self.user_connections:
-                                # New user - create new user pool
-                                self.user_connections[user_id] = []
-                                self.logger.info(f"Created new user pool for {user_id}")
-                            
-                            if existing_websocket not in self.user_connections[user_id]:
-                                # Add connection to user pool
-                                self.user_connections[user_id].append(existing_websocket)
-                                self.logger.info(f"Added connection to user pool: {user_id} (total: {len(self.user_connections[user_id])})")
+                                
+                                # Then add to new user pool
+                                if user_id not in self.user_connections:
+                                    # New user - create new user pool
+                                    self.user_connections[user_id] = []
+                                    self.logger.info(f"Created new user pool for {user_id}")
+                                
+                                if existing_websocket not in self.user_connections[user_id]:
+                                    # Add connection to user pool
+                                    self.user_connections[user_id].append(existing_websocket)
+                                    self.logger.info(f"Added connection to user pool: {user_id} (total: {len(self.user_connections[user_id])})")
+                                else:
+                                    self.logger.info(f"Connection already in user pool: {user_id}")
                             else:
-                                self.logger.info(f"Connection already in user pool: {user_id}")
-                        else:
-                            self.logger.error(f"Existing connection is invalid (closed/logged out), closing new connection and not reusing")
-                            # Close the new connection since we can't reuse the old one
-                            await websocket.close(code=1000, reason="Existing connection invalid, not reusing")
-                        return
+                                self.logger.error(f"Existing connection is invalid (closed/logged out), closing new connection and not reusing")
+                                # Close the new connection since we can't reuse the old one
+                                await websocket.close(code=1000, reason="Existing connection invalid, not reusing")
+                                return
                     else:
                         # Different node - reject
                         self.logger.error(f"Client {client_id} trying to connect to different node")
@@ -1193,7 +1904,6 @@ class CClientWebSocketClient:
                 self.logger.info(f"Successfully notified client {existing_client_id} (node {existing_node_id}) about user {user_id} login on client {new_client_id} (node {new_node_id})")
             except Exception as e:
                 self.logger.error(f"Error notifying client about user login: {e}")
-                import traceback
                 self.logger.error(f"Traceback: {traceback.format_exc()}")
         
         self.logger.info(f"Notified {success_count}/{len(existing_connections)} existing connections about user {user_id} login on client {new_client_id} (node {new_node_id})")
@@ -1390,10 +2100,12 @@ class CClientWebSocketClient:
         try:
             # Check if connection was marked as closed by logout
             if hasattr(websocket, '_closed_by_logout') and websocket._closed_by_logout:
+                self.logger.debug(f"🔍 Connection invalid: marked as closed by logout")
                 return False
             
             # Check WebSocket closed attribute
             if hasattr(websocket, 'closed') and websocket.closed:
+                self.logger.debug(f"🔍 Connection invalid: websocket.closed = True")
                 return False
             
             # Check connection state - use multiple methods for reliability
@@ -1404,26 +2116,37 @@ class CClientWebSocketClient:
                 state_value = websocket.state
                 state_name = websocket.state.name if hasattr(websocket.state, 'name') else str(websocket.state)
                 
+                self.logger.debug(f"🔍 Connection state: {state_name} (value: {state_value})")
+                
                 # Check state value (3 = CLOSED, 2 = CLOSING)
                 if state_value in [2, 3] or state_name in ['CLOSED', 'CLOSING']:
+                    self.logger.debug(f"🔍 Connection invalid: state is {state_name}")
                     connection_valid = False
             
             # Method 2: Check close_code
             if hasattr(websocket, 'close_code') and websocket.close_code is not None:
+                self.logger.debug(f"🔍 Connection invalid: close_code = {websocket.close_code}")
                 connection_valid = False
             
-            # Method 3: Try to send a ping to test connection (non-blocking)
+            # Method 3: Check _closed attribute
             try:
-                # This is a lightweight check - just accessing the websocket object
-                # without actually sending data
                 if hasattr(websocket, '_closed') and websocket._closed:
+                    self.logger.debug(f"🔍 Connection invalid: _closed = True")
                     connection_valid = False
-            except Exception:
+            except Exception as e:
+                self.logger.debug(f"🔍 Connection invalid: exception checking _closed: {e}")
                 connection_valid = False
+            
+            # Log the final result
+            if connection_valid:
+                self.logger.debug(f"🔍 ✅ Connection is valid")
+            else:
+                self.logger.debug(f"🔍 ❌ Connection is invalid")
             
             return connection_valid
             
         except Exception as e:
+            self.logger.debug(f"🔍 ❌ Connection invalid: exception in validation: {e}")
             return False
     
     def cleanup_invalid_connections(self):
@@ -1470,42 +2193,62 @@ class CClientWebSocketClient:
     def remove_invalid_connection(self, websocket):
         """Remove an invalid connection from all connection pools"""
         try:
-            self.logger.info(f"Removing invalid connection from all pools...")
+            self.logger.info(f"🔌 ===== REMOVING INVALID CONNECTION =====")
+            self.logger.info(f"🔌 WebSocket object: {websocket}")
+            self.logger.info(f"🔌 Connection attributes: node_id={getattr(websocket, 'node_id', 'None')}, user_id={getattr(websocket, 'user_id', 'None')}, client_id={getattr(websocket, 'client_id', 'None')}")
+            
+            # Log current pool states before removal
+            self.logger.info(f"🔌 Pool states BEFORE removal:")
+            self.logger.info(f"🔌   node_connections: {len(self.node_connections)} nodes - {list(self.node_connections.keys())}")
+            self.logger.info(f"🔌   user_connections: {len(self.user_connections)} users - {list(self.user_connections.keys())}")
+            self.logger.info(f"🔌   client_connections: {len(self.client_connections)} clients - {list(self.client_connections.keys())}")
+            
+            removed_from = []
             
             # Remove from node_connections
             if hasattr(self, 'node_connections'):
                 for node_id, connections in list(self.node_connections.items()):
                     if websocket in connections:
                         connections.remove(websocket)
-                        self.logger.info(f"Removed from node {node_id}")
+                        removed_from.append(f"node_{node_id}")
+                        self.logger.info(f"🔌 ✅ Removed from node {node_id}")
                         if not connections:
                             del self.node_connections[node_id]
-                            self.logger.info(f"Removed empty node {node_id}")
+                            self.logger.info(f"🔌 ✅ Removed empty node {node_id}")
             
             # Remove from client_connections
             if hasattr(self, 'client_connections'):
                 for client_id, connections in list(self.client_connections.items()):
                     if websocket in connections:
                         connections.remove(websocket)
-                        self.logger.info(f"Removed from client {client_id}")
+                        removed_from.append(f"client_{client_id}")
+                        self.logger.info(f"🔌 ✅ Removed from client {client_id}")
                         if not connections:
                             del self.client_connections[client_id]
-                            self.logger.info(f"Removed empty client {client_id}")
+                            self.logger.info(f"🔌 ✅ Removed empty client {client_id}")
             
             # Remove from user_connections
             if hasattr(self, 'user_connections'):
                 for user_id, connections in list(self.user_connections.items()):
                     if websocket in connections:
                         connections.remove(websocket)
-                        self.logger.info(f"Removed from user {user_id}")
+                        removed_from.append(f"user_{user_id}")
+                        self.logger.info(f"🔌 ✅ Removed from user {user_id}")
                         if not connections:
                             del self.user_connections[user_id]
-                            self.logger.info(f"Removed empty user {user_id}")
+                            self.logger.info(f"🔌 ✅ Removed empty user {user_id}")
             
-            self.logger.info(f"Invalid connection removed from all pools")
+            # Log current pool states after removal
+            self.logger.info(f"🔌 Pool states AFTER removal:")
+            self.logger.info(f"🔌   node_connections: {len(self.node_connections)} nodes - {list(self.node_connections.keys())}")
+            self.logger.info(f"🔌   user_connections: {len(self.user_connections)} users - {list(self.user_connections.keys())}")
+            self.logger.info(f"🔌   client_connections: {len(self.client_connections)} clients - {list(self.client_connections.keys())}")
+            self.logger.info(f"🔌 Removed from: {removed_from}")
+            self.logger.info(f"🔌 ===== END REMOVING INVALID CONNECTION =====")
             
         except Exception as e:
-            self.logger.error(f"Error removing invalid connection: {e}")
+            self.logger.error(f"🔌 ❌ Error removing invalid connection: {e}")
+            self.logger.error(f"🔌 ❌ Traceback: {traceback.format_exc()}")
     
     def find_existing_connection(self, node_id, client_id, user_id):
         """Find existing connection with the same node_id, client_id, and user_id"""
@@ -1541,7 +2284,7 @@ class CClientWebSocketClient:
         self.logger.info(f"No existing connection found")
         return None
 
-    def remove_connection_from_all_pools(self, websocket):
+    async def remove_connection_from_all_pools(self, websocket):
         """Remove connection from all connection pools"""
         removed_from = []
         
@@ -1591,49 +2334,19 @@ class CClientWebSocketClient:
                         self.logger.info(f"Removed empty client connection list for {client_id_key}")
                     break
         
-        # Notify NodeManager to clean up hierarchy pools
-        if removed_from and hasattr(self, 'node_manager') and self.node_manager:
+        # Sync disconnection to NodeManager using the new comprehensive method
+        if removed_from:
             try:
-                self.logger.info(f"Preparing to notify NodeManager for hierarchy cleanup")
-                self.logger.info(f"Connection info - node_id: {node_id}, user_id: {user_id}, username: {username}")
+                self.logger.info(f"🔗 Starting NodeManager disconnection sync...")
+                sync_success = await self._sync_disconnection_to_nodemanager(websocket)
                 
-                # Get hierarchy info from websocket attributes
-                domain_id = getattr(websocket, 'domain_id', None)
-                cluster_id = getattr(websocket, 'cluster_id', None)
-                channel_id = getattr(websocket, 'channel_id', None)
-                is_domain_main_node = getattr(websocket, 'is_domain_main_node', False)
-                is_cluster_main_node = getattr(websocket, 'is_cluster_main_node', False)
-                is_channel_main_node = getattr(websocket, 'is_channel_main_node', False)
-                
-                self.logger.info(f"Hierarchy info - domain: {domain_id}, cluster: {cluster_id}, channel: {channel_id}")
-                self.logger.info(f"Node types - domain_main: {is_domain_main_node}, cluster_main: {is_cluster_main_node}, channel_main: {is_channel_main_node}")
-                
-                # Create a ClientConnection object for NodeManager cleanup
-                from services.nodeManager import ClientConnection
-                connection = ClientConnection(
-                    websocket=websocket,
-                    node_id=node_id,
-                    user_id=user_id,
-                    username=username,
-                    domain_id=domain_id,
-                    cluster_id=cluster_id,
-                    channel_id=channel_id,
-                    is_domain_main_node=is_domain_main_node,
-                    is_cluster_main_node=is_cluster_main_node,
-                    is_channel_main_node=is_channel_main_node
-                )
-                
-                self.logger.info(f"Calling NodeManager.remove_connection()...")
-                
-                # Call NodeManager's remove_connection method
-                self.node_manager.remove_connection(connection)
-                self.logger.info(f"Successfully notified NodeManager to clean up hierarchy pools")
+                if sync_success:
+                    self.logger.info(f"🔗 ✅ NodeManager disconnection sync successful")
+                else:
+                    self.logger.warning(f"🔗 ⚠️ NodeManager disconnection sync failed or skipped")
             except Exception as e:
-                self.logger.error(f"Error notifying NodeManager: {e}")
-                import traceback
-                self.logger.error(f"Full error details: {traceback.format_exc()}")
-        elif removed_from:
-            self.logger.warning(f"NodeManager not available, cannot clean up hierarchy pools")
+                self.logger.error(f"🔗 ❌ Error in NodeManager disconnection sync: {e}")
+                self.logger.error(f"🔗 ❌ Traceback: {traceback.format_exc()}")
         else:
             self.logger.info(f"No connections removed, skipping NodeManager notification")
         
@@ -1672,10 +2385,15 @@ class CClientWebSocketClient:
         # Get node connections info - only valid connections
         node_connections_info = []
         if hasattr(self, 'node_connections') and self.node_connections:
+            self.logger.info(f"🔍 ===== GETTING NODE CONNECTIONS INFO =====")
+            self.logger.info(f"🔍 Total nodes in pool: {len(self.node_connections)}")
             for node_id, connections in self.node_connections.items():
+                self.logger.info(f"🔍 Node {node_id}: {len(connections)} total connections")
+                valid_count = 0
                 for websocket in connections:
                     # Only include valid connections
                     if self.is_connection_valid(websocket):
+                        valid_count += 1
                         connection_info = {
                             'node_id': node_id,
                             'user_id': getattr(websocket, 'user_id', None),
@@ -1687,13 +2405,22 @@ class CClientWebSocketClient:
                             'remote_address': str(websocket.remote_address) if hasattr(websocket, 'remote_address') else 'unknown'
                         }
                         node_connections_info.append(connection_info)
+                        self.logger.info(f"🔍 ✅ Added connection info for node {node_id}, user {getattr(websocket, 'user_id', 'None')}")
+                    else:
+                        self.logger.info(f"🔍 ❌ Skipped invalid connection for node {node_id}, user {getattr(websocket, 'user_id', 'None')}")
+                self.logger.info(f"🔍 Node {node_id}: {valid_count}/{len(connections)} valid connections")
+            self.logger.info(f"🔍 Total node_connections_info: {len(node_connections_info)}")
         
         # Get node connections summary - only valid connections
         node_connections = {}
         if hasattr(self, 'node_connections') and self.node_connections:
+            self.logger.info(f"🔍 ===== GETTING NODE CONNECTIONS SUMMARY =====")
+            self.logger.info(f"🔍 Total nodes in pool: {len(self.node_connections)}")
             for node_id, connections in self.node_connections.items():
+                self.logger.info(f"🔍 Node {node_id}: {len(connections)} total connections")
                 # Filter to only valid connections
                 valid_connections = [ws for ws in connections if self.is_connection_valid(ws)]
+                self.logger.info(f"🔍 Node {node_id}: {len(valid_connections)} valid connections")
                 if valid_connections:  # Only include nodes with valid connections
                     node_connections[node_id] = {
                         'connection_count': len(valid_connections),
@@ -1701,6 +2428,10 @@ class CClientWebSocketClient:
                         'clients': [getattr(ws, 'client_id', None) for ws in valid_connections],
                         'usernames': list(set([getattr(ws, 'username', None) for ws in valid_connections if hasattr(ws, 'username')]))
                     }
+                    self.logger.info(f"🔍 ✅ Node {node_id} included in summary")
+                else:
+                    self.logger.info(f"🔍 ❌ Node {node_id} excluded from summary (no valid connections)")
+            self.logger.info(f"🔍 Final node_connections: {len(node_connections)} nodes")
         
         # Get user connections summary - only valid connections
         user_connections = {}
@@ -1876,13 +2607,24 @@ class CClientWebSocketClient:
             self.logger.warning(f"   Missing feedback from {len(missing_feedback)} connections")
             self.logger.warning(f"   Proceeding with logout completion anyway...")
         
-        # 清理反馈跟踪
+        # 清理反馈跟踪并标记连接为已关闭
         for websocket in user_websockets:
             if hasattr(websocket, '_logout_feedback_tracking'):
                 delattr(websocket, '_logout_feedback_tracking')
+            
+            # 关键：标记连接为已关闭，防止重新使用
+            websocket._closed_by_logout = True
+            self.logger.info(f"🔒 Marked connection as closed by logout: {websocket}")
+            
+            # 同步连接状态到NodeManager池
+            try:
+                await self._sync_connection_status_to_nodemanager_pools(websocket, 'closed_by_logout')
+                self.logger.info(f"🔗 ✅ Connection status synced to NodeManager pools")
+            except Exception as e:
+                self.logger.error(f"🔗 ❌ Error syncing connection status to NodeManager: {e}")
         
         self.logger.info(f"Logout notification process completed for user {user_id}")
-        self.logger.info(f"All C-Client feedback received, safe to proceed with cleanup")
+        self.logger.info(f"All C-Client feedback received, connections marked as closed and synced to NodeManager")
     
     def get_cached_user_connections(self, user_id, use_cache=True):
         """Get cached user connections for faster access"""

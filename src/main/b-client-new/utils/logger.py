@@ -28,6 +28,7 @@ class BClientLogger:
         self.sync_manager_log_file = self.log_dir / f"bclient_sync_{start_time}.log"  # 重定向到sync文件
         self.routes_log_file = self.log_dir / f"bclient_routes_{start_time}.log"
         self.app_log_file = self.log_dir / f"bclient_app_{start_time}.log"
+        self.cluster_verification_log_file = self.log_dir / f"bclient_cluster_verification_{start_time}.log"
         
         # 初始化各个模块的logger
         self._setup_loggers()
@@ -75,6 +76,13 @@ class BClientLogger:
             self.app_log_file,
             level=logging.INFO
         )
+        
+        # Cluster Verification模块logger
+        self.cluster_verification_logger = self._create_logger(
+            'bclient_cluster_verification',
+            self.cluster_verification_log_file,
+            level=logging.INFO
+        )
     
     def _create_logger(self, name, log_file, level=logging.INFO):
         """创建logger实例"""
@@ -120,7 +128,8 @@ class BClientLogger:
             'sync_manager': self.sync_manager_logger,
             'routes': self.routes_logger,
             'app': self.app_logger,
-            'main': self.main_logger
+            'main': self.main_logger,
+            'cluster_verification': self.cluster_verification_logger
         }
         return module_map.get(module_name, self.main_logger)
     
@@ -135,6 +144,7 @@ class BClientLogger:
         self.main_logger.info(f"  SyncManager: {self.sync_manager_log_file}")
         self.main_logger.info(f"  Routes: {self.routes_log_file}")
         self.main_logger.info(f"  App: {self.app_log_file}")
+        self.main_logger.info(f"  Cluster Verification: {self.cluster_verification_log_file}")
         self.main_logger.info("=" * 60)
 
 # 全局logger实例

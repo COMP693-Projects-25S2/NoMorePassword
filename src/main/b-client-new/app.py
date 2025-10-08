@@ -8,6 +8,20 @@ import re
 import time
 import random
 import string
+import asyncio
+import secrets
+import socket
+import logging
+import traceback
+import builtins
+import threading
+from werkzeug.security import generate_password_hash, check_password_hash
+
+# Import websockets
+try:
+    import websockets
+except ImportError:
+    websockets = None
 
 # 导入日志系统
 from utils.logger import get_bclient_logger, setup_print_redirect
@@ -17,10 +31,12 @@ logger = get_bclient_logger('app')
 print_redirect = setup_print_redirect('app')
 
 # 重定向print到日志
-import builtins
 builtins.print = print_redirect
 
 logger.info("B-Client application module imported")
+
+if websockets is None:
+    logger.warning("WebSocket dependencies not available. Install with: pip install websockets")
 
 def safe_close_websocket(websocket, reason="Connection closed"):
     """
@@ -34,7 +50,6 @@ def safe_close_websocket(websocket, reason="Connection closed"):
             
             # 尝试关闭连接 - 使用asyncio.run来处理异步close
             try:
-                import asyncio
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 loop.run_until_complete(websocket.close(code=1000, reason=reason))
@@ -51,16 +66,6 @@ def safe_close_websocket(websocket, reason="Connection closed"):
     except Exception as e:
         # Error closing WebSocket - this is handled by the logging system
         return False
-try:
-    import websockets
-    import asyncio
-    import threading
-except ImportError:
-    logger.warning("WebSocket dependencies not available. Install with: pip install websockets")
-    websockets = None
-    asyncio = None
-    threading = None
-from werkzeug.security import generate_password_hash, check_password_hash
 
 # Import database models
 from services.models import db, UserCookie, UserAccount, init_db
@@ -71,6 +76,8 @@ from services.db_operations import save_cookie_to_db as db_save_cookie, save_acc
 from services.websocket_client import CClientWebSocketClient, init_websocket_client
 from services.websocket_server import start_websocket_server, init_websocket_server
 from services.sync_manager import SyncManager
+from services.cluster_verification import init_cluster_verification, cluster_verification_service
+from services.nodeManager import NodeManager
 
 # Import route blueprints
 from routes.page_routes import page_routes
@@ -476,7 +483,6 @@ def trigger_node_offline():
             return jsonify({'error': 'node_id is required'}), 400
         
         # Trigger node offline cleanup
-        import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
@@ -648,8 +654,6 @@ class NSNClient:
             logger.info(f"NMP params: {nmp_params}")
             
             # Generate a secure password for NMP registration
-            import secrets
-            import string
             
             # Generate a password that meets NSN requirements:
             # - At least 8 characters
@@ -685,9 +689,6 @@ class NSNClient:
             logger.info(f"Generated secure password for NMP registration: {generated_password}")
             
             # Generate unique username to avoid conflicts
-            import secrets
-            import string
-            import re
             
             base_username = signup_data.get('username')
             
@@ -827,7 +828,6 @@ class NSNClient:
                 
         except Exception as e:
             logger.error(f"Registration error: {e}")
-            import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
             return {'success': False, 'error': str(e)}
 
@@ -846,6 +846,12 @@ c_client_ws = CClientWebSocketClient() if websockets else None
 
 # Initialize WebSocket server
 init_websocket_server(websockets, asyncio, c_client_ws)
+
+# Initialize cluster verification service (global service for this B-Client instance)
+if c_client_ws:
+    init_cluster_verification(c_client_ws, db)
+    logger.info("B-Client cluster verification service initialized (global service)")
+    logger.info(f"Service object: {cluster_verification_service}")
 
 # Initialize API routes with database models and services
 init_api_routes(db, UserCookie, UserAccount, c_client_ws)
@@ -1000,7 +1006,6 @@ def b_client_info():
         }
         
         # Get network information
-        import socket
         hostname = socket.gethostname()
         local_ip = socket.gethostbyname(hostname)
         
@@ -1063,7 +1068,6 @@ def c_client_update_cookie():
             return jsonify({'success': False, 'error': 'user_id, username, and cookie are required'}), 400
 
         # Send WebSocket message
-        import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(c_client_ws.update_cookie(user_id, username, cookie, auto_refresh))
@@ -1092,7 +1096,6 @@ def c_client_notify_login():
             return jsonify({'success': False, 'error': 'user_id and username are required'}), 400
 
         # Send WebSocket message
-        import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(c_client_ws.notify_user_login(user_id, username, session_data))
@@ -1120,7 +1123,6 @@ def c_client_notify_logout():
             return jsonify({'success': False, 'error': 'user_id and username are required'}), 400
 
         # Send WebSocket message
-        import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(c_client_ws.notify_user_logout(user_id, username))
@@ -1148,7 +1150,6 @@ def c_client_sync_session():
             return jsonify({'success': False, 'error': 'user_id is required'}), 400
 
         # Send WebSocket message
-        import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(c_client_ws.sync_session(user_id, session_data))
@@ -1202,7 +1203,6 @@ def websocket_check_user():
 # Note: NMP Bind API Endpoint has been moved to routes/bind_routes.py
 # This is the core business logic endpoint that handles signup/login integration
 
-        import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -1266,7 +1266,6 @@ def save_cookie_to_db(user_id, username, raw_session_cookie, node_id, auto_refre
         logger.error(f"Failed to save cookie to database: {e}")
         logger.info(f"Rolling back transaction...")
         db.session.rollback()
-        import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise e
 
@@ -1319,11 +1318,10 @@ def save_account_to_db(user_id, username, account, password, account_data):
         logger.error(f"Failed to save account to database: {e}")
         logger.info(f"Rolling back transaction...")
         db.session.rollback()
-        import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise e
 
-async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=None, nsn_username=None, website_root_path=None, website_name=None, session_partition=None, max_retries=3, reset_logout_status=False):
+async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=None, nsn_username=None, website_root_path=None, website_name=None, session_partition=None, max_retries=3, reset_logout_status=False, channel_id=None, node_id=None):
     """Send preprocessed session data to C-Client via WebSocket with feedback and retry"""
     try:
         logger.info(f"===== SENDING SESSION TO C-CLIENT WITH FEEDBACK =====")
@@ -1362,26 +1360,43 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
         logger.info(f"User connections: {c_client_ws.user_connections}")
         
         # 查找该用户的WebSocket连接
+        logger.info(f"===== SESSION SEND DEBUG INFO =====")
+        logger.info(f"Target user_id: {user_id}")
+        logger.info(f"All user_connections keys: {list(c_client_ws.user_connections.keys())}")
+        logger.info(f"All user_connections: {c_client_ws.user_connections}")
+        
         if user_id in c_client_ws.user_connections:
             connections = c_client_ws.user_connections[user_id]
             logger.info(f"Found {len(connections)} connections for user {user_id}")
             
-            # 尝试发送session数据，支持重试
-            for attempt in range(max_retries):
-                logger.info(f"===== SESSION SEND ATTEMPT {attempt + 1}/{max_retries} =====")
-                
-                success_count = 0
-                feedback_received = {}
-                successful_connections = []  # Track actually successful connections
-                
-                # 设置feedback跟踪
-                for websocket in connections:
-                    feedback_received[websocket] = False
-                    websocket._session_feedback_tracking = feedback_received
-                
-                # 发送session数据给所有该用户的连接
-                for i, websocket in enumerate(connections):
-                    try:
+            # 详细记录每个连接的user_id
+            for i, conn in enumerate(connections):
+                conn_user_id = getattr(conn, 'user_id', 'unknown')
+                conn_node_id = getattr(conn, 'node_id', 'unknown')
+                conn_client_id = getattr(conn, 'client_id', 'unknown')
+                logger.info(f"Connection {i+1}: user_id={conn_user_id}, node_id={conn_node_id}, client_id={conn_client_id}")
+        else:
+            logger.warning(f"User {user_id} not found in user_connections")
+            logger.info(f"Available users: {list(c_client_ws.user_connections.keys())}")
+            logger.info(f"===== END SENDING SESSION: NO CONNECTIONS =====")
+            return False
+            
+        # 尝试发送session数据，支持重试
+        for attempt in range(max_retries):
+            logger.info(f"===== SESSION SEND ATTEMPT {attempt + 1}/{max_retries} =====")
+            
+            success_count = 0
+            feedback_received = {}
+            successful_connections = []  # Track actually successful connections
+            
+            # 设置feedback跟踪
+            for websocket in connections:
+                feedback_received[websocket] = False
+                websocket._session_feedback_tracking = feedback_received
+            
+            # 发送session数据给所有该用户的连接
+            for i, websocket in enumerate(connections):
+                try:
                         logger.info(f"Checking connection {i+1}/{len(connections)} (attempt {attempt + 1})")
                         
                         # 检查连接是否仍然有效 - 优先检查我们的标记
@@ -1465,7 +1480,9 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                             'nsn_user_id': final_nsn_user_id,
                             'nsn_username': final_nsn_username,
                             'message': 'Auto-login with pre-processed session data from B-Client',
-                            'timestamp': datetime.utcnow().isoformat()
+                            'timestamp': datetime.utcnow().isoformat(),
+                            'channel_id': channel_id,
+                            'node_id': node_id
                         }
                         
                         # Check if WebSocket connection is still open using centralized validation
@@ -1489,7 +1506,7 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                         success_count += 1
                         successful_connections.append(websocket)  # Track this successful connection
                         
-                    except websockets.exceptions.ConnectionClosed:
+                except websockets.exceptions.ConnectionClosed:
                         logger.warning(f"WebSocket connection {i+1} is closed, removing from pool...")
                         # Remove closed connection from pool
                         if user_id in c_client_ws.user_connections:
@@ -1498,11 +1515,10 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                                 if conn != websocket
                             ]
                         continue
-                    except Exception as e:
+                except Exception as e:
                         logger.error(f"Failed to send session to C-Client connection {i+1}: {e}")
                         # Don't print full traceback for connection errors
                         if "ConnectionClosed" not in str(e):
-                            import traceback
                             logger.error(f"Traceback: {traceback.format_exc()}")
                 
                 if success_count == 0:
@@ -1511,7 +1527,6 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                 
                 # 等待feedback - 只等待实际发送成功的连接（已经在上面跟踪）
                 logger.info(f"Waiting for session feedback from {len(successful_connections)} successful connections...")
-                import asyncio
                 start_time = asyncio.get_event_loop().time()
                 timeout = 30  # 30秒超时
                 
@@ -1559,7 +1574,6 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
             
     except Exception as e:
         logger.error(f"Error sending session to C-Client: {e}")
-        import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         logger.error(f"===== END SENDING SESSION: ERROR =====")
         return False
@@ -1575,7 +1589,6 @@ init_bind_routes(db, UserCookie, UserAccount, nsn_client, c_client_ws,
 # Initialize node manager for node management system
 logger.info("=" * 80)
 logger.info("Initializing NodeManager for node management system...")
-from services.nodeManager import NodeManager
 node_manager = NodeManager()
 logger.info(f"NodeManager instance created: {node_manager}")
 logger.info("Registering node management routes...")
@@ -1611,7 +1624,6 @@ if __name__ == '__main__':
     logger.info("Starting Flask server on 0.0.0.0:3000")
     
     # 配置Flask日志级别，减少控制台输出
-    import logging
     logging.getLogger('werkzeug').setLevel(logging.WARNING)
     
     app.run(debug=True, host='0.0.0.0', port=3000)

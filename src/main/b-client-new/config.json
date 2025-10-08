@@ -46,7 +46,9 @@
     "public_ip": "Your public IP address",
     "local_ip": "Local IP address for testing",
     "nsn_port": "NSN server port",
-    "c_client_port_range": "Range of ports for C-Client API servers"
+    "c_client_port_range": "Range of ports for C-Client API servers",
+    "current_environment": "Environment setting: 'local' for development, 'production' for production",
+    "targetWebsites": "Configuration for different NSN environments"
   },
   "current_environment": "local"
 }

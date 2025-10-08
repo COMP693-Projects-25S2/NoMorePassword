@@ -1,0 +1,153 @@
+"""
+Configuration Manager
+Manages application configuration from config.json
+"""
+import json
+import os
+from typing import Dict, Any, Optional
+
+class ConfigManager:
+    """Configuration manager for B-Client"""
+    
+    def __init__(self, config_path: str = None):
+        """Initialize configuration manager"""
+        if config_path is None:
+            config_path = os.path.join(os.path.dirname(__file__), '..', 'config.json')
+        self.config_path = config_path
+        self._config = None
+        self._load_config()
+    
+    def _load_config(self):
+        """Load configuration from config.json"""
+        try:
+            if os.path.exists(self.config_path):
+                with open(self.config_path, 'r', encoding='utf-8') as f:
+                    self._config = json.load(f)
+            else:
+                # Default configuration if file doesn't exist
+                self._config = self._get_default_config()
+        except Exception as e:
+            print(f"Error loading config: {e}")
+            self._config = self._get_default_config()
+    
+    def _get_default_config(self) -> Dict[str, Any]:
+        """Get default configuration"""
+        return {
+            "network": {
+                "use_public_ip": False,
+                "public_ip": "121.74.37.6",
+                "local_ip": "127.0.0.1"
+            },
+            "api": {
+                "nsn_port": 5000,
+                "c_client_port_range": {
+                    "min": 3001,
+                    "max": 6000
+                }
+            },
+            "targetWebsites": {
+                "localhost:5000": {
+                    "name": "Local Development",
+                    "homeUrl": "http://localhost:5000",
+                    "realTitle": "NSN Local Development",
+                    "images": {
+                        "favicon": "/static/favicon.ico",
+                        "logo": "/static/logo.png"
+                    }
+                },
+                "comp639nsn.pythonanywhere.com": {
+                    "name": "NSN Production",
+                    "homeUrl": "https://comp639nsn.pythonanywhere.com",
+                    "realTitle": "NSN Production Server",
+                    "images": {
+                        "favicon": "/static/favicon.ico",
+                        "logo": "/static/logo.png"
+                    }
+                }
+            },
+            "current_environment": "local"
+        }
+    
+    def get_config(self) -> Dict[str, Any]:
+        """Get the complete configuration"""
+        return self._config
+    
+    def get_nsn_config(self) -> Dict[str, Any]:
+        """Get NSN configuration based on current environment"""
+        current_env = self._config.get('current_environment', 'local')
+        
+        # Get target websites
+        target_websites = self._config.get('targetWebsites', {})
+        
+        # Determine which website to use based on environment
+        if current_env == 'production':
+            # Use production NSN
+            nsn_key = 'comp639nsn.pythonanywhere.com'
+        else:
+            # Use local development NSN
+            nsn_key = 'localhost:5000'
+        
+        # Get the website configuration
+        website_config = target_websites.get(nsn_key, target_websites.get('localhost:5000', {}))
+        
+        return {
+            'base_url': website_config.get('homeUrl', 'http://localhost:5000'),
+            'name': website_config.get('name', 'NSN Local Development'),
+            'api_endpoints': {
+                'session_data': f"{website_config.get('homeUrl', 'http://localhost:5000')}/api/nmp-session-data",
+                'signup': f"{website_config.get('homeUrl', 'http://localhost:5000')}/signup",
+                'login': f"{website_config.get('homeUrl', 'http://localhost:5000')}/login"
+            }
+        }
+    
+    def get_nsn_base_url(self) -> str:
+        """Get NSN base URL"""
+        nsn_config = self.get_nsn_config()
+        return nsn_config['base_url']
+    
+    def get_nsn_api_url(self, endpoint: str) -> str:
+        """Get NSN API URL for specific endpoint"""
+        nsn_config = self.get_nsn_config()
+        return nsn_config['api_endpoints'].get(endpoint, f"{nsn_config['base_url']}/{endpoint}")
+    
+    def get_current_environment(self) -> str:
+        """Get current environment"""
+        return self._config.get('current_environment', 'local')
+    
+    def is_production(self) -> bool:
+        """Check if running in production environment"""
+        return self.get_current_environment() == 'production'
+    
+    def is_local(self) -> bool:
+        """Check if running in local environment"""
+        return self.get_current_environment() == 'local'
+
+# Global configuration manager instance
+_config_manager = None
+
+def get_config_manager() -> ConfigManager:
+    """Get global configuration manager instance"""
+    global _config_manager
+    if _config_manager is None:
+        _config_manager = ConfigManager()
+    return _config_manager
+
+def get_nsn_base_url() -> str:
+    """Get NSN base URL from configuration"""
+    return get_config_manager().get_nsn_base_url()
+
+def get_nsn_api_url(endpoint: str) -> str:
+    """Get NSN API URL for specific endpoint"""
+    return get_config_manager().get_nsn_api_url(endpoint)
+
+def get_current_environment() -> str:
+    """Get current environment"""
+    return get_config_manager().get_current_environment()
+
+def is_production() -> bool:
+    """Check if running in production environment"""
+    return get_config_manager().is_production()
+
+def is_local() -> bool:
+    """Check if running in local environment"""
+    return get_config_manager().is_local()

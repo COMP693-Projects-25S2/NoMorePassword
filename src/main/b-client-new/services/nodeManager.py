@@ -1,13 +1,15 @@
 import uuid
 import asyncio
 import logging
+import sys
+import os
+import traceback
+import json
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 from websockets.exceptions import ConnectionClosed
 
 # 导入日志系统
-import sys
-import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
 from utils.logger import get_bclient_logger
 
@@ -123,7 +125,6 @@ class NodeManager:
             self.logger.error("=" * 80)
             self.logger.error(f"❌ NODEMANAGER: ERROR in handle_new_connection()")
             self.logger.error(f"   Error: {e}")
-            import traceback
             traceback.print_exc()
             self.logger.error("=" * 80)
             raise
@@ -202,7 +203,6 @@ class NodeManager:
         except Exception as e:
             self.logger.error(f"❌ NODEMANAGER: ERROR in assign_new_client()")
             self.logger.error(f"   Error: {e}")
-            import traceback
             traceback.print_exc()
             self.logger.error(f"─" * 80)
             return False
@@ -655,7 +655,6 @@ class NodeManager:
             self.pending_requests[request_id] = future
             
             # Send command
-            import json
             await connection.websocket.send(json.dumps(command))
             self.logger.info(f"Sent command {command['type']} to C-Client with request_id: {request_id}")
             
@@ -1310,6 +1309,53 @@ class NodeManager:
             }
         }
     
+    def get_channel_nodes(self, channel_id: str) -> List[str]:
+        """
+        Get all node IDs in a specific channel (only valid connections)
+        
+        Args:
+            channel_id: Channel ID to query
+            
+        Returns:
+            List of node IDs in the channel (excluding closed/invalid connections)
+        """
+        try:
+            if channel_id not in self.channel_pool:
+                self.logger.info(f"No nodes found in channel {channel_id}")
+                return []
+            
+            channel_connections = self.channel_pool[channel_id]
+            
+            # Filter out invalid/closed connections
+            valid_connections = []
+            invalid_connections = []
+            
+            for conn in channel_connections:
+                if self._is_websocket_valid(conn.websocket):
+                    valid_connections.append(conn)
+                else:
+                    invalid_connections.append(conn)
+                    self.logger.debug(f"🔍 NodeManager: Filtering out invalid connection for node {conn.node_id}")
+            
+            # Log invalid connections found
+            if invalid_connections:
+                self.logger.info(f"🔍 NodeManager: Found {len(invalid_connections)} invalid connections in channel {channel_id}")
+                for conn in invalid_connections:
+                    self.logger.info(f"🔍 NodeManager: Invalid connection - node_id: {conn.node_id}, user_id: {conn.user_id}")
+            
+            # Get node IDs from valid connections only
+            node_ids = [conn.node_id for conn in valid_connections]
+            
+            self.logger.info(f"Found {len(node_ids)} valid nodes in channel {channel_id}: {node_ids}")
+            if invalid_connections:
+                self.logger.info(f"Filtered out {len(invalid_connections)} invalid connections")
+            
+            return node_ids
+            
+        except Exception as e:
+            self.logger.error(f"Error getting channel nodes: {e}")
+            return []
+    
     def _is_websocket_valid(self, websocket) -> bool:
         """Check if a WebSocket connection is still valid using the same logic as WebSocketClient"""
         try:
@@ -1368,14 +1414,69 @@ class NodeManager:
         disconnected_connections = []
         
         # Check all connections in all pools
-        for connections in self.domain_pool.values():
-            for connection in connections:
-                if not self._is_websocket_valid(connection.websocket):
-                    disconnected_connections.append(connection)
+        for pool_name, pool in [
+            ('domain_pool', self.domain_pool),
+            ('cluster_pool', self.cluster_pool),
+            ('channel_pool', self.channel_pool)
+        ]:
+            for pool_id, connections in pool.items():
+                for connection in connections:
+                    if not self._is_websocket_valid(connection.websocket):
+                        disconnected_connections.append(connection)
+                        self.logger.info(f"🔧 NodeManager: Found invalid connection in {pool_name}[{pool_id}]: node_id={connection.node_id}")
         
         # Remove disconnected connections
-        for connection in disconnected_connections:
-            self.remove_connection(connection)
+        if disconnected_connections:
+            self.logger.info(f"🔧 NodeManager: Cleaning up {len(disconnected_connections)} invalid connections")
+            for connection in disconnected_connections:
+                self.remove_connection(connection)
+            self.logger.info(f"🔧 NodeManager: Cleanup completed")
+        else:
+            self.logger.info(f"🔧 NodeManager: No invalid connections found")
+    
+    def get_valid_connections_count(self) -> Dict[str, int]:
+        """Get count of valid connections in each pool"""
+        try:
+            valid_counts = {
+                'domains': 0,
+                'clusters': 0,
+                'channels': 0,
+                'total_valid': 0,
+                'total_invalid': 0
+            }
+            
+            # Check domain pool
+            for connections in self.domain_pool.values():
+                for conn in connections:
+                    if self._is_websocket_valid(conn.websocket):
+                        valid_counts['domains'] += 1
+                        valid_counts['total_valid'] += 1
+                    else:
+                        valid_counts['total_invalid'] += 1
+            
+            # Check cluster pool
+            for connections in self.cluster_pool.values():
+                for conn in connections:
+                    if self._is_websocket_valid(conn.websocket):
+                        valid_counts['clusters'] += 1
+                        valid_counts['total_valid'] += 1
+                    else:
+                        valid_counts['total_invalid'] += 1
+            
+            # Check channel pool
+            for connections in self.channel_pool.values():
+                for conn in connections:
+                    if self._is_websocket_valid(conn.websocket):
+                        valid_counts['channels'] += 1
+                        valid_counts['total_valid'] += 1
+                    else:
+                        valid_counts['total_invalid'] += 1
+            
+            return valid_counts
+            
+        except Exception as e:
+            self.logger.error(f"Error getting valid connections count: {e}")
+            return {'error': str(e)}
             self.logger.info(f"Removed disconnected connection: {connection.node_id}")
         
         return len(disconnected_connections)

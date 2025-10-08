@@ -3,10 +3,11 @@ WebSocket Server Module
 Handles WebSocket server startup and management
 """
 import threading
-
-# 导入日志系统
 import sys
 import os
+import traceback
+
+# 导入日志系统
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from utils.logger import get_bclient_logger
 
@@ -65,7 +66,6 @@ def start_websocket_server():
                 logger.error(f"Failed to start WebSocket server")
         except Exception as e:
             logger.error(f"WebSocket server error: {e}")
-            import traceback
             traceback.print_exc()
     
     thread = threading.Thread(target=run_websocket_server, daemon=True)
