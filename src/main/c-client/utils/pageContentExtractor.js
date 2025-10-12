@@ -10,7 +10,7 @@ class PageContentExtractor {
             const urlObj = new URL(url);
             const pathname = urlObj.pathname;
 
-            // 基础页面信息
+            // Basic page info
             const baseInfo = {
                 url: url,
                 timestamp: Date.now(),
@@ -19,7 +19,7 @@ class PageContentExtractor {
                 pathname: pathname
             };
 
-            // 根据页面类型提取特定信息
+            // Extract specific info based on page type
             let pageSpecificInfo = {};
             switch (baseInfo.pageType) {
                 case 'journey':
@@ -78,36 +78,36 @@ class PageContentExtractor {
                 (() => {
                     const data = {};
                     
-                    // 基础内容
+                    // Basic content
                     data.title = document.querySelector('h1, .journey-title, .card-title')?.textContent.trim() || '';
                     data.description = document.querySelector('.journey-description, .card-text, p')?.textContent.trim() || '';
                     
-                    // 地理位置
+                    // Geographic location
                     data.location = document.querySelector('.location, .address, .journey-location')?.textContent.trim() || '';
                     
-                    // 时间信息
+                    // Time info
                     data.date = document.querySelector('.date, .journey-date, .start-date')?.textContent.trim() || '';
                     
-                    // 作者信息
+                    // Author info
                     data.author = document.querySelector('.username, .journey-author, .author')?.textContent.trim() || '';
                     
-                    // 互动数据
+                    // Interaction data
                     data.likeCount = parseInt(document.querySelector('.like-count, .likes')?.textContent.trim() || '0');
                     data.commentCount = parseInt(document.querySelector('.comment-count, .comments')?.textContent.trim() || '0');
                     
-                    // 图片信息
+                    // Image info
                     const coverImg = document.querySelector('.cover-image, .journey-cover, img');
                     data.coverImage = coverImg ? coverImg.src : '';
                     data.imageCount = document.querySelectorAll('img').length;
                     
-                    // 页面状态
+                    // Page status
                     data.isPublic = document.querySelector('.public, .published') !== null;
                     data.isPrivate = document.querySelector('.private') !== null;
                     
-                    // 事件数量
+                    // Event count
                     data.eventCount = document.querySelectorAll('.event-item, .event-card').length;
                     
-                    // 提取journey ID（从URL或页面元素）
+                    // Extract journey ID (from URL or page element)
                     const journeyIdMatch = window.location.pathname.match(/\\/journey\\/(?:view\\/)?(\\d+)/);
                     data.journeyId = journeyIdMatch ? journeyIdMatch[1] : null;
                     
@@ -132,24 +132,24 @@ class PageContentExtractor {
                     data.title = document.querySelector('.event-title, h2, .card-title')?.textContent.trim() || '';
                     data.description = document.querySelector('.event-description, .card-text')?.textContent.trim() || '';
                     
-                    // 时间和地点
+                    // Time and location
                     data.startTime = document.querySelector('.start-time, .event-start')?.textContent.trim() || '';
                     data.endTime = document.querySelector('.end-time, .event-end')?.textContent.trim() || '';
                     data.location = document.querySelector('.event-location, .location')?.textContent.trim() || '';
                     
-                    // 互动数据
+                    // Interaction data
                     data.likeCount = parseInt(document.querySelector('.like-count')?.textContent.trim() || '0');
                     data.commentCount = parseInt(document.querySelector('.comment-count')?.textContent.trim() || '0');
                     
-                    // 图片信息
+                    // Image info
                     const eventImages = document.querySelectorAll('.event-image, .event-images img');
                     data.images = Array.from(eventImages).map(img => img.src);
                     data.imageCount = eventImages.length;
                     
-                    // 关联的journey
+                    // Related journey
                     data.journeyTitle = document.querySelector('.journey-title, .related-journey')?.textContent.trim() || '';
                     
-                    // 提取event ID
+                    // Extract event ID
                     const eventIdMatch = window.location.pathname.match(/\\/event\\/(?:view\\/)?(\\d+)/);
                     data.eventId = eventIdMatch ? eventIdMatch[1] : null;
                     
@@ -176,16 +176,16 @@ class PageContentExtractor {
                     data.bio = document.querySelector('.bio, .profile-bio, .description')?.textContent.trim() || '';
                     data.location = document.querySelector('.user-location, .profile-location')?.textContent.trim() || '';
                     
-                    // 统计数据
+                    // Statistics data
                     data.journeyCount = parseInt(document.querySelector('.journey-count')?.textContent.trim() || '0');
                     data.eventCount = parseInt(document.querySelector('.event-count')?.textContent.trim() || '0');
                     data.followerCount = parseInt(document.querySelector('.follower-count')?.textContent.trim() || '0');
                     
-                    // 头像
+                    // Avatar
                     const avatar = document.querySelector('.avatar, .profile-image, .user-image');
                     data.avatar = avatar ? avatar.src : '';
                     
-                    // 是否公开
+                    // Is public
                     data.isPublic = document.querySelector('.public-profile') !== null;
                     
                     return data;
@@ -206,23 +206,23 @@ class PageContentExtractor {
                 (() => {
                     const data = {};
                     
-                    // 页面内容统计
+                    // Page content statistics
                     data.journeyCount = document.querySelectorAll('.journey-card, .journey-item').length;
                     data.eventCount = document.querySelectorAll('.event-card, .event-item').length;
                     data.userCount = document.querySelectorAll('.user-card, .profile-card').length;
                     
-                    // 搜索信息
+                    // Search info
                     const searchInput = document.querySelector('input[type="search"], input[name="keyword"]');
                     data.hasSearch = searchInput !== null;
                     
-                    // 分类信息
+                    // Category info
                     const categories = document.querySelectorAll('.category, .filter-tag');
                     data.categories = Array.from(categories).map(cat => cat.textContent.trim());
                     
-                    // 热门内容
+                    // Trending content
                     data.trendingJourneys = document.querySelectorAll('.trending .journey-title').length;
                     
-                    // 公告信息
+                    // Announcement info
                     const announcements = document.querySelectorAll('.announcement, .notice');
                     data.announcementCount = announcements.length;
                     
@@ -244,17 +244,17 @@ class PageContentExtractor {
                 (() => {
                     const data = {};
                     
-                    // 搜索关键词
+                    // Search keyword
                     const searchInput = document.querySelector('input[type="search"], input[name="keyword"]');
                     data.searchKeyword = searchInput ? searchInput.value : '';
                     
-                    // 搜索结果统计
+                    // Search result statistics
                     data.resultCount = document.querySelectorAll('.search-result, .result-item').length;
                     data.journeyResults = document.querySelectorAll('.search-result.journey, .journey-item').length;
                     data.eventResults = document.querySelectorAll('.search-result.event, .event-item').length;
                     data.userResults = document.querySelectorAll('.search-result.user, .user-item').length;
                     
-                    // 筛选器
+                    // Filters
                     const filters = document.querySelectorAll('.filter, .filter-option');
                     data.activeFilters = Array.from(filters).map(filter => filter.textContent.trim());
                     
@@ -276,12 +276,12 @@ class PageContentExtractor {
                 (() => {
                     const data = {};
                     
-                    // 登录表单信息
+                    // Login form info
                     data.hasLoginForm = document.querySelector('form[action*="login"], .login-form') !== null;
                     data.hasSignupForm = document.querySelector('form[action*="signup"], .signup-form') !== null;
                     data.hasForgotPassword = document.querySelector('.forgot-password, a[href*="forgot"]') !== null;
                     
-                    // 社交媒体登录
+                    // Social media login
                     data.hasSocialLogin = document.querySelector('.social-login, .oauth-login') !== null;
                     
                     return data;
@@ -302,11 +302,11 @@ class PageContentExtractor {
                 (() => {
                     const data = {};
                     
-                    // 页面元数据
+                    // Page metadata
                     const metaDesc = document.querySelector('meta[name="description"]');
                     data.metaDescription = metaDesc ? metaDesc.content : '';
                     
-                    // 页面结构
+                    // Page structure
                     data.headingCount = {
                         h1: document.querySelectorAll('h1').length,
                         h2: document.querySelectorAll('h2').length,
@@ -316,11 +316,11 @@ class PageContentExtractor {
                     data.imageCount = document.querySelectorAll('img').length;
                     data.linkCount = document.querySelectorAll('a').length;
                     
-                    // 主要内容
+                    // Main content
                     const mainContent = document.querySelector('main, .main-content, .content');
                     data.hasMainContent = mainContent !== null;
                     
-                    // 表单信息
+                    // Form info
                     data.formCount = document.querySelectorAll('form').length;
                     
                     return data;

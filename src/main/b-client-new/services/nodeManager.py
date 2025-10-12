@@ -1309,6 +1309,89 @@ class NodeManager:
             }
         }
     
+    def get_main_node_ids(self, domain_id: str = None, cluster_id: str = None, channel_id: str = None) -> Dict[str, str]:
+        """
+        Get main node IDs for domain, cluster, and channel
+        Returns the first valid connection's node_id from each pool
+        
+        Args:
+            domain_id: Domain ID to query (optional)
+            cluster_id: Cluster ID to query (optional)
+            channel_id: Channel ID to query (optional)
+            
+        Returns:
+            Dict with domain_main_node_id, cluster_main_node_id, channel_main_node_id
+        """
+        try:
+            self.logger.info("=" * 80)
+            self.logger.info("🔍 NODEMANAGER: get_main_node_ids() CALLED")
+            self.logger.info(f"   Query params: domain_id={domain_id}, cluster_id={cluster_id}, channel_id={channel_id}")
+            
+            result = {
+                'domain_main_node_id': None,
+                'cluster_main_node_id': None,
+                'channel_main_node_id': None
+            }
+            
+            # Get domain main node
+            if domain_id and domain_id in self.domain_pool:
+                domain_connections = self.domain_pool[domain_id]
+                # Find first valid connection that is marked as domain main
+                for conn in domain_connections:
+                    if self._is_websocket_valid(conn.websocket) and conn.is_domain_main_node:
+                        result['domain_main_node_id'] = conn.node_id
+                        self.logger.info(f"✅ Found domain main node: {conn.node_id}")
+                        break
+                
+                if not result['domain_main_node_id']:
+                    self.logger.info(f"⚠️ No domain main node found in domain {domain_id}")
+            else:
+                self.logger.info(f"⚠️ Domain {domain_id} not found in domain_pool")
+            
+            # Get cluster main node
+            if cluster_id and cluster_id in self.cluster_pool:
+                cluster_connections = self.cluster_pool[cluster_id]
+                # Find first valid connection that is marked as cluster main
+                for conn in cluster_connections:
+                    if self._is_websocket_valid(conn.websocket) and conn.is_cluster_main_node:
+                        result['cluster_main_node_id'] = conn.node_id
+                        self.logger.info(f"✅ Found cluster main node: {conn.node_id}")
+                        break
+                
+                if not result['cluster_main_node_id']:
+                    self.logger.info(f"⚠️ No cluster main node found in cluster {cluster_id}")
+            else:
+                self.logger.info(f"⚠️ Cluster {cluster_id} not found in cluster_pool")
+            
+            # Get channel main node
+            if channel_id and channel_id in self.channel_pool:
+                channel_connections = self.channel_pool[channel_id]
+                # Find first valid connection that is marked as channel main
+                for conn in channel_connections:
+                    if self._is_websocket_valid(conn.websocket) and conn.is_channel_main_node:
+                        result['channel_main_node_id'] = conn.node_id
+                        self.logger.info(f"✅ Found channel main node: {conn.node_id}")
+                        break
+                
+                if not result['channel_main_node_id']:
+                    self.logger.info(f"⚠️ No channel main node found in channel {channel_id}")
+            else:
+                self.logger.info(f"⚠️ Channel {channel_id} not found in channel_pool")
+            
+            self.logger.info(f"🔍 Main node IDs result: {result}")
+            self.logger.info("=" * 80)
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error getting main node IDs: {e}")
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            return {
+                'domain_main_node_id': None,
+                'cluster_main_node_id': None,
+                'channel_main_node_id': None
+            }
+    
     def get_channel_nodes(self, channel_id: str) -> List[str]:
         """
         Get all node IDs in a specific channel (only valid connections)

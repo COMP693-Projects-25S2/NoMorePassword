@@ -28,6 +28,7 @@ class WindowManager {
                 contextIsolation: true,
                 nodeIntegration: false,
                 preload: path.join(__dirname, '../pages/preload.js'),
+                webviewTag: true  // Enable webview tag for embedded page previews
             }
         });
 

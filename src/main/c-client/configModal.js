@@ -226,6 +226,10 @@ class ConfigModal {
                 <span class="config-option-icon">👤</span>
                 <span class="config-option-text">Switch User</span>
             </div>
+            <div class="config-option" id="login-another-device">
+                <span class="config-option-icon">📱</span>
+                <span class="config-option-text">Login in Another Device</span>
+            </div>
             <div class="config-option" id="node-test">
                 <span class="config-option-icon">🧪</span>
                 <span class="config-option-text">Node Test</span>
@@ -249,6 +253,7 @@ class ConfigModal {
             const switchClientBtn = document.getElementById('switch-client');
             const newUserBtn = document.getElementById('new-user');
             const switchUserBtn = document.getElementById('switch-user');
+            const loginAnotherDeviceBtn = document.getElementById('login-another-device');
             const nodeTestBtn = document.getElementById('node-test');
             const exitAppBtn = document.getElementById('exit-app');
 
@@ -365,6 +370,39 @@ class ConfigModal {
                     }
                 } catch (error) {
                     alert('Error opening user selector: ' + error.message);
+                }
+                window.close();
+            });
+
+            // Handle login in another device
+            loginAnotherDeviceBtn.addEventListener('click', async () => {
+                try {
+                    console.log('📱 Login in Another Device button clicked');
+                    const result = await ipcRenderer.invoke('request-security-code');
+                    
+                    if (result.success) {
+                        // Show security code in custom dialog
+                        await ipcRenderer.invoke('show-security-code-dialog', {
+                            code: result.security_code
+                        });
+                    } else {
+                        // Show error with clickable link in custom dialog
+                        const errorMessage = result.error || 'Failed to get security code';
+                        const websiteUrl = result.cooperativeWebsiteUrl;
+                        
+                        if (websiteUrl) {
+                            // Use IPC to open custom error dialog
+                            await ipcRenderer.invoke('show-error-dialog', {
+                                message: errorMessage,
+                                url: websiteUrl
+                            });
+                        } else {
+                            alert(errorMessage);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error requesting security code:', error);
+                    alert('Error: ' + error.message);
                 }
                 window.close();
             });

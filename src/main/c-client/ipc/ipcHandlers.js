@@ -65,6 +65,9 @@ class IpcHandlers {
 
         // NSN response handling
         this.registerNSNResponseHandlers();
+
+        // New device login handling
+        this.registerNewDeviceLoginHandlers();
     }
 
     /**
@@ -191,8 +194,17 @@ class IpcHandlers {
                     return { success: false, error: 'TabManager not available' };
                 }
 
-                // Create synchronized tab
-                const result = await this.tabManager.createTab(url, options);
+                // Process URL with parameter injection if URL is provided
+                let processedUrl = url;
+                if (url && url !== 'about:blank' && !url.startsWith('browser://')) {
+                    const { getUrlParameterInjector } = require('../utils/urlParameterInjector');
+                    const urlInjector = getUrlParameterInjector(this.apiPort);
+                    processedUrl = await urlInjector.processUrl(url, this.clientId);
+                    console.log(`🔧 C-Client IPC: URL processed for new tab: ${url} -> ${processedUrl}`);
+                }
+
+                // Create synchronized tab with processed URL
+                const result = await this.tabManager.createTab(processedUrl, options);
                 if (result && result.id && this.historyManager) {
                     // Record visit start (use original URL for history)
                     const record = await this.historyManager.recordVisit(url, result.id);
@@ -1168,24 +1180,31 @@ class IpcHandlers {
 
         // Handle dialog close request
         ipcMain.on('close-user-registration-dialog', async (event) => {
-            // Close the registration dialog
-            // Note: nodeManager.userRegistrationDialog is no longer available after refactoring
-            // Dialog closing is now handled through direct window management
+            console.log('🔄 C-Client IPC: Received close-user-registration-dialog event');
+
+            // Close the registration dialog first
+            try {
+                const { BrowserWindow } = require('electron');
+                const allWindows = BrowserWindow.getAllWindows();
+
+                console.log(`🔍 C-Client IPC: Found ${allWindows.length} windows`);
+
+                for (const window of allWindows) {
+                    if (window.webContents && window.webContents.getURL().includes('data:text/html')) {
+                        console.log('🔄 C-Client IPC: Found registration dialog window, closing...');
+                        window.close();
+                        console.log('✅ C-Client IPC: Registration dialog closed');
+                        break;
+                    }
+                }
+            } catch (closeError) {
+                console.error('❌ C-Client IPC: Error closing registration dialog:', closeError);
+            }
 
             // After closing registration dialog, show greeting dialog
-            try {
-                const UserRegistrationDialog = require('../userManager/userRegistrationDialog');
-                const userRegistrationDialog = new UserRegistrationDialog(this.clientId);
-
-                // Use the stored main window reference
-                if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                    await userRegistrationDialog.showGreeting(this.mainWindow);
-                } else {
-                    console.warn('Main window not available for greeting dialog');
-                }
-            } catch (greetingError) {
-                console.error('Error showing greeting dialog after registration:', greetingError);
-            }
+            // Note: Greeting dialog is already shown by submit-username handler
+            // So we don't need to show it again here
+            console.log('✅ C-Client IPC: close-user-registration-dialog event handled');
         });
 
         // Handle config modal open request
@@ -1942,6 +1961,196 @@ class IpcHandlers {
                 return url; // Return original URL if processing fails
             }
         });
+
+        // Request security code for login in another device
+        this.safeRegisterHandler('request-security-code', async () => {
+            try {
+                // Use dedicated security code logger
+                const { getCClientLogger } = require('../utils/logger');
+                const securityLogger = getCClientLogger('security_code');
+
+                securityLogger.info('📱 IPC: Request security code for another device login');
+
+                // Get cooperative website URL from config
+                const fs = require('fs');
+                const path = require('path');
+                let cooperativeWebsiteUrl = 'http://localhost:5000'; // Default fallback
+
+                try {
+                    const configPath = path.join(__dirname, '..', 'config.json');
+                    if (fs.existsSync(configPath)) {
+                        const configData = fs.readFileSync(configPath, 'utf8');
+                        const config = JSON.parse(configData);
+
+                        if (config.nmp_cooperative_website) {
+                            const currentEnv = config.nmp_cooperative_website.current || 'local';
+                            const envConfig = config.nmp_cooperative_website[currentEnv];
+                            if (envConfig && envConfig.url) {
+                                cooperativeWebsiteUrl = envConfig.url;
+                                securityLogger.info(`📱 IPC: Using cooperative website URL from config: ${cooperativeWebsiteUrl}`);
+                            }
+                        }
+                    }
+                } catch (configError) {
+                    securityLogger.warn(`📱 IPC: Failed to load config, using default URL: ${configError.message}`);
+                }
+
+                // Step 1: Check if WebSocket is connected
+                if (!this.webSocketClient || !this.webSocketClient.isConnected) {
+                    securityLogger.warn('📱 IPC: WebSocket not connected');
+                    return {
+                        success: false,
+                        error: 'Please connect to cooperative websites first',
+                        cooperativeWebsiteUrl: cooperativeWebsiteUrl
+                    };
+                }
+
+                // Step 2: Get current user info from WebSocket client
+                const currentUser = this.webSocketClient.getCurrentUserInfo();
+
+                if (!currentUser || !currentUser.user_id) {
+                    securityLogger.warn('📱 IPC: No current user found');
+                    return {
+                        success: false,
+                        error: 'No user is currently logged in'
+                    };
+                }
+
+                // Check if user has node hierarchy information
+                if (!currentUser.domain_id || !currentUser.cluster_id || !currentUser.channel_id) {
+                    securityLogger.warn('📱 IPC: User has no node hierarchy information');
+                    securityLogger.warn(`📱 IPC: domain_id: ${currentUser.domain_id}, cluster_id: ${currentUser.cluster_id}, channel_id: ${currentUser.channel_id}`);
+                    return {
+                        success: false,
+                        error: 'Please connect to cooperative websites first',
+                        cooperativeWebsiteUrl: cooperativeWebsiteUrl
+                    };
+                }
+
+                securityLogger.info(`📱 IPC: Requesting security code for user ${currentUser.username}`);
+                securityLogger.info(`📱 IPC: User hierarchy - domain: ${currentUser.domain_id}, cluster: ${currentUser.cluster_id}, channel: ${currentUser.channel_id}`);
+
+                // Step 3: Send request to B-Client via WebSocket (include hierarchy info)
+                const requestData = {
+                    nmp_user_id: currentUser.user_id,
+                    nmp_username: currentUser.username,
+                    domain_id: currentUser.domain_id,
+                    cluster_id: currentUser.cluster_id,
+                    channel_id: currentUser.channel_id,
+                    timestamp: Date.now()
+                };
+
+                // Use WebSocket client's requestSecurityCode method
+                return await this.webSocketClient.requestSecurityCode(requestData);
+
+            } catch (error) {
+                const { getCClientLogger } = require('../utils/logger');
+                const securityLogger = getCClientLogger('security_code');
+                securityLogger.error('📱 IPC: Error requesting security code:', error);
+                return {
+                    success: false,
+                    error: error.message
+                };
+            }
+        });
+
+        // Show error dialog with clickable URL
+        this.safeRegisterHandler('show-error-dialog', async (event, options) => {
+            try {
+                const { BrowserWindow } = require('electron');
+                const path = require('path');
+
+                const errorDialog = new BrowserWindow({
+                    width: 500,
+                    height: 350,
+                    modal: true,
+                    parent: this.mainWindow,
+                    resizable: false,
+                    minimizable: false,
+                    maximizable: false,
+                    webPreferences: {
+                        nodeIntegration: true,
+                        contextIsolation: false
+                    }
+                });
+
+                const encodedMessage = encodeURIComponent(options.message || 'An error occurred');
+                const encodedUrl = encodeURIComponent(options.url || '');
+                const dialogPath = path.join(__dirname, '..', 'errorDialog.html');
+
+                await errorDialog.loadFile(dialogPath, {
+                    query: {
+                        message: encodedMessage,
+                        url: encodedUrl
+                    }
+                });
+
+                errorDialog.removeMenu();
+
+                return { success: true };
+            } catch (error) {
+                this.logger.error('Error showing error dialog:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Show security code dialog
+        this.safeRegisterHandler('show-security-code-dialog', async (event, options) => {
+            try {
+                const { BrowserWindow } = require('electron');
+                const path = require('path');
+
+                const codeDialog = new BrowserWindow({
+                    width: 480,
+                    height: 420,
+                    modal: false, // Set to false to avoid blocking main window
+                    parent: this.mainWindow,
+                    resizable: false,
+                    minimizable: false,
+                    maximizable: false,
+                    alwaysOnTop: false, // Only stay on top of parent window, not other apps
+                    webPreferences: {
+                        nodeIntegration: true,
+                        contextIsolation: false
+                    }
+                });
+
+                const encodedCode = encodeURIComponent(options.code || 'ERROR');
+                const dialogPath = path.join(__dirname, '..', 'securityCodeDialog.html');
+
+                await codeDialog.loadFile(dialogPath, {
+                    query: {
+                        code: encodedCode
+                    }
+                });
+
+                codeDialog.removeMenu();
+
+                // Auto-close when main window closes
+                if (this.mainWindow) {
+                    const mainWindowCloseHandler = () => {
+                        if (codeDialog && !codeDialog.isDestroyed()) {
+                            console.log('🔐 Main window closing, auto-closing security code dialog');
+                            codeDialog.close();
+                        }
+                    };
+
+                    this.mainWindow.once('close', mainWindowCloseHandler);
+
+                    // Clean up listener when dialog is closed
+                    codeDialog.once('closed', () => {
+                        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                            this.mainWindow.removeListener('close', mainWindowCloseHandler);
+                        }
+                    });
+                }
+
+                return { success: true };
+            } catch (error) {
+                this.logger.error('Error showing security code dialog:', error);
+                return { success: false, error: error.message };
+            }
+        });
     }
 
     /**
@@ -2045,6 +2254,167 @@ class IpcHandlers {
                 return { success: false, error: error.message };
             }
         });
+    }
+
+    /**
+     * Register new device login handlers
+     */
+    registerNewDeviceLoginHandlers() {
+        console.log('🔐 C-Client IPC: Registering new device login handlers...');
+
+        // Listen for new device login complete event from WebSocket client
+        // IMPORTANT: Use arrow function to preserve 'this' context
+        const self = this; // Capture 'this' reference
+        ipcMain.on('new-device-login-complete', async (event, data) => {
+            try {
+                const { getCClientLogger } = require('../utils/logger');
+                const securityLogger = getCClientLogger('security_code');
+
+                securityLogger.info('🔐 [IPC Handlers] ===== NEW DEVICE LOGIN COMPLETE EVENT =====');
+                securityLogger.info('🔐 [IPC Handlers] Event data received');
+                securityLogger.info('🔐 [IPC Handlers] user_id:', data.user_id);
+                securityLogger.info('🔐 [IPC Handlers] username:', data.username);
+                securityLogger.info('🔐 [IPC Handlers] clientId from self:', self.clientId);
+                securityLogger.info('🔐 [IPC Handlers] tabManager available:', !!self.tabManager);
+
+                const { user_id, username } = data;
+
+                if (!user_id || !username) {
+                    securityLogger.error('❌ [IPC Handlers] Missing user_id or username in event data');
+                    return;
+                }
+
+                if (!self.clientId) {
+                    securityLogger.error('❌ [IPC Handlers] this.clientId is undefined! Cannot proceed.');
+                    return;
+                }
+
+                securityLogger.info('🔐 [IPC Handlers] Performing user switch operation...');
+                securityLogger.info(`🔐 [IPC Handlers] Switching to user: ${username} (${user_id})`);
+
+                // Step 1: Update current user in database using DatabaseManager
+                securityLogger.info('🔐 [IPC Handlers] Step 1: Updating current user in database...');
+                try {
+                    const DatabaseManager = require('../sqlite/databaseManager');
+                    const db = require('../sqlite/database');
+
+                    // Remove current client from all users
+                    securityLogger.info(`🔐 [IPC Handlers] Removing client ${self.clientId} from all users...`);
+                    DatabaseManager.removeClientFromCurrentUsers(self.clientId);
+
+                    // Assign current client to the new user (using existing method)
+                    securityLogger.info(`🔐 [IPC Handlers] Assigning client ${self.clientId} to user ${username}...`);
+                    DatabaseManager.assignUserToClient(user_id, self.clientId);
+
+                    securityLogger.info('✅ [IPC Handlers] Current user updated in database');
+
+                    // Delete only security code temporary users (8-char alphanumeric usernames)
+                    // Regular users (like test2) are preserved even if they have no clients
+                    securityLogger.info('🔐 [IPC Handlers] Cleaning up security code temporary users...');
+                    const allUsers = db.prepare('SELECT user_id, username, client_ids FROM local_users').all();
+
+                    // Pattern to match security code usernames (8 alphanumeric chars)
+                    const securityCodePattern = /^[A-Za-z0-9]{8}$/;
+
+                    let deletedCount = 0;
+                    for (const user of allUsers) {
+                        if (user.user_id !== user_id) {
+                            // Only delete if username looks like a security code
+                            if (securityCodePattern.test(user.username)) {
+                                securityLogger.info(`🔐 [IPC Handlers] Deleting security code temporary user: ${user.username} (${user.user_id})`);
+                                db.prepare('DELETE FROM local_users WHERE user_id = ?').run(user.user_id);
+                                deletedCount++;
+                            } else {
+                                securityLogger.info(`🔐 [IPC Handlers] Preserving regular user: ${user.username} (${user.user_id})`);
+                            }
+                        }
+                    }
+
+                    securityLogger.info(`✅ [IPC Handlers] Deleted ${deletedCount} security code temporary user(s)`);
+
+                } catch (dbError) {
+                    securityLogger.error('❌ [IPC Handlers] Error updating database:', dbError);
+                    securityLogger.error('❌ [IPC Handlers] Error message:', dbError.message);
+                    securityLogger.error('❌ [IPC Handlers] Error stack:', dbError.stack);
+                    securityLogger.error('❌ [IPC Handlers] Continuing with user switch...');
+                }
+
+                // Step 2: Disconnect WebSocket to notify B-side
+                securityLogger.info('🔐 [IPC Handlers] Step 2: Disconnecting WebSocket...');
+                if (self.webSocketClient) {
+                    securityLogger.info('🔐 [IPC Handlers] WebSocket client available, disconnecting...');
+                    self.webSocketClient.disconnect();
+                    securityLogger.info('✅ [IPC Handlers] WebSocket disconnected');
+                } else {
+                    securityLogger.warn('⚠️ [IPC Handlers] WebSocket client not available');
+                }
+
+                // Step 3: Clear all sessions
+                securityLogger.info('🔐 [IPC Handlers] Step 3: Clearing all sessions...');
+                if (self.tabManager) {
+                    await self.tabManager.clearAllSessions();
+                    securityLogger.info('✅ [IPC Handlers] All sessions cleared');
+                } else {
+                    securityLogger.warn('⚠️ [IPC Handlers] TabManager not available, skipping session clear');
+                }
+
+                // Step 4: Close all tabs and create new default tab
+                securityLogger.info('🔐 [IPC Handlers] Step 4: Closing all tabs and creating new default tab...');
+                if (self.tabManager) {
+                    const allTabs = self.tabManager.getAllTabs();
+                    securityLogger.info(`🔐 [IPC Handlers] Found ${allTabs.length} tabs to close`);
+
+                    for (const tab of allTabs) {
+                        securityLogger.info(`🔐 [IPC Handlers] Closing tab ${tab.id}...`);
+                        await self.tabManager.closeTab(tab.id);
+                    }
+
+                    securityLogger.info('✅ [IPC Handlers] All tabs closed');
+
+                    // Create new default tab
+                    const defaultUrl = 'https://www.google.com';
+                    const newTab = await self.tabManager.createTab(defaultUrl);
+                    securityLogger.info(`✅ [IPC Handlers] New default tab created: ${newTab.id}`);
+                } else {
+                    securityLogger.warn('⚠️ [IPC Handlers] TabManager not available, skipping tab operations');
+                }
+
+                // Step 5: Reconnect WebSocket with new user info
+                securityLogger.info('🔐 [IPC Handlers] Step 5: Reconnecting WebSocket with new user...');
+                if (self.webSocketClient) {
+                    // WebSocket will auto-reconnect and register with new user info
+                    securityLogger.info('🔐 [IPC Handlers] WebSocket will auto-reconnect with new user info');
+                } else {
+                    securityLogger.warn('⚠️ [IPC Handlers] WebSocket client not available');
+                }
+
+                securityLogger.info('✅ [IPC Handlers] ===== NEW DEVICE LOGIN COMPLETE =====');
+                securityLogger.info('✅ [IPC Handlers] User switch operation completed successfully');
+
+            } catch (error) {
+                const { getCClientLogger } = require('../utils/logger');
+                const securityLogger = getCClientLogger('security_code');
+                securityLogger.error('❌ [IPC Handlers] Error handling new device login complete');
+                securityLogger.error('❌ [IPC Handlers] Error type:', typeof error);
+                securityLogger.error('❌ [IPC Handlers] Error:', error);
+                if (error) {
+                    securityLogger.error('❌ [IPC Handlers] Error message:', error.message || 'No message');
+                    securityLogger.error('❌ [IPC Handlers] Error name:', error.name || 'No name');
+                    securityLogger.error('❌ [IPC Handlers] Error code:', error.code || 'No code');
+                    securityLogger.error('❌ [IPC Handlers] Error stack:', error.stack || 'No stack');
+
+                    // Try to get more details
+                    try {
+                        securityLogger.error('❌ [IPC Handlers] Error keys:', Object.keys(error));
+                        securityLogger.error('❌ [IPC Handlers] Error string:', String(error));
+                    } catch (e) {
+                        securityLogger.error('❌ [IPC Handlers] Cannot get error details');
+                    }
+                }
+            }
+        });
+
+        console.log('✅ C-Client IPC: New device login handlers registered');
     }
 
     /**

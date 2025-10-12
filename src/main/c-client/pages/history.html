@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+        content="default-src 'self' 'unsafe-inline' *; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-src *; child-src *;">
     <title>Browse History</title>
     <style>
         * {
@@ -139,26 +139,31 @@
 
         /* Date separator styles */
         .date-separator {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 15px 20px;
-            margin: 20px 0 15px 0;
-            border-radius: 10px;
+            background: rgba(102, 126, 234, 0.08);
+            color: #667eea;
+            padding: 8px 15px;
+            margin: 15px 0 10px 0;
+            border-radius: 6px;
             font-weight: 600;
-            font-size: 1.1em;
-            text-align: center;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            font-size: 0.9em;
+            text-align: left;
+            border-left: 3px solid #667eea;
             position: sticky;
             top: 0;
             z-index: 10;
+            backdrop-filter: blur(10px);
         }
 
         .date-separator.today {
-            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+            border-left-color: #667eea;
         }
 
         .date-separator.yesterday {
-            background: linear-gradient(135deg, #FF9800 0%, #f57c00 100%);
+            background: rgba(118, 75, 162, 0.08);
+            color: #764ba2;
+            border-left-color: #764ba2;
         }
 
         .history-item {
@@ -265,11 +270,25 @@
             border-radius: 8px;
             border-left: 3px solid #667eea;
             display: none;
+            cursor: pointer;
+            position: relative;
         }
 
         .history-item-details.show {
             display: block;
             animation: slideDown 0.3s ease;
+        }
+
+        .history-item-details::before {
+            content: '💡 Click anywhere outside the preview to collapse';
+            display: block;
+            text-align: center;
+            font-size: 0.75em;
+            color: #999;
+            padding: 8px;
+            background: rgba(102, 126, 234, 0.05);
+            border-radius: 5px;
+            margin-bottom: 10px;
         }
 
         @keyframes slideDown {
@@ -314,6 +333,104 @@
             line-height: 1.4;
             color: #555;
             border: 1px solid #e0e0e0;
+        }
+
+        /* Page preview card styles */
+        .page-preview-card {
+            background: white;
+            border-radius: 10px;
+            padding: 0;
+            margin-top: 0;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .page-iframe-container {
+            margin-top: 0;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            background: white;
+            position: relative;
+        }
+
+        .iframe-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 10px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9em;
+        }
+
+        .iframe-url {
+            opacity: 0.9;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+            margin-right: 10px;
+        }
+
+        .iframe-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .iframe-control-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.3s ease;
+        }
+
+        .iframe-control-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .page-iframe-wrapper {
+            width: 100%;
+            height: 400px;
+            overflow: hidden;
+            background: #f5f5f5;
+            position: relative;
+        }
+
+        .page-iframe {
+            width: 200%;
+            height: 800px;
+            border: none;
+            transform: scale(0.5);
+            transform-origin: 0 0;
+        }
+
+        .iframe-loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #666;
+        }
+
+        .iframe-loading .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        .iframe-error {
+            padding: 40px;
+            text-align: center;
+            color: #999;
         }
 
         .details-content a {
@@ -470,20 +587,165 @@
             return div.innerHTML;
         }
 
-        // Parse and format JSON content
-        function formatJsonContent(jsonString) {
+        // Create visual page preview from JSON content
+        function createPagePreview(jsonString, recordIndex) {
             if (!jsonString) return '<div class="no-description">No description available</div>';
 
             try {
                 const data = JSON.parse(jsonString);
-                return formatJsonObject(data, 0);
+                return generatePagePreviewCard(data, recordIndex);
             } catch (e) {
                 // If it's not valid JSON, display as plain text
                 return `<div class="details-content"><pre>${escapeHtml(jsonString)}</pre></div>`;
             }
         }
 
-        // Recursively format JSON object with syntax highlighting
+        // Generate visual preview card based on page type
+        function generatePagePreviewCard(data, recordIndex) {
+            if (!data || typeof data !== 'object') {
+                return '<div class="no-description">No preview available</div>';
+            }
+
+            const pageType = data.pageType || 'general';
+            let previewHTML = '<div class="page-preview-card">';
+
+            // Embedded page preview (iframe) - main content
+            if (data.url && data.url !== 'Unknown') {
+                previewHTML += `
+                    <div class="page-iframe-container" id="iframe-container-${recordIndex}" onclick="event.stopPropagation()">
+                        <div class="iframe-header">
+                            <div class="iframe-url">🌐 ${escapeHtml(data.url)}</div>
+                            <div class="iframe-controls">
+                                <button class="iframe-control-btn" onclick="event.stopPropagation(); reloadIframe(${recordIndex})">
+                                    🔄 Reload
+                                </button>
+                                <button class="iframe-control-btn" onclick="event.stopPropagation(); openUrlInNewTab('${data.url}')">
+                                    🔗 Open in Tab
+                                </button>
+                            </div>
+                        </div>
+                        <div class="page-iframe-wrapper" id="iframe-wrapper-${recordIndex}" onclick="event.stopPropagation()">
+                            <div class="iframe-loading" id="iframe-loading-${recordIndex}">
+                                <div class="spinner"></div>
+                                <p>Loading page preview...</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                // Fallback: show message if no URL
+                previewHTML += `
+                    <div class="iframe-error" onclick="event.stopPropagation()">
+                        <div style="font-size: 2em; margin-bottom: 10px;">📄</div>
+                        <p>No URL available for preview</p>
+                    </div>
+                `;
+            }
+
+            previewHTML += '</div>';
+            return previewHTML;
+        }
+
+        // Load iframe for page preview
+        function loadPageIframe(recordIndex, url) {
+            const wrapperEl = document.getElementById(`iframe-wrapper-${recordIndex}`);
+            const loadingEl = document.getElementById(`iframe-loading-${recordIndex}`);
+
+            if (!wrapperEl || !url || url === 'Unknown') {
+                console.log(`Cannot load iframe: wrapper=${!!wrapperEl}, url=${url}`);
+                return;
+            }
+
+            console.log(`Loading iframe for record ${recordIndex}, URL: ${url}`);
+
+            // Check if iframe already exists
+            const existingIframe = document.getElementById(`iframe-${recordIndex}`);
+            if (existingIframe) {
+                console.log(`Iframe already exists for record ${recordIndex}`);
+                return;
+            }
+
+            // Create iframe with webview tag instead (Electron-specific)
+            const webview = document.createElement('webview');
+            webview.className = 'page-iframe';
+            webview.id = `iframe-${recordIndex}`;
+            webview.src = url;
+            webview.setAttribute('partition', 'persist:history-preview');
+
+            // Handle load event
+            webview.addEventListener('did-finish-load', () => {
+                console.log(`Webview loaded successfully for record ${recordIndex}`);
+                if (loadingEl) {
+                    loadingEl.style.display = 'none';
+                }
+            });
+
+            // Handle error
+            webview.addEventListener('did-fail-load', (event) => {
+                console.error(`Webview failed to load for record ${recordIndex}:`, event);
+                if (loadingEl) {
+                    loadingEl.innerHTML = `
+                        <div class="iframe-error">
+                            <div style="font-size: 2em; margin-bottom: 10px;">⚠️</div>
+                            <p>Unable to load page preview</p>
+                            <p style="font-size: 0.85em; color: #999; margin-top: 5px;">Some pages may block embedding</p>
+                            <p style="font-size: 0.9em; margin-top: 15px;">
+                                <button class="preview-action-btn" onclick="event.stopPropagation(); openUrlInNewTab('${url}')">
+                                    🌐 Open in New Tab
+                                </button>
+                            </p>
+                        </div>
+                    `;
+                }
+            });
+
+            // Append webview
+            wrapperEl.appendChild(webview);
+            console.log(`Webview appended to wrapper for record ${recordIndex}`);
+
+            // Set timeout for loading
+            setTimeout(() => {
+                if (loadingEl && loadingEl.style.display !== 'none') {
+                    console.warn(`Webview loading timeout for record ${recordIndex}`);
+                    loadingEl.innerHTML = `
+                        <div class="iframe-error">
+                            <div style="font-size: 2em; margin-bottom: 10px;">⏱️</div>
+                            <p>Page is taking too long to load</p>
+                            <p style="font-size: 0.85em; color: #999; margin-top: 5px;">The page may be slow or unavailable</p>
+                            <p style="font-size: 0.9em; margin-top: 15px;">
+                                <button class="preview-action-btn" onclick="event.stopPropagation(); openUrlInNewTab('${url}')">
+                                    🌐 Open in New Tab
+                                </button>
+                            </p>
+                        </div>
+                    `;
+                }
+            }, 10000); // 10 second timeout
+        }
+
+        // Reload iframe
+        function reloadIframe(recordIndex) {
+            const webview = document.getElementById(`iframe-${recordIndex}`);
+            if (webview) {
+                console.log(`Reloading webview for record ${recordIndex}`);
+                if (webview.reload) {
+                    webview.reload();
+                } else {
+                    // Fallback for regular iframe
+                    webview.src = webview.src;
+                }
+            }
+        }
+
+        // Open URL in new tab
+        function openUrlInNewTab(url) {
+            if (url && url !== 'Unknown') {
+                openUrl(url);
+            }
+        }
+
+
+        // Recursively format JSON object with syntax highlighting (for debugging)
         function formatJsonObject(obj, indent = 0) {
             const spaces = '  '.repeat(indent);
             const nextSpaces = '  '.repeat(indent + 1);
@@ -547,7 +809,7 @@
         }
 
         // Toggle record details visibility
-        function toggleRecord(index) {
+        function toggleRecord(index, url) {
             const detailsEl = document.getElementById(`details-${index}`);
             const recordEl = document.querySelector(`.history-item[data-index="${index}"]`);
 
@@ -561,6 +823,17 @@
             } else {
                 detailsEl.classList.add('show');
                 recordEl.classList.add('expanded');
+
+                // Load iframe when expanding (only once)
+                const iframeWrapper = document.getElementById(`iframe-wrapper-${index}`);
+                const existingIframe = document.getElementById(`iframe-${index}`);
+
+                if (iframeWrapper && !existingIframe && url && url !== 'Unknown') {
+                    // Delay iframe loading slightly to allow animation to start
+                    setTimeout(() => {
+                        loadPageIframe(index, url);
+                    }, 100);
+                }
             }
         }
 
@@ -719,7 +992,7 @@
 
                     historyHTML += `
                         <div class="history-item expandable" style="border-left-color: ${stayColor};" data-index="${index}">
-                            <div class="history-item-content" onclick="toggleRecord(${index})">
+                            <div class="history-item-content" onclick="toggleRecord(${index}, '${record.url || ''}')">
                                 <div class="history-item-info">
                                     <div class="history-item-title">
                                         ${escapeHtml(record.title || 'Untitled Page')}
@@ -739,25 +1012,8 @@
                                     <span>${stayTime}</span>
                                 </div>
                             </div>
-                            <div class="history-item-details" id="details-${index}" onclick="event.stopPropagation();">
-                                <div class="details-section">
-                                    <h4>
-                                        <span>🔗</span>
-                                        URL
-                                    </h4>
-                                    <div class="details-content">
-                                        <a href="#" onclick="event.preventDefault(); event.stopPropagation(); openUrl('${record.url || ''}')">${escapeHtml(record.url || 'Unknown')}</a>
-                                    </div>
-                                </div>
-                                <div class="details-section">
-                                    <h4>
-                                        <span>📊</span>
-                                        Page Content Information
-                                    </h4>
-                                    <div class="details-content">
-                                        <pre>${formatJsonContent(record.description || '')}</pre>
-                                    </div>
-                                </div>
+                            <div class="history-item-details" id="details-${index}" onclick="toggleRecord(${index}, '${record.url || ''}')">
+                                ${createPagePreview(record.description || '', index)}
                             </div>
                         </div>
                     `;

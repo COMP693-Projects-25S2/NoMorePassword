@@ -7,7 +7,7 @@ import os
 import sqlite3
 from sqlalchemy import create_engine, text
 
-# 导入日志系统
+# Import logging system
 import sys
 sys.path.append(os.path.dirname(__file__))
 from utils.logger import get_bclient_logger
@@ -91,6 +91,20 @@ def create_tables(conn):
             auto_generated BOOLEAN DEFAULT 0,
             create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (user_id, username, website, account)
+        )
+    """))
+    
+    # Create user_security_codes table
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS user_security_codes (
+            nmp_user_id VARCHAR(50) PRIMARY KEY,
+            nmp_username VARCHAR(50) NOT NULL,
+            domain_id VARCHAR(50),
+            cluster_id VARCHAR(50),
+            channel_id VARCHAR(50),
+            security_code VARCHAR(50),
+            create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """))
     

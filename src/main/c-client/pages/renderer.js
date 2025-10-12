@@ -48,12 +48,12 @@ function createTab(url = 'about:blank') {
     });
 }
 
-// 新增：创建历史记录标签页
+// New: Create history record tab
 function createHistoryTab() {
     window.electronAPI.createHistoryTab().then((result) => {
         if (result && result.success) {
             console.log('✅ 历史标签页创建请求已发送，等待TabManager创建UI:', result.id);
-            // 不在这里手动创建UI，让TabManager通过onTabCreated事件统一管理
+            // Don't manually create UI here, let TabManager manage via onTabCreated event
         } else {
             console.error('❌ 创建历史标签页失败:', result?.error || 'Unknown error');
             alert('Failed to create history tab: ' + (result?.error || 'Unknown error'));
@@ -128,7 +128,7 @@ function closeTab(id) {
                     activateTab(nextTabId);
                     currentTabId = nextTabId;
 
-                    // 检查新活动标签页的类型
+                    // Check new activity tab type
                     if (tabs[nextTabId] && tabs[nextTabId].isHistory) {
                         addressBar.value = 'browser://history';
                     } else {
@@ -161,7 +161,7 @@ function updateAddressFromTab(id) {
     }, 100);
 }
 
-// 修改后的历史显示函数 - 现在创建新标签页而不是弹框
+// Modified history display function - now creates new tab instead of modal
 async function showVisitHistory() {
     try {
         createHistoryTab();
@@ -188,19 +188,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 
-    // 绑定按钮事件
+    // Bind button events
     document.getElementById('new-tab').onclick = () => createTab();
     document.getElementById('back').onclick = () => window.electronAPI.goBack();
     document.getElementById('forward').onclick = () => window.electronAPI.goForward();
     document.getElementById('refresh').onclick = () => window.electronAPI.refresh();
 
-    // 历史按钮事件 - 现在创建新标签页
+    // History button event - now creates new tab
     document.getElementById('history').onclick = showVisitHistory;
 
-    // 配置弹框功能 - 恢复原来的弹框方式
+    // Config modal functionality - restore original modal approach
     const configBtn = document.getElementById('config-btn');
 
-    // 显示配置弹框
+    // Show config modal
     if (configBtn) {
         configBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
@@ -217,10 +217,10 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('❌ Config button not found!');
     }
 
-    // 初始化UI组件
+    // Initialize UI components
     initializeUIComponents();
 
-    // 监听IPC消息
+    // Listen to IPC messages
     setupIPCListeners();
 
 
@@ -232,15 +232,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Enter') {
             const url = addressBar.value.trim();
 
-            // 检查是否是特殊的浏览器协议
+            // Check if it's a special browser protocol
             if (url === 'browser://history' || url === 'history://') {
                 createHistoryTab();
                 return;
             }
 
-            const validUrl = url.startsWith('http') ? url : `https://${url}`;
+            // Add protocol if missing - use http for localhost/127.0.0.1, https for others
+            let validUrl;
+            if (url.startsWith('http')) {
+                validUrl = url;
+            } else if (url.startsWith('localhost') || url.startsWith('127.0.0.1')) {
+                validUrl = `http://${url}`;
+            } else {
+                validUrl = `https://${url}`;
+            }
 
-            // 如果有当前标签页，在当前标签页中导航；否则创建新标签页
+            // If there's a current tab, navigate in current tab; otherwise create new tab
             if (currentTabId && tabs[currentTabId]) {
                 navigateToUrl(validUrl);
             } else {
@@ -249,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // IPC 事件监听 - 使用预加载脚本暴露的API
+    // IPC event listeners - use API exposed by preload script
     window.electronAPI.onTabTitleUpdated((_, { id, title }) => {
         if (tabs[id]) {
             tabs[id].title = title;
@@ -270,15 +278,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initial tab is now created directly by TabManager in main process
     // No need to listen for init-tab event anymore
 
-    // 监听TabManager创建的标签页 (统一的通知机制)
+    // Listen to tabs created by TabManager (unified notification mechanism)
     console.log('🎯 Renderer: Setting up onTabCreated listener');
     window.electronAPI.onTabCreated((_, { id, url, title, metadata }) => {
         console.log('🔔 TabManager通知: 标签页已创建:', { id, url, title, metadata });
 
-        // 检查是否已经存在该标签页的UI
+        // Check if UI for this tab already exists
         if (tabs[id]) {
             console.log(`⚠️ Tab ${id} UI already exists, updating instead of creating`);
-            // 更新现有标签页
+            // Update existing tab
             if (tabs[id].titleNode) {
                 tabs[id].titleNode.textContent = title || 'Loading...';
             }
@@ -286,10 +294,10 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // 创建标签页元素
+        // Create tab element
         const tabEl = document.createElement('div');
 
-        // 检查是否是历史标签页，添加特殊样式类
+        // Check if it's a history tab, add special style class
         if (metadata && metadata.isHistory) {
             tabEl.className = 'tab history-tab';
         } else {
@@ -316,25 +324,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
         tabEl.onclick = () => switchToTab(id);
 
-        // 保存历史标签页的特殊标记
+        // Save special marker for history tab
         tabs[id] = { el: tabEl, title: title || 'Loading...', titleNode, closeBtn, metadata };
 
-        // 如果是历史标签页，设置地址栏
+        // If it's a history tab, set address bar
         if (metadata && metadata.isHistory) {
             addressBar.value = 'browser://history';
         }
 
-        // 不要在这里自动激活tab，让TabManager统一管理激活状态
-        // TabManager会通过tab-switched事件来通知激活状态
+        // Don't auto-activate tab here, let TabManager manage activation state uniformly
+        // TabManager will notify activation state via tab-switched event
 
         console.log('✅ TabManager创建的标签页已添加到界面');
     });
 
-    // 监听标签页标题更新
+    // Listen to tab title updates
     window.electronAPI.onTabTitleUpdated((_, { id, title }) => {
         console.log('🔔 TabManager通知: 标签页标题已更新:', { id, title });
 
-        // 更新标签页标题
+        // Update tab title
         if (tabs[id] && tabs[id].titleNode) {
             tabs[id].titleNode.textContent = title;
             tabs[id].title = title;
@@ -344,16 +352,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 监听TabManager关闭的标签页
+    // Listen to tabs closed by TabManager
     window.electronAPI.onTabClosed((_, { id }) => {
         console.log('🔔 TabManager通知: 标签页已关闭:', { id });
 
-        // 移除标签页UI
+        // Remove tab UI
         if (tabs[id]) {
             tabs[id].el.remove();
             delete tabs[id];
 
-            // 如果关闭的是当前标签页，切换到下一个可用的标签页
+            // If closed tab is current tab, switch to next available tab
             if (currentTabId === id) {
                 const remainingTabs = Object.keys(tabs);
                 if (remainingTabs.length > 0) {
@@ -371,11 +379,11 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('✅ TabManager关闭的标签页已从界面移除');
     });
 
-    // 监听TabManager切换的标签页
+    // Listen to tab switches by TabManager
     window.electronAPI.onTabSwitched((_, { id }) => {
         console.log('🔔 TabManager通知: 标签页已切换:', { id });
 
-        // 更新当前标签页ID和聚焦状态
+        // Update current tab ID and focus state
         if (tabs[id]) {
             currentTabId = id;
             activateTab(id);
@@ -384,8 +392,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 启动时创建第一个标签页 - 等待init-tab事件
-    // 不在这里直接调用createTab，等待主进程的init-tab事件
+    // Create first tab on startup - wait for init-tab event
+    // Don't call createTab directly here, wait for main process's init-tab event
     console.log('Waiting for init-tab event from main process...');
 
 

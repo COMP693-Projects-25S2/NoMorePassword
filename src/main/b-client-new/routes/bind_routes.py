@@ -145,6 +145,8 @@ def _save_and_send_session(nmp_user_id, nsn_username, session_cookie, nsn_user_i
         logger.info(f"Session saved to database successfully")
         
         # Send to C-Client with cluster verification
+        # Note: send_session_to_client already sends to all user connections
+        # No need to call notify_user_login separately (would cause duplicate messages)
         logger.info(f"===== SENDING SESSION TO C-CLIENT =====")
         _send_session_to_client(nmp_user_id, session_cookie, nsn_user_id, nsn_username, reset_logout_status, channel_id, node_id)
         
@@ -391,15 +393,15 @@ def _handle_existing_cookie_check(nmp_user_id, nmp_username, channel_id=None, no
     
     # Send session to C-Client with cluster verification
     try:
-        # 获取用户的WebSocket连接以进行集群验证
+        # Get user's WebSocket connection for cluster verification
         websocket_connection = None
         if c_client_ws and hasattr(c_client_ws, 'user_connections'):
             user_connections = c_client_ws.user_connections.get(nmp_user_id, [])
             if user_connections:
-                websocket_connection = user_connections[0]  # 使用第一个连接
+                websocket_connection = user_connections[0]  # Use first connection
                 logger.info(f"Found WebSocket connection for user {nmp_user_id}")
                 
-                # 从连接中提取channel_id和node_id（如果参数中没有提供）
+                # Extract channel_id and node_id from connection (if not provided in parameters)
                 if not channel_id:
                     channel_id = getattr(websocket_connection, 'channel_id', None)
                     logger.info(f"Extracted channel_id from connection: {channel_id}")
@@ -409,7 +411,7 @@ def _handle_existing_cookie_check(nmp_user_id, nmp_username, channel_id=None, no
             else:
                 logger.warning(f"No WebSocket connection found for user {nmp_user_id}")
         
-        # 如果有WebSocket连接且有channel_id和node_id，使用send_session_if_appropriate进行集群验证
+        # If WebSocket connection and channel_id/node_id exist, use send_session_if_appropriate for cluster verification
         if websocket_connection and channel_id and node_id:
             logger.info(f"===== USING CLUSTER VERIFICATION FOR EXISTING COOKIE =====")
             logger.info(f"User ID: {nmp_user_id}")
@@ -419,7 +421,7 @@ def _handle_existing_cookie_check(nmp_user_id, nmp_username, channel_id=None, no
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
-            # 使用send_session_if_appropriate，它内部会进行集群验证
+            # Use send_session_if_appropriate, which performs cluster verification internally
             send_result = loop.run_until_complete(
                 c_client_ws.send_session_if_appropriate(nmp_user_id, websocket_connection, is_reregistration=False)
             )
@@ -433,8 +435,8 @@ def _handle_existing_cookie_check(nmp_user_id, nmp_username, channel_id=None, no
                 logger.warning(f"❌ Cluster verification failed or session send failed")
                 return _return_error_response('Cluster verification failed', 403)
         else:
-            # 没有WebSocket连接或没有channel_id/node_id，直接发送（不进行集群验证）
-            # 这种情况用于：新用户首次连接，或者单节点环境
+            # No WebSocket connection or no channel_id/node_id, send directly (no cluster verification)
+            # This case is for: new users' first connection, or single-node environment
             logger.info(f"No WebSocket connection or missing cluster info, sending session without cluster verification")
             logger.info(f"Reason: websocket_connection={bool(websocket_connection)}, channel_id={channel_id}, node_id={node_id}")
             

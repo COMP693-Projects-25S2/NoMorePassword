@@ -20,5 +20,18 @@
       "port": 9000,
       "description": "Custom production server"
     }
+  },
+  "nmp_cooperative_website": {
+    "current": "local",
+    "local": {
+      "name": "Local NSN",
+      "url": "http://localhost:5000",
+      "description": "Local development NSN website"
+    },
+    "production": {
+      "name": "Production NSN",
+      "url": "https://nsn.example.com",
+      "description": "Production NSN website"
+    }
   }
 }

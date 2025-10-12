@@ -8,7 +8,7 @@ import sys
 import os
 import asyncio
 
-# 导入日志系统
+# Import logging system
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from utils.logger import get_bclient_logger
 

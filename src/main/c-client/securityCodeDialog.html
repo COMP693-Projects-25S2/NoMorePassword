@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Code</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        .dialog-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            overflow: hidden;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .dialog-body {
+            padding: 32px 24px;
+        }
+
+        .dialog-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .dialog-icon {
+            font-size: 32px;
+            text-align: center;
+            margin-bottom: 12px;
+        }
+
+        .code-container {
+            background: #f7fafc;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+
+        .code-label {
+            font-size: 12px;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .security-code {
+            font-size: 24px;
+            font-weight: 600;
+            color: #667eea;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 2px;
+            user-select: text;
+            cursor: text;
+            padding: 8px;
+            background: white;
+            border-radius: 6px;
+            display: inline-block;
+        }
+
+        .copy-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-top: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            min-width: 140px;
+        }
+
+        .copy-button:hover {
+            background: #5568d3;
+        }
+
+        .copy-button:active {
+            background: #4a5ab8;
+        }
+
+        .copy-button.copied {
+            background: #48bb78;
+        }
+
+        .instruction-text {
+            font-size: 13px;
+            color: #4a5568;
+            line-height: 1.5;
+            text-align: center;
+            margin-top: 16px;
+            padding: 12px;
+            background: #edf2f7;
+            border-radius: 6px;
+        }
+
+        .dialog-footer {
+            padding: 0 24px 24px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .close-button {
+            background: #e2e8f0;
+            color: #4a5568;
+            border: none;
+            padding: 12px 32px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .close-button:hover {
+            background: #cbd5e0;
+        }
+
+        .close-button:active {
+            background: #b8c5d0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="dialog-container">
+        <div class="dialog-body">
+            <div class="dialog-icon">🔐</div>
+            <div class="dialog-title">Security Code for Another Device Login</div>
+
+            <div class="code-container">
+                <div class="code-label">Security Code</div>
+                <div class="security-code" id="securityCode">ABC123XY</div>
+                <button class="copy-button" id="copyBtn">
+                    <span id="copyIcon">📋</span>
+                    <span id="copyText">Copy Code</span>
+                </button>
+            </div>
+
+            <div class="instruction-text">
+                Please create user with this code as username in another device
+                and visit the cooperative website.
+            </div>
+        </div>
+
+        <div class="dialog-footer">
+            <button class="close-button" id="closeBtn">Close</button>
+        </div>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        const { clipboard } = require('electron');
+
+        // Get security code from query parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const securityCode = decodeURIComponent(urlParams.get('code') || 'ERROR');
+
+        // Update UI
+        document.getElementById('securityCode').textContent = securityCode;
+
+        // Handle copy button
+        const copyBtn = document.getElementById('copyBtn');
+        const copyIcon = document.getElementById('copyIcon');
+        const copyText = document.getElementById('copyText');
+
+        copyBtn.addEventListener('click', () => {
+            try {
+                clipboard.writeText(securityCode);
+
+                // Show success feedback
+                copyBtn.classList.add('copied');
+                copyIcon.textContent = '✅';
+                copyText.textContent = 'Copied!';
+
+                // Reset after 2 seconds
+                setTimeout(() => {
+                    copyBtn.classList.remove('copied');
+                    copyIcon.textContent = '📋';
+                    copyText.textContent = 'Copy Code';
+                }, 2000);
+
+                console.log('✅ Security code copied to clipboard');
+            } catch (error) {
+                console.error('Failed to copy to clipboard:', error);
+                alert('Failed to copy: ' + error.message);
+            }
+        });
+
+        // Handle close button
+        document.getElementById('closeBtn').addEventListener('click', () => {
+            window.close();
+        });
+
+        // Close on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                window.close();
+            }
+        });
+
+        // Auto-select code on click
+        document.getElementById('securityCode').addEventListener('click', function () {
+            const range = document.createRange();
+            range.selectNodeContents(this);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+        });
+    </script>
+</body>
+
+</html>

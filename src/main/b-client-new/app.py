@@ -1386,18 +1386,29 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
             logger.info(f"===== SESSION SEND ATTEMPT {attempt + 1}/{max_retries} =====")
             
             success_count = 0
-            feedback_received = {}
             successful_connections = []  # Track actually successful connections
             
-                # Set up feedback tracking
+            # Create feedback tracking dictionary BEFORE sending
+            # This ensures the dictionary exists when C-Client sends feedback
+            feedback_tracking = {conn: False for conn in connections}
+            
+            # Set up feedback tracking on ALL websocket objects BEFORE sending
             for websocket in connections:
-                feedback_received[websocket] = False
-                websocket._session_feedback_tracking = feedback_received
+                websocket._session_feedback_tracking = feedback_tracking
+            
+            logger.info(f"Feedback tracking pre-setup for {len(connections)} connections")
             
             # Send session data to all connections for this user
+            logger.info(f"===== STARTING FOR LOOP: {len(connections)} connections to process =====")
             for i, websocket in enumerate(connections):
+                logger.info(f"===== FOR LOOP ITERATION {i+1}/{len(connections)} =====")
                 try:
                         logger.info(f"Checking connection {i+1}/{len(connections)} (attempt {attempt + 1})")
+                        
+                        # Check if connection is being logged out
+                        if hasattr(websocket, '_logout_in_progress') and websocket._logout_in_progress:
+                            logger.warning(f"Connection {i+1} logout in progress, skipping session send")
+                            continue
                         
                         # Check if connection is still valid - prioritize our marker
                         if hasattr(websocket, '_closed_by_logout') and websocket._closed_by_logout:
@@ -1520,49 +1531,52 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                         # Don't print full traceback for connection errors
                         if "ConnectionClosed" not in str(e):
                             logger.error(f"Traceback: {traceback.format_exc()}")
-                
-                if success_count == 0:
-                    logger.error(f"Failed to send to any connections on attempt {attempt + 1}")
-                    continue
-                
-                # Wait for feedback - only wait for actually successful connections (already tracked above)
-                logger.info(f"Waiting for session feedback from {len(successful_connections)} successful connections...")
-                start_time = asyncio.get_event_loop().time()
-                timeout = 30  # 30 second timeout
-                
-                # Only track successfully sent connections
-                successful_feedback_received = {conn: False for conn in successful_connections}
-                
-                while asyncio.get_event_loop().time() - start_time < timeout:
-                    if all(successful_feedback_received.values()):
-                        logger.info(f"All session feedback received for user {user_id} on attempt {attempt + 1}")
-                        # Clean up feedback tracking
-                        for websocket in successful_connections:
-                            if hasattr(websocket, '_session_feedback_tracking'):
-                                delattr(websocket, '_session_feedback_tracking')
-                        
-                        logger.info(f"===== END SENDING SESSION: SUCCESS =====")
-                        return True
-                    
-                    await asyncio.sleep(0.5)
-                else:
-                    # Timeout
-                    missing_feedback = [ws for ws, received in successful_feedback_received.items() if not received]
-                    logger.warning(f"Session feedback timeout on attempt {attempt + 1}")
-                    logger.warning(f"   Missing feedback from {len(missing_feedback)} connections")
-                    
+            
+            logger.info(f"===== FOR LOOP COMPLETED: {success_count} successful sends out of {len(connections)} connections =====")
+            
+            if success_count == 0:
+                logger.error(f"Failed to send to any connections on attempt {attempt + 1}")
+                continue
+            
+            # Wait for feedback - only wait for actually successful connections (already tracked above)
+            logger.info(f"Waiting for session feedback from {len(successful_connections)} successful connections...")
+            start_time = asyncio.get_event_loop().time()
+            timeout = 5  # 5 second timeout (reduced from 30 for faster sync)
+            
+            # Wait for feedback from successfully sent connections only
+            while asyncio.get_event_loop().time() - start_time < timeout:
+                # Check feedback_tracking dictionary (shared with websocket objects)
+                successful_feedbacks = [feedback_tracking[conn] for conn in successful_connections]
+                if all(successful_feedbacks):
+                    logger.info(f"All session feedback received for user {user_id} on attempt {attempt + 1}")
                     # Clean up feedback tracking
                     for websocket in successful_connections:
                         if hasattr(websocket, '_session_feedback_tracking'):
                             delattr(websocket, '_session_feedback_tracking')
                     
-                    if attempt < max_retries - 1:
-                        logger.info(f"Retrying session send... ({attempt + 2}/{max_retries})")
-                        await asyncio.sleep(2)  # Wait 2 seconds before retry
-                        continue
-                    else:
-                        logger.error(f"Max retries reached, giving up")
-                        break
+                    logger.info(f"===== END SENDING SESSION: SUCCESS =====")
+                    return True
+                
+                await asyncio.sleep(0.5)
+            else:
+                # Timeout
+                missing_feedback = [conn for conn in successful_connections if not feedback_tracking[conn]]
+                logger.warning(f"Session feedback timeout on attempt {attempt + 1}")
+                logger.warning(f"   Missing feedback from {len(missing_feedback)} connections")
+                logger.warning(f"   Feedback status: {sum(feedback_tracking.values())} / {len(feedback_tracking)} received")
+                
+                # Clean up feedback tracking
+                for websocket in successful_connections:
+                    if hasattr(websocket, '_session_feedback_tracking'):
+                        delattr(websocket, '_session_feedback_tracking')
+                
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying session send... ({attempt + 2}/{max_retries})")
+                    await asyncio.sleep(2)  # Wait 2 seconds before retry
+                    continue
+                else:
+                    logger.error(f"Max retries reached, giving up")
+                    break
             
             logger.error(f"===== END SENDING SESSION: FAILED AFTER {max_retries} ATTEMPTS =====")
             return False
@@ -1611,6 +1625,61 @@ logger.info("Injecting SyncManager into WebSocket client...")
 import services.websocket_client as ws_module
 ws_module.sync_manager = sync_manager
 logger.info(f"SyncManager injected into websocket_client module")
+logger.info("=" * 80)
+
+# ===== Security Code Cleanup Task =====
+logger.info("=" * 80)
+logger.info("Setting up security code cleanup task...")
+
+def cleanup_old_security_codes():
+    """Clean up security codes older than 15 minutes"""
+    try:
+        from datetime import datetime, timedelta
+        from services.models import UserSecurityCode, db
+        
+        with app.app_context():
+            # Calculate cutoff time (15 minutes ago)
+            cutoff_time = datetime.utcnow() - timedelta(minutes=15)
+            
+            # Query old security codes
+            old_codes = UserSecurityCode.query.filter(
+                UserSecurityCode.create_time < cutoff_time
+            ).all()
+            
+            if old_codes:
+                logger.info(f"🧹 Cleaning up {len(old_codes)} old security codes...")
+                for code in old_codes:
+                    logger.info(f"🧹 Deleting security code for user {code.nmp_username} (created at {code.create_time})")
+                    db.session.delete(code)
+                
+                db.session.commit()
+                logger.info(f"✅ Successfully cleaned up {len(old_codes)} old security codes")
+            else:
+                logger.debug("✅ No old security codes to clean up")
+                
+    except Exception as e:
+        logger.error(f"❌ Error cleaning up old security codes: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+
+# Schedule cleanup task to run every 15 minutes
+import threading
+
+# Global variable to track cleanup timer
+cleanup_timer = None
+
+def schedule_cleanup_task():
+    """Schedule periodic cleanup task"""
+    global cleanup_timer
+    cleanup_old_security_codes()
+    # Schedule next cleanup in 15 minutes (900 seconds)
+    # Use daemon thread to allow clean shutdown
+    cleanup_timer = threading.Timer(900, schedule_cleanup_task)
+    cleanup_timer.daemon = True  # Set as daemon thread so it won't block shutdown
+    cleanup_timer.start()
+
+# Start the cleanup task
+schedule_cleanup_task()
+logger.info("✅ Security code cleanup task scheduled (runs every 15 minutes)")
 logger.info("=" * 80)
 
 

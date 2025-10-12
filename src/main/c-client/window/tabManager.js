@@ -209,7 +209,8 @@ class TabManager {
                 webPreferences: {
                     nodeIntegration: false,
                     contextIsolation: true,
-                    preload: path.join(__dirname, '../pages/preload.js')
+                    preload: path.join(__dirname, '../pages/preload.js'),
+                    webviewTag: true  // Enable webview tag for embedded page previews in history
                 }
             });
 
@@ -220,6 +221,9 @@ class TabManager {
             // Set metadata
             browserView.tabId = id;
             browserView.tabManager = this;
+
+            // Setup title listeners BEFORE loading URL to catch all events
+            this.setupTitleListeners(browserView, id);
 
             // Load URL
             if (url.startsWith('browser://history')) {
@@ -241,9 +245,6 @@ class TabManager {
                     throw loadError;
                 }
             }
-
-            // Setup title listeners
-            this.setupTitleListeners(browserView, id);
 
             // Add to main window
             const electronMainWindow = this.getElectronMainWindow();
@@ -384,9 +385,114 @@ class TabManager {
                 console.log(`🎯 TabManager: did-navigate-in-page event for tab ${id}`);
                 sendTitle();
             });
-            browserView.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+            browserView.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+                // Only show error for main frame load failures
+                if (!isMainFrame) {
+                    return;
+                }
+
                 console.error(`❌ TabManager: did-fail-load event for tab ${id}:`, errorCode, errorDescription, validatedURL);
-                this.updateTabTitle(id, `Failed to load: ${errorDescription}`);
+
+                // Provide user-friendly error messages
+                let userMessage = '';
+                if (errorCode === -102) {
+                    // ERR_CONNECTION_REFUSED
+                    const urlObj = new URL(validatedURL);
+                    const hostname = urlObj.hostname;
+                    const port = urlObj.port || (urlObj.protocol === 'https:' ? '443' : '80');
+
+                    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+                        userMessage = `Cannot connect to local server (${hostname}:${port}). Please make sure the server is running.`;
+                    } else {
+                        userMessage = `Connection refused: ${hostname}:${port} is not reachable.`;
+                    }
+                } else if (errorCode === -105) {
+                    // ERR_NAME_NOT_RESOLVED
+                    userMessage = `Cannot find server: The domain name could not be resolved.`;
+                } else if (errorCode === -106) {
+                    // ERR_INTERNET_DISCONNECTED
+                    userMessage = `No internet connection. Please check your network.`;
+                } else if (errorCode === -501) {
+                    // ERR_INSECURE_RESPONSE
+                    userMessage = `Connection is not secure. SSL/TLS certificate error.`;
+                } else {
+                    userMessage = `Failed to load: ${errorDescription}`;
+                }
+
+                this.updateTabTitle(id, userMessage);
+
+                // Show user-friendly error page in the browser view
+                const errorHtml = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="UTF-8">
+                        <style>
+                            body {
+                                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                                display: flex;
+                                justify-content: center;
+                                align-items: center;
+                                min-height: 100vh;
+                                margin: 0;
+                                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            }
+                            .error-container {
+                                background: white;
+                                border-radius: 12px;
+                                padding: 40px;
+                                max-width: 500px;
+                                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+                                text-align: center;
+                            }
+                            .error-icon {
+                                font-size: 64px;
+                                margin-bottom: 20px;
+                            }
+                            .error-title {
+                                font-size: 24px;
+                                font-weight: 600;
+                                color: #2d3748;
+                                margin-bottom: 16px;
+                            }
+                            .error-message {
+                                font-size: 16px;
+                                color: #4a5568;
+                                line-height: 1.6;
+                                margin-bottom: 24px;
+                            }
+                            .error-url {
+                                background: #f7fafc;
+                                border: 2px solid #e2e8f0;
+                                border-radius: 8px;
+                                padding: 12px;
+                                font-family: 'Courier New', monospace;
+                                font-size: 14px;
+                                color: #667eea;
+                                word-break: break-all;
+                                margin-bottom: 24px;
+                            }
+                            .error-hint {
+                                font-size: 14px;
+                                color: #718096;
+                                font-style: italic;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="error-container">
+                            <div class="error-icon">🚫</div>
+                            <div class="error-title">Unable to Load Page</div>
+                            <div class="error-message">${userMessage}</div>
+                            <div class="error-url">${validatedURL}</div>
+                            <div class="error-hint">Error Code: ${errorCode} (${errorDescription})</div>
+                        </div>
+                    </body>
+                    </html>
+                `;
+
+                // Load error page
+                browserView.webContents.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
             });
         }
 
@@ -1419,12 +1525,32 @@ class TabManager {
             const currentUrl = browserView.webContents.getURL();
             const title = browserView.webContents.getTitle();
 
-            // Show full URL with NMP parameters in address bar
-            const fullUrl = currentUrl || tabData.url || '';
+            // Clean URL for address bar display (remove NMP parameters)
+            let displayUrl = currentUrl || tabData.url || '';
+            try {
+                const urlObj = new URL(displayUrl);
+                // Remove NMP parameters for cleaner address bar display
+                urlObj.searchParams.delete('nmp_user_id');
+                urlObj.searchParams.delete('nmp_username');
+                urlObj.searchParams.delete('nmp_client_type');
+                urlObj.searchParams.delete('nmp_timestamp');
+                urlObj.searchParams.delete('nmp_injected');
+                urlObj.searchParams.delete('nmp_client_id');
+                urlObj.searchParams.delete('nmp_node_id');
+                urlObj.searchParams.delete('nmp_domain_id');
+                urlObj.searchParams.delete('nmp_cluster_id');
+                urlObj.searchParams.delete('nmp_channel_id');
+
+                // If no other parameters remain, show clean URL without '?'
+                displayUrl = urlObj.searchParams.toString() ? urlObj.toString() : `${urlObj.origin}${urlObj.pathname}`;
+            } catch (error) {
+                // If URL parsing fails, use original URL
+                console.warn(`⚠️ TabManager: Failed to clean URL for tab ${id}:`, error);
+            }
 
             return {
                 id: id,
-                url: fullUrl, // Show full URL with NMP parameters in address bar
+                url: displayUrl, // Show clean URL without NMP parameters in address bar
                 title: title || tabData.title || 'Loading...',
                 isActive: this.currentTabId === id
             };

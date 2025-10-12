@@ -16,71 +16,79 @@ class BClientLogger:
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(exist_ok=True)
         
-        # 生成日志文件名（模块_启动日期_时间）
+        # Generate log filename (module_startup_date_time)
         start_time = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.start_time = start_time
         
-        # 日志文件路径
+        # Log file paths
         self.main_log_file = self.log_dir / f"bclient_main_{start_time}.log"
         self.websocket_log_file = self.log_dir / f"bclient_websocket_{start_time}.log"
         self.nodemanager_log_file = self.log_dir / f"bclient_nodemanager_{start_time}.log"
-        self.sync_log_file = self.log_dir / f"bclient_sync_{start_time}.log"  # 统一的sync日志文件
-        self.sync_manager_log_file = self.log_dir / f"bclient_sync_{start_time}.log"  # 重定向到sync文件
+        self.sync_log_file = self.log_dir / f"bclient_sync_{start_time}.log"  # Unified sync log file
+        self.sync_manager_log_file = self.log_dir / f"bclient_sync_{start_time}.log"  # Redirect to sync file
         self.routes_log_file = self.log_dir / f"bclient_routes_{start_time}.log"
         self.app_log_file = self.log_dir / f"bclient_app_{start_time}.log"
         self.cluster_verification_log_file = self.log_dir / f"bclient_cluster_verification_{start_time}.log"
+        self.security_code_log_file = self.log_dir / f"bclient_security_code_{start_time}.log"
         
-        # 初始化各个模块的logger
+        # Initialize loggers for each module
         self._setup_loggers()
     
     def _setup_loggers(self):
         """设置各个模块的logger"""
-        # 主应用logger
+        # Main application logger
         self.main_logger = self._create_logger(
             'bclient_main',
             self.main_log_file,
             level=logging.INFO
         )
         
-        # WebSocket模块logger
+        # WebSocket module logger
         self.websocket_logger = self._create_logger(
             'bclient_websocket',
             self.websocket_log_file,
             level=logging.INFO
         )
         
-        # NodeManager模块logger
+        # NodeManager module logger
         self.nodemanager_logger = self._create_logger(
             'bclient_nodemanager',
             self.nodemanager_log_file,
             level=logging.INFO
         )
         
-        # SyncManager模块logger
+        # SyncManager module logger
         self.sync_manager_logger = self._create_logger(
             'bclient_sync_manager',
             self.sync_manager_log_file,
             level=logging.INFO
         )
         
-        # Routes模块logger
+        # Routes module logger
         self.routes_logger = self._create_logger(
             'bclient_routes',
             self.routes_log_file,
             level=logging.INFO
         )
         
-        # App模块logger
+        # App module logger
         self.app_logger = self._create_logger(
             'bclient_app',
             self.app_log_file,
             level=logging.INFO
         )
         
-        # Cluster Verification模块logger
+        # Cluster Verification module logger
         self.cluster_verification_logger = self._create_logger(
             'bclient_cluster_verification',
             self.cluster_verification_log_file,
+            level=logging.INFO
+        )
+        
+        # Security Code module logger
+        self.security_code_logger = self._create_logger(
+            'bclient_security_code',
+            self.security_code_log_file,
             level=logging.INFO
         )
     
@@ -89,11 +97,11 @@ class BClientLogger:
         logger = logging.getLogger(name)
         logger.setLevel(level)
         
-        # 避免重复添加handler
+        # Avoid adding duplicate handlers
         if logger.handlers:
             return logger
         
-        # 文件handler - 使用RotatingFileHandler防止日志文件过大
+        # File handler - use RotatingFileHandler to prevent log files from getting too large
         file_handler = logging.handlers.RotatingFileHandler(
             log_file,
             maxBytes=10*1024*1024,  # 10MB
@@ -102,11 +110,11 @@ class BClientLogger:
         )
         file_handler.setLevel(level)
         
-        # 控制台handler - 只显示重要信息
+        # Console handler - only show important info
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(logging.WARNING)  # 只显示WARNING及以上级别
+        console_handler.setLevel(logging.WARNING)  # Only show WARNING and above levels
         
-        # 日志格式
+        # Log format
         formatter = logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
@@ -129,7 +137,8 @@ class BClientLogger:
             'routes': self.routes_logger,
             'app': self.app_logger,
             'main': self.main_logger,
-            'cluster_verification': self.cluster_verification_logger
+            'cluster_verification': self.cluster_verification_logger,
+            'security_code': self.security_code_logger
         }
         return module_map.get(module_name, self.main_logger)
     
@@ -145,16 +154,17 @@ class BClientLogger:
         self.main_logger.info(f"  Routes: {self.routes_log_file}")
         self.main_logger.info(f"  App: {self.app_log_file}")
         self.main_logger.info(f"  Cluster Verification: {self.cluster_verification_log_file}")
+        self.main_logger.info(f"  Security Code: {self.security_code_log_file}")
         self.main_logger.info("=" * 60)
 
-# 全局logger实例
+# Global logger instance
 bclient_logger = BClientLogger()
 
 def get_bclient_logger(module_name):
     """获取B端模块logger的便捷函数"""
     return bclient_logger.get_logger(module_name)
 
-# 重写print函数，将print输出也记录到日志
+# Override print function to also log print output
 class PrintToLogger:
     """将print输出重定向到日志"""
     
@@ -163,15 +173,15 @@ class PrintToLogger:
         self.original_print = print
     
     def __call__(self, *args, **kwargs):
-        # 调用原始print
+        # Call original print
         self.original_print(*args, **kwargs)
         
-        # 将输出也记录到日志
+        # Also log output to file
         message = ' '.join(str(arg) for arg in args)
-        if message.strip():  # 只记录非空消息
+        if message.strip():  # Only log non-empty messages
             self.logger.info(message)
 
-# 替换print函数
+# Replace print function
 def setup_print_redirect(module_name):
     """设置print重定向到日志"""
     logger = get_bclient_logger(module_name)

@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from uuid import uuid4
 
-# 导入日志系统
+# Import logging system
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -47,7 +47,7 @@ class SyncManager:
         try:
             batch_id = batch_data.get('batch_id')
             user_id = batch_data.get('user_id')
-            # 只支持新的数据格式：sync_data
+            # Only support new data format: sync_data
             activities = batch_data.get('sync_data', [])
             batch_timestamp = batch_data.get('timestamp', 'N/A')
             
@@ -218,7 +218,7 @@ class SyncManager:
                 if conn.user_id != user_id and conn.websocket:  # Exclude sender
                     self.logger.info(f"📤 [SyncManager] Forwarding to node {i+1}: {conn.user_id} (node_id: {conn.node_id})")
                     try:
-                        # 直接转发batch_data（已经是新格式）
+                        # Directly forward batch_data (already in new format)
                         await self._send_to_node(conn.websocket, batch_data)
                         forwarded_count += 1
                         self.logger.info(f"✅ [SyncManager] Successfully forwarded to node {conn.user_id}")
@@ -262,7 +262,7 @@ class SyncManager:
             self.logger.info(f"📋 [SyncManager] Sync data type: {type(sync_data)}")
             self.logger.info(f"📋 [SyncManager] Sync data length: {len(sync_data) if sync_data else 0}")
             
-            # 转发时保持相同的格式：{user_id, batch_id, sync_data: [activities]}
+            # Keep same format when forwarding: {user_id, batch_id, sync_data: [activities]}
             forward_data = {
                 'user_id': user_id,
                 'batch_id': batch_id,

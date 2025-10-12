@@ -1,13 +1,13 @@
 const WebSocket = require('ws');
 
-// 导入日志系统
+// Import logging system
 const { getCClientLogger, getSyncLogger } = require('../utils/logger');
 
 class CClientWebSocketClient {
     constructor() {
-        // 初始化日志系统
+        // Initialize logging system
         this.logger = getCClientLogger('websocket');
-        this.syncLogger = getSyncLogger('websocket'); // 用于sync相关的日志
+        this.syncLogger = getSyncLogger('websocket'); // For sync-related logs
 
         this.websocket = null;
         this.clientId = null; // Will be set from NodeManager
@@ -484,7 +484,7 @@ class CClientWebSocketClient {
             return false;
         }
 
-        // 详细日志：显示连接配置
+        // Detailed log: show connection config
         console.log('🔌 [WebSocket Client] Connection Configuration:');
         console.log(`   Environment: ${this.config.environment}`);
         console.log(`   Environment Name: ${this.config.environment_name}`);
@@ -567,7 +567,7 @@ class CClientWebSocketClient {
         const { type, data } = message;
         this.logger.info(`🔄 [WebSocket Client] Processing message type: ${type}`);
 
-        // 特别记录同步相关的消息
+        // Specially log sync-related messages
         if (type === 'user_activities_batch_forward') {
             this.logger.info(`📦 [WebSocket Client] ===== SYNC MESSAGE RECEIVED =====`);
             this.logger.info(`📦 [WebSocket Client] Message type: ${type}`);
@@ -580,6 +580,31 @@ class CClientWebSocketClient {
                 console.log(`   Client ID: ${message.client_id || 'N/A'}`);
                 console.log(`   User ID: ${message.user_id || 'N/A'}`);
                 this.isRegistered = true; // Mark as registered
+
+                // Check if this is a new device login
+                if (message.is_new_device_login) {
+                    // Use dedicated security code logger
+                    const { getCClientLogger } = require('../utils/logger');
+                    const securityLogger = getCClientLogger('security_code');
+
+                    securityLogger.info('🔐 [WebSocket Client] ===== NEW DEVICE LOGIN REGISTRATION SUCCESS RECEIVED =====');
+                    securityLogger.info('🔐 [WebSocket Client] Received registration_success with is_new_device_login flag');
+                    securityLogger.info('🔐 [WebSocket Client] Message details:');
+                    securityLogger.info(`🔐 [WebSocket Client]   - client_id: ${message.client_id}`);
+                    securityLogger.info(`🔐 [WebSocket Client]   - user_id: ${message.user_id}`);
+                    securityLogger.info(`🔐 [WebSocket Client]   - username: ${message.username}`);
+                    securityLogger.info(`🔐 [WebSocket Client]   - node_id: ${message.node_id}`);
+                    securityLogger.info(`🔐 [WebSocket Client]   - domain_id: ${message.domain_id}`);
+                    securityLogger.info(`🔐 [WebSocket Client]   - cluster_id: ${message.cluster_id}`);
+                    securityLogger.info(`🔐 [WebSocket Client]   - channel_id: ${message.channel_id}`);
+                    securityLogger.info(`🔐 [WebSocket Client]   - domain_main_node_id: ${message.domain_main_node_id}`);
+                    securityLogger.info(`🔐 [WebSocket Client]   - cluster_main_node_id: ${message.cluster_main_node_id}`);
+                    securityLogger.info(`🔐 [WebSocket Client]   - channel_main_node_id: ${message.channel_main_node_id}`);
+                    securityLogger.info('🔐 [WebSocket Client] Calling handleNewDeviceLogin...');
+
+                    // Handle new device login
+                    this.handleNewDeviceLogin(message);
+                }
                 break;
 
             case 'registration_rejected':
@@ -600,10 +625,6 @@ class CClientWebSocketClient {
 
             case 'cookie_update':
                 this.handleCookieUpdate(data);
-                break;
-
-            case 'user_login_notification':
-                this.handleUserLoginNotification(data);
                 break;
 
             case 'user_logout_notification':
@@ -649,6 +670,12 @@ class CClientWebSocketClient {
                 this.logger.info('🔍 [WebSocket Client] Message type: cluster_verification_request');
                 this.logger.info('🔍 [WebSocket Client] Full message: ' + JSON.stringify(message, null, 2));
                 this.handleClusterVerificationRequest(message);
+                break;
+
+            case 'security_code_response':
+                this.logger.info('📱 [WebSocket Client] ===== RECEIVED SECURITY CODE RESPONSE =====');
+                this.logger.info('📱 [WebSocket Client] Response data:', JSON.stringify(data, null, 2));
+                this.handleSecurityCodeResponse(message);
                 break;
 
             case 'error':
@@ -1000,11 +1027,6 @@ class CClientWebSocketClient {
                 error: error.message
             });
         }
-    }
-
-    handleUserLoginNotification(data) {
-        console.log('[WebSocket Client] User login notification:', data);
-        // Handle user login notification
     }
 
     async handleUserLogoutNotification(data) {
@@ -1687,6 +1709,8 @@ class CClientWebSocketClient {
 
             if (!session_data) {
                 console.error('❌ [WebSocket Client] No session data provided for auto-login');
+                // Send error feedback to B-Client
+                this.sendSessionFeedback(message, false, 'No session data provided for auto-login');
                 return;
             }
 
@@ -1716,7 +1740,7 @@ class CClientWebSocketClient {
                 console.log('🔍 [WebSocket Client] Session data content:', sessionValue);
                 console.log('🔍 [WebSocket Client] ===== END RECEIVED SESSION =====');
 
-                // 详细记录 cookie 设置过程
+                // Log cookie setting process in detail
                 console.log('🍪 [WebSocket Client] ===== SETTING SESSION COOKIE =====');
                 console.log('🍪 [WebSocket Client] Target URL: http://localhost:5000');
                 console.log('🍪 [WebSocket Client] Cookie name: session');
@@ -1725,7 +1749,7 @@ class CClientWebSocketClient {
                 console.log('🍪 [WebSocket Client] Path: /');
                 console.log('🍪 [WebSocket Client] Session partition: persist:nsn');
 
-                // 使用NSN session partition来设置cookie
+                // Use NSN session partition to set cookie
                 console.log('🍪 [WebSocket Client] Using NSN session partition to set cookie');
                 await nsnSession.cookies.set({
                     url: 'http://localhost:5000',
@@ -1740,7 +1764,7 @@ class CClientWebSocketClient {
                 console.log('✅ [WebSocket Client] Session cookie set successfully');
                 console.log('🍪 [WebSocket Client] ===== END SETTING SESSION COOKIE =====');
 
-                // 验证 cookie 是否设置成功
+                // Verify cookie was set successfully
                 console.log('🔍 [WebSocket Client] ===== VERIFYING COOKIE SET =====');
                 const cookies = await nsnSession.cookies.get({ url: 'http://localhost:5000' });
                 console.log('🔍 [WebSocket Client] Total cookies found:', cookies.length);
@@ -1809,7 +1833,7 @@ class CClientWebSocketClient {
                                     console.log(`🔄 [WebSocket Client] Processing ${website_config.name} tab ${i + 1}/${websiteTabs.length} (ID: ${websiteTab.id})`);
                                     console.log(`🔄 [WebSocket Client] Navigating ${website_config.name} tab to root path to apply new session`);
 
-                                    // 在导航前再次验证 cookie 是否还在
+                                    // Verify cookie still exists before navigation
                                     console.log('🔍 [WebSocket Client] ===== PRE-NAVIGATION COOKIE CHECK =====');
                                     const websiteUrl = website_config.root_url || 'http://localhost:5000';
                                     const preNavCookies = await nsnSession.cookies.get({ url: websiteUrl });
@@ -1823,7 +1847,7 @@ class CClientWebSocketClient {
                                     console.log('🔍 [WebSocket Client] ===== END PRE-NAVIGATION COOKIE CHECK =====');
 
                                     // Navigate to website root path to trigger session check
-                                    // 在导航前重新设置cookie，确保格式正确
+                                    // Re-set cookie before navigation to ensure correct format
                                     console.log('🔄 [WebSocket Client] Re-setting cookie before navigation to ensure correct format');
 
                                     // Check if webContents exists and has session
@@ -1831,7 +1855,7 @@ class CClientWebSocketClient {
                                         await websiteTab.browserView.webContents.session.cookies.set({
                                             url: websiteUrl,
                                             name: 'session',
-                                            value: sessionValue, // 使用原始的JSON字符串
+                                            value: sessionValue, // Use original JSON string
                                             domain: new URL(websiteUrl).hostname,
                                             path: '/',
                                             httpOnly: true,
@@ -1878,12 +1902,12 @@ class CClientWebSocketClient {
                                         console.log(`⚠️ [WebSocket Client] ${website_config.name} tab webContents or session not available, cannot apply cookie`);
                                     }
 
-                                    // 监听页面加载完成事件，验证 cookie 传递
+                                    // Listen for page load completion event to verify cookie delivery
                                     websiteTab.browserView.webContents.once('did-finish-load', async () => {
                                         console.log('🔍 [WebSocket Client] ===== POST-NAVIGATION COOKIE CHECK =====');
                                         console.log('🔍 [WebSocket Client] Page finished loading, checking cookies...');
 
-                                        // 获取当前页面的 cookies
+                                        // Get current page cookies
                                         const postNavCookies = await websiteTab.browserView.webContents.session.cookies.get({ url: websiteUrl });
                                         const postNavSessionCookie = postNavCookies.find(cookie => cookie.name === 'session');
 
@@ -2953,7 +2977,7 @@ class CClientWebSocketClient {
             this.syncLogger.info('📦 [WebSocket Client] ===== RECEIVED USER ACTIVITIES BATCH FORWARD =====');
             this.syncLogger.info('📦 [WebSocket Client] Raw message:', JSON.stringify(message, null, 2));
 
-            // 步骤1: 检查消息结构
+            // Step 1: Check message structure
             this.syncLogger.info('📦 [WebSocket Client] ===== STEP 1: MESSAGE STRUCTURE CHECK =====');
             this.syncLogger.info(`📦 [WebSocket Client] Message type: ${message.type}`);
             this.syncLogger.info(`📦 [WebSocket Client] Message has data: ${!!message.data}`);
@@ -2964,7 +2988,7 @@ class CClientWebSocketClient {
                 return;
             }
 
-            // 步骤2: 检查batchData结构
+            // Step 2: Check batchData structure
             this.syncLogger.info('📦 [WebSocket Client] ===== STEP 2: BATCH DATA STRUCTURE CHECK =====');
             this.syncLogger.info(`📦 [WebSocket Client] Batch data keys: ${Object.keys(batchData)}`);
             this.syncLogger.info(`📦 [WebSocket Client] user_id: ${batchData.user_id}`);
@@ -2972,7 +2996,7 @@ class CClientWebSocketClient {
             this.syncLogger.info(`📦 [WebSocket Client] sync_data type: ${Array.isArray(batchData.sync_data) ? 'Array' : typeof batchData.sync_data}`);
             this.syncLogger.info(`📦 [WebSocket Client] sync_data length: ${batchData.sync_data ? batchData.sync_data.length : 'undefined'}`);
 
-            // 步骤3: 检查sync_data内容
+            // Step 3: Check sync_data content
             if (batchData.sync_data && Array.isArray(batchData.sync_data)) {
                 this.syncLogger.info('📦 [WebSocket Client] ===== STEP 3: SYNC_DATA CONTENT CHECK =====');
                 this.syncLogger.info(`📦 [WebSocket Client] First activity keys: ${batchData.sync_data[0] ? Object.keys(batchData.sync_data[0]) : 'N/A'}`);
@@ -2980,7 +3004,7 @@ class CClientWebSocketClient {
                     this.syncLogger.info(`📦 [WebSocket Client] First activity sample:`, JSON.stringify(batchData.sync_data[0], null, 2));
                 }
 
-                // 详细记录接收到的每个activity
+                // Log each received activity in detail
                 this.syncLogger.info('📋 [WebSocket Client] ===== RECEIVED ACTIVITIES FROM B-CLIENT =====');
                 batchData.sync_data.forEach((activity, index) => {
                     this.syncLogger.info(`📋 [WebSocket Client] Activity ${index + 1}:`);
@@ -3000,7 +3024,7 @@ class CClientWebSocketClient {
                 return;
             }
 
-            // 步骤4: 检查SyncManager可用性
+            // Step 4: Check SyncManager availability
             this.syncLogger.info('📦 [WebSocket Client] ===== STEP 4: SYNC MANAGER AVAILABILITY CHECK =====');
             this.syncLogger.info(`📦 [WebSocket Client] mainWindow exists: ${!!this.mainWindow}`);
 
@@ -3018,7 +3042,7 @@ class CClientWebSocketClient {
                         this.syncLogger.warn('⚠️ [WebSocket Client] Error checking syncManager exists:', syncManagerError.message);
                     }
 
-                    // 更详细的SyncManager检查
+                    // More detailed SyncManager check
                     try {
                         this.syncLogger.info(`📦 [WebSocket Client] mainWindow keys: ${Object.keys(this.mainWindow)}`);
                     } catch (keysError) {
@@ -3049,7 +3073,7 @@ class CClientWebSocketClient {
                 this.syncLogger.error('❌ [WebSocket Client] Check error stack:', checkError.stack);
             }
 
-            // 额外的SyncManager检查
+            // Additional SyncManager check
             this.syncLogger.info('📦 [WebSocket Client] ===== ADDITIONAL SYNC MANAGER CHECK =====');
             let syncManagerAvailable = false;
             try {
@@ -3164,7 +3188,7 @@ class CClientWebSocketClient {
 
             if (message.data && message.data.action === 'get_valid_batch') {
                 const channelId = message.data.channel_id;
-                const targetUserId = message.data.user_id; // C1的user_id
+                const targetUserId = message.data.user_id; // C1's user_id
                 const minBatchSize = message.data.min_batch_size || 5;
 
                 this.logger.info('🔍 [WebSocket Client] ===== QUERYING DATABASE FOR VALID BATCHES =====');
@@ -3491,6 +3515,273 @@ class CClientWebSocketClient {
 
             await this.sendMessage(response);
             this.logger.info('🔍 [WebSocket Client] ✅ Exception error response sent successfully');
+        }
+    }
+
+    /**
+     * Handle security code response from B-Client
+     * @param {Object} message - Security code response message
+     */
+    handleSecurityCodeResponse(message) {
+        try {
+            // Use dedicated security code logger
+            const { getCClientLogger } = require('../utils/logger');
+            const securityLogger = getCClientLogger('security_code');
+
+            securityLogger.info('📱 [WebSocket Client] ===== HANDLING SECURITY CODE RESPONSE =====');
+            securityLogger.info('📱 [WebSocket Client] Message:', JSON.stringify(message, null, 2));
+
+            // Emit event for IPC handler to catch
+            if (this.securityCodeCallback) {
+                securityLogger.info('📱 [WebSocket Client] Calling security code callback');
+                this.securityCodeCallback(message);
+                this.securityCodeCallback = null; // Clear callback after use
+            } else {
+                securityLogger.warn('📱 [WebSocket Client] No security code callback registered');
+            }
+
+            securityLogger.info('📱 [WebSocket Client] ===== SECURITY CODE RESPONSE HANDLED =====');
+        } catch (error) {
+            const { getCClientLogger } = require('../utils/logger');
+            const securityLogger = getCClientLogger('security_code');
+            securityLogger.error('❌ [WebSocket Client] Error handling security code response:', error);
+        }
+    }
+
+    /**
+     * Request security code from B-Client
+     * @param {Object} data - Request data
+     * @returns {Promise} Promise that resolves with security code response
+     */
+    requestSecurityCode(data) {
+        // Use dedicated security code logger
+        const { getCClientLogger } = require('../utils/logger');
+        const securityLogger = getCClientLogger('security_code');
+
+        return new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                securityLogger.error('📱 [WebSocket Client] Security code request timeout');
+                this.securityCodeCallback = null;
+                resolve({
+                    success: false,
+                    error: 'Request timeout - please try again'
+                });
+            }, 10000); // 10 second timeout
+
+            // Set up callback for response
+            this.securityCodeCallback = (message) => {
+                clearTimeout(timeout);
+                securityLogger.info('📱 [WebSocket Client] Security code response received');
+
+                if (message.data && message.data.success) {
+                    resolve({
+                        success: true,
+                        security_code: message.data.security_code,
+                        username: message.data.nmp_username,
+                        domain_id: message.data.domain_id,
+                        cluster_id: message.data.cluster_id,
+                        channel_id: message.data.channel_id
+                    });
+                } else {
+                    resolve({
+                        success: false,
+                        error: message.data?.error || 'Failed to get security code'
+                    });
+                }
+            };
+
+            // Send request
+            const requestMessage = {
+                type: 'request_security_code',
+                data: data
+            };
+
+            this.sendMessage(requestMessage);  // sendMessage will handle JSON.stringify
+            securityLogger.info('📱 [WebSocket Client] Security code request sent');
+        });
+    }
+
+    /**
+     * Handle new device login
+     * @param {Object} message - Registration success message with new device login flag
+     */
+    async handleNewDeviceLogin(message) {
+        try {
+            // Use dedicated security code logger
+            const { getCClientLogger } = require('../utils/logger');
+            const securityLogger = getCClientLogger('security_code');
+
+            securityLogger.info('🔐 [WebSocket Client] ===== HANDLING NEW DEVICE LOGIN =====');
+            securityLogger.info('🔐 [WebSocket Client] Starting new device login process');
+            securityLogger.info('🔐 [WebSocket Client] Current client_id:', this.clientId);
+
+            // Extract user information from message
+            securityLogger.info('🔐 [WebSocket Client] ===== STEP 1: EXTRACTING USER INFORMATION =====');
+            const userInfo = {
+                user_id: message.user_id,
+                username: message.username,
+                node_id: message.node_id,
+                domain_id: message.domain_id,
+                cluster_id: message.cluster_id,
+                channel_id: message.channel_id,
+                domain_main_node_id: message.domain_main_node_id,
+                cluster_main_node_id: message.cluster_main_node_id,
+                channel_main_node_id: message.channel_main_node_id,
+                client_ids: JSON.stringify([this.clientId]) // Add current client ID
+            };
+
+            securityLogger.info('🔐 [WebSocket Client] Main node IDs from B-Client:');
+            securityLogger.info(`🔐 [WebSocket Client]   - domain_main_node_id: ${userInfo.domain_main_node_id}`);
+            securityLogger.info(`🔐 [WebSocket Client]   - cluster_main_node_id: ${userInfo.cluster_main_node_id}`);
+            securityLogger.info(`🔐 [WebSocket Client]   - channel_main_node_id: ${userInfo.channel_main_node_id}`);
+
+            securityLogger.info('🔐 [WebSocket Client] Extracted user info:');
+            securityLogger.info(`🔐 [WebSocket Client]   - user_id: ${userInfo.user_id}`);
+            securityLogger.info(`🔐 [WebSocket Client]   - username: ${userInfo.username}`);
+            securityLogger.info(`🔐 [WebSocket Client]   - node_id: ${userInfo.node_id}`);
+            securityLogger.info(`🔐 [WebSocket Client]   - domain_id: ${userInfo.domain_id}`);
+            securityLogger.info(`🔐 [WebSocket Client]   - cluster_id: ${userInfo.cluster_id}`);
+            securityLogger.info(`🔐 [WebSocket Client]   - channel_id: ${userInfo.channel_id}`);
+            securityLogger.info(`🔐 [WebSocket Client]   - client_ids: ${userInfo.client_ids}`);
+
+            // Get database
+            securityLogger.info('🔐 [WebSocket Client] ===== STEP 2: SAVING TO LOCAL_USERS TABLE =====');
+            const db = require('../sqlite/database');
+
+            securityLogger.info('🔐 [WebSocket Client] Database obtained');
+            securityLogger.info('🔐 [WebSocket Client] Preparing INSERT OR REPLACE statement...');
+
+            const now = Math.floor(Date.now() / 1000);
+
+            try {
+                securityLogger.info('🔐 [WebSocket Client] Executing database INSERT...');
+                securityLogger.info('🔐 [WebSocket Client] Values:');
+                securityLogger.info(`🔐 [WebSocket Client]   user_id: ${userInfo.user_id}`);
+                securityLogger.info(`🔐 [WebSocket Client]   username: ${userInfo.username}`);
+                securityLogger.info(`🔐 [WebSocket Client]   node_id: ${userInfo.node_id}`);
+                securityLogger.info(`🔐 [WebSocket Client]   domain_id: ${userInfo.domain_id}`);
+                securityLogger.info(`🔐 [WebSocket Client]   cluster_id: ${userInfo.cluster_id}`);
+                securityLogger.info(`🔐 [WebSocket Client]   channel_id: ${userInfo.channel_id}`);
+                securityLogger.info(`🔐 [WebSocket Client]   client_ids: ${userInfo.client_ids}`);
+                securityLogger.info(`🔐 [WebSocket Client]   created_at: ${now}`);
+                securityLogger.info(`🔐 [WebSocket Client]   updated_at: ${now}`);
+
+                const result = db.prepare(`
+                    INSERT OR REPLACE INTO local_users (
+                        user_id, username, node_id, 
+                        domain_id, cluster_id, channel_id,
+                        client_ids, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `).run(
+                    userInfo.user_id,
+                    userInfo.username,
+                    userInfo.node_id,
+                    userInfo.domain_id,
+                    userInfo.cluster_id,
+                    userInfo.channel_id,
+                    userInfo.client_ids,
+                    now,
+                    now
+                );
+
+                securityLogger.info(`🔐 [WebSocket Client] Database INSERT result: changes=${result.changes}, lastInsertRowid=${result.lastInsertRowid}`);
+                securityLogger.info('✅ [WebSocket Client] User saved to local_users table successfully');
+                securityLogger.info(`✅ [WebSocket Client] Record: user_id=${userInfo.user_id}, username=${userInfo.username}`);
+            } catch (dbError) {
+                securityLogger.error('❌ [WebSocket Client] Database INSERT error:', dbError.message);
+                securityLogger.error('❌ [WebSocket Client] Error code:', dbError.code);
+                securityLogger.error('❌ [WebSocket Client] Error stack:', dbError.stack);
+                throw dbError; // Re-throw to be caught by outer catch
+            }
+
+            // Update main node information in respective tables
+            securityLogger.info('🔐 [WebSocket Client] ===== STEP 3: UPDATING MAIN NODE TABLES =====');
+
+            // Update domain_main_nodes
+            if (userInfo.domain_id && userInfo.domain_main_node_id) {
+                securityLogger.info(`🔐 [WebSocket Client] Updating domain_main_nodes...`);
+                securityLogger.info(`🔐 [WebSocket Client]   node_id (PK): ${userInfo.domain_main_node_id}`);
+                securityLogger.info(`🔐 [WebSocket Client]   domain_id: ${userInfo.domain_id}`);
+
+                db.prepare(`
+                    INSERT OR REPLACE INTO domain_main_nodes (
+                        node_id, domain_id, updated_at
+                    ) VALUES (?, ?, ?)
+                `).run(userInfo.domain_main_node_id, userInfo.domain_id, now);
+                securityLogger.info(`✅ [WebSocket Client] Domain main node updated successfully`);
+            } else {
+                securityLogger.info(`⚠️ [WebSocket Client] Skipping domain_main_nodes update (domain_id or main_node_id is null)`);
+            }
+
+            // Update cluster_main_nodes
+            if (userInfo.cluster_id && userInfo.cluster_main_node_id) {
+                securityLogger.info(`🔐 [WebSocket Client] Updating cluster_main_nodes...`);
+                securityLogger.info(`🔐 [WebSocket Client]   node_id (PK): ${userInfo.cluster_main_node_id}`);
+                securityLogger.info(`🔐 [WebSocket Client]   domain_id: ${userInfo.domain_id}`);
+                securityLogger.info(`🔐 [WebSocket Client]   cluster_id: ${userInfo.cluster_id}`);
+
+                db.prepare(`
+                    INSERT OR REPLACE INTO cluster_main_nodes (
+                        node_id, domain_id, cluster_id, updated_at
+                    ) VALUES (?, ?, ?, ?)
+                `).run(userInfo.cluster_main_node_id, userInfo.domain_id, userInfo.cluster_id, now);
+                securityLogger.info(`✅ [WebSocket Client] Cluster main node updated successfully`);
+            } else {
+                securityLogger.info(`⚠️ [WebSocket Client] Skipping cluster_main_nodes update (cluster_id or main_node_id is null)`);
+            }
+
+            // Update channel_main_nodes
+            if (userInfo.channel_id && userInfo.channel_main_node_id) {
+                securityLogger.info(`🔐 [WebSocket Client] Updating channel_main_nodes...`);
+                securityLogger.info(`🔐 [WebSocket Client]   node_id (PK): ${userInfo.channel_main_node_id}`);
+                securityLogger.info(`🔐 [WebSocket Client]   domain_id: ${userInfo.domain_id}`);
+                securityLogger.info(`🔐 [WebSocket Client]   cluster_id: ${userInfo.cluster_id}`);
+                securityLogger.info(`🔐 [WebSocket Client]   channel_id: ${userInfo.channel_id}`);
+
+                db.prepare(`
+                    INSERT OR REPLACE INTO channel_main_nodes (
+                        node_id, domain_id, cluster_id, channel_id, updated_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                `).run(userInfo.channel_main_node_id, userInfo.domain_id, userInfo.cluster_id, userInfo.channel_id, now);
+                securityLogger.info(`✅ [WebSocket Client] Channel main node updated successfully`);
+            } else {
+                securityLogger.info(`⚠️ [WebSocket Client] Skipping channel_main_nodes update (channel_id or main_node_id is null)`);
+            }
+
+            securityLogger.info('✅ [WebSocket Client] All main node tables updated');
+
+            // Perform user switch operation
+            securityLogger.info('🔐 [WebSocket Client] ===== STEP 4: TRIGGERING USER SWITCH =====');
+            securityLogger.info(`🔐 [WebSocket Client] Will switch to user: ${userInfo.username} (${userInfo.user_id})`);
+
+            // Get IPC handlers to trigger user switch
+            const { ipcMain } = require('electron');
+
+            // Emit event to trigger user switch
+            // Note: ipcMain.emit requires (event, ...args) format
+            // The first parameter will be received as 'event', the second as 'data'
+            securityLogger.info('🔐 [WebSocket Client] Emitting new-device-login-complete event to IPC...');
+            ipcMain.emit('new-device-login-complete', null, {
+                user_id: userInfo.user_id,
+                username: userInfo.username
+            });
+
+            securityLogger.info('✅ [WebSocket Client] Event emitted successfully');
+            securityLogger.info('✅ [WebSocket Client] ===== NEW DEVICE LOGIN PROCESS COMPLETE =====');
+            securityLogger.info('✅ [WebSocket Client] IPC handlers will now perform user switch (clear sessions, close tabs, create new tab)');
+
+        } catch (error) {
+            const { getCClientLogger } = require('../utils/logger');
+            const securityLogger = getCClientLogger('security_code');
+            securityLogger.error('❌ [WebSocket Client] Error handling new device login:');
+            securityLogger.error('❌ [WebSocket Client] Error type:', typeof error);
+            securityLogger.error('❌ [WebSocket Client] Error:', error);
+            if (error) {
+                securityLogger.error('❌ [WebSocket Client] Error message:', error.message || 'No message');
+                securityLogger.error('❌ [WebSocket Client] Error name:', error.name || 'No name');
+                securityLogger.error('❌ [WebSocket Client] Error code:', error.code || 'No code');
+                securityLogger.error('❌ [WebSocket Client] Error stack:', error.stack || 'No stack');
+            }
         }
     }
 

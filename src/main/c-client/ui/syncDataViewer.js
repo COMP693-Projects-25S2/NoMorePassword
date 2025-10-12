@@ -44,13 +44,32 @@ class SyncDataViewer {
                 maximizable: true,
                 fullscreenable: false,
                 alwaysOnTop: false,
-                modal: true,
+                modal: false, // Set to false to avoid blocking main window
                 parent: mainWindow,
                 webPreferences: {
                     nodeIntegration: true,
                     contextIsolation: false
                 }
             });
+
+            // Auto-close when main window closes
+            if (mainWindow) {
+                const mainWindowCloseHandler = () => {
+                    if (this.modalWindow && !this.modalWindow.isDestroyed()) {
+                        console.log('📈 Main window closing, auto-closing sync data viewer');
+                        this.modalWindow.close();
+                    }
+                };
+
+                mainWindow.once('close', mainWindowCloseHandler);
+
+                // Clean up listener when modal is closed
+                this.modalWindow.once('closed', () => {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.removeListener('close', mainWindowCloseHandler);
+                    }
+                });
+            }
 
             // Load HTML content
             await this.loadHTMLContent();

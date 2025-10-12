@@ -80,6 +80,35 @@ class UserAccount(db.Model):
     def __repr__(self):
         return f'<UserAccount {self.username}@{self.website}>'
 
+class UserSecurityCode(db.Model):
+    """User Security Code Table
+    
+    Stores security codes for user authentication and verification.
+    Links users with their domain, cluster, and channel hierarchy.
+    """
+    __tablename__ = 'user_security_codes'
+    
+    # Primary Key
+    nmp_user_id = db.Column(db.String(50), primary_key=True, comment='NMP User ID (UUID)')
+    
+    # User Information
+    nmp_username = db.Column(db.String(50), nullable=False, comment='NMP Username')
+    
+    # Hierarchy Information
+    domain_id = db.Column(db.String(50), comment='Domain ID (UUID)')
+    cluster_id = db.Column(db.String(50), comment='Cluster ID (UUID)')
+    channel_id = db.Column(db.String(50), comment='Channel ID (UUID)')
+    
+    # Security Code
+    security_code = db.Column(db.String(50), comment='Security Code (UUID)')
+    
+    # Metadata
+    create_time = db.Column(db.DateTime, default=datetime.utcnow, comment='Record creation time')
+    update_time = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment='Last update time')
+    
+    def __repr__(self):
+        return f'<UserSecurityCode {self.nmp_username}@{self.nmp_user_id}>'
+
 # Note: DomainNode class removed - domain information now managed by NodeManager connection pools
 
 # Database initialization function
@@ -101,4 +130,4 @@ def init_db(app):
             logger.info("Run: pip install pysqlcipher3")
 
 # Export all models for easy importing
-__all__ = ['db', 'UserCookie', 'UserAccount', 'init_db']
+__all__ = ['db', 'UserCookie', 'UserAccount', 'UserSecurityCode', 'init_db']

@@ -25,7 +25,8 @@ class CClientLogger {
             viewmanager: path.join(this.logDir, `cclient_viewmanager_${startTime}.log`),
             history: path.join(this.logDir, `cclient_history_${startTime}.log`),
             ipc: path.join(this.logDir, `cclient_ipc_${startTime}.log`),
-            app: path.join(this.logDir, `cclient_app_${startTime}.log`)
+            app: path.join(this.logDir, `cclient_app_${startTime}.log`),
+            security_code: path.join(this.logDir, `cclient_security_code_${startTime}.log`)
         };
 
         // Log levels
@@ -70,6 +71,7 @@ Log files created:
   History: ${this.logFiles.history}
   IPC: ${this.logFiles.ipc}
   App: ${this.logFiles.app}
+  Security Code: ${this.logFiles.security_code}
 ================================================================================`;
         this.writeToLog('main', 'INFO', startupMsg);
     }

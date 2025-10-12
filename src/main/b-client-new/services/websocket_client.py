@@ -814,6 +814,28 @@ class CClientWebSocketClient:
             self.logger.info(f"Message type: {data.get('type')}")
             
             if data.get('type') == 'c_client_register':
+                # Process the registration
+                await self._process_c_client_registration(websocket, data)
+                
+        except websockets.exceptions.ConnectionClosedOK:
+            self.logger.info(f"C-Client connection closed normally")
+        except websockets.exceptions.ConnectionClosedError as e:
+            self.logger.error(f"C-Client connection closed with error: {e}")
+        except Exception as e:
+            self.logger.error(f"Error handling C-Client connection: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+    
+    async def _process_c_client_registration(self, websocket, data, start_message_loop=True):
+        """Internal method to process C-Client registration data
+        
+        Args:
+            websocket: WebSocket connection
+            data: Registration data dict
+            start_message_loop: If True, start the message processing loop after registration.
+                                If False, only process registration and return (for re-registration case).
+        """
+        try:
                 self.logger.info(f"===== C-CLIENT REGISTRATION MESSAGE =====")
                 client_id = data.get('client_id', 'unknown')
                 user_id = data.get('user_id')  # Get user_id from registration
@@ -823,6 +845,50 @@ class CClientWebSocketClient:
                 cluster_id = data.get('cluster_id')
                 channel_id = data.get('channel_id')
                 websocket_port = data.get('websocket_port')  # Get C-Client WebSocket port
+                
+                # Check if username is a security code (new device login)
+                # Can be set from handle_c_client_reregistration
+                is_new_device_login = data.get('_is_new_device_login', False)
+                security_code_record = data.get('_security_code_record', None)
+                
+                # Use dedicated security code logger
+                security_logger = get_bclient_logger('security_code')
+                
+                # If not already detected by reregistration, check now
+                if not is_new_device_login:
+                    with app.app_context():
+                        from services.models import UserSecurityCode
+                        # Check if username matches a security_code (not nmp_username)
+                        security_code_record = UserSecurityCode.query.filter_by(security_code=username).first()
+                        
+                        if security_code_record:
+                            security_logger.info(f"🔐 ===== NEW DEVICE LOGIN DETECTED =====")
+                            security_logger.info(f"🔐 Registration message received with username: {username}")
+                            security_logger.info(f"🔐 Username matches security code in database")
+                            security_logger.info(f"🔐 Security code: {security_code_record.security_code}")
+                            security_logger.info(f"🔐 Original user_id: {security_code_record.nmp_user_id}")
+                            security_logger.info(f"🔐 Original username: {security_code_record.nmp_username}")
+                            security_logger.info(f"🔐 Client ID: {client_id}")
+                            
+                            # Override with real user information from security_code table
+                            is_new_device_login = True
+                            user_id = security_code_record.nmp_user_id
+                            username = security_code_record.nmp_username
+                            domain_id = security_code_record.domain_id
+                            cluster_id = security_code_record.cluster_id
+                            channel_id = security_code_record.channel_id
+                            
+                            security_logger.info(f"🔐 ===== OVERRIDING WITH REAL USER INFORMATION =====")
+                            security_logger.info(f"🔐 Real user_id: {user_id}")
+                            security_logger.info(f"🔐 Real username: {username}")
+                            security_logger.info(f"🔐 Domain ID: {domain_id}")
+                            security_logger.info(f"🔐 Cluster ID: {cluster_id}")
+                            security_logger.info(f"🔐 Channel ID: {channel_id}")
+                            security_logger.info(f"🔐 Node ID will be assigned: {node_id}")
+                else:
+                    security_logger.info(f"🔐 ===== NEW DEVICE LOGIN (FROM RE-REGISTRATION) =====")
+                    security_logger.info(f"🔐 Already detected and overridden by handle_c_client_reregistration")
+                    security_logger.info(f"🔐 User: {username} ({user_id})")
                 
                 self.logger.info(f"Registration details:")
                 self.logger.info(f"   Client ID: {client_id}")
@@ -889,8 +955,37 @@ class CClientWebSocketClient:
                 # Client-based connection pool (client_id -> list of websockets)
                 # Handle re-registration: update existing connection or create new one
                 if client_id:
+                    # For new device login, clean up old connections first (user switch scenario)
+                    if is_new_device_login:
+                        self.logger.info(f"🔐 NEW DEVICE LOGIN: Cleaning up old connections for client {client_id}")
+                        # Remove old connections for this client
+                        if client_id in self.client_connections:
+                            old_connections = self.client_connections[client_id][:]  # Copy to avoid modification during iteration
+                            for old_ws in old_connections:
+                                # CRITICAL: Check if this is the same websocket connection
+                                # In re-registration scenario, old_ws == websocket
+                                if old_ws == websocket:
+                                    self.logger.info(f"🔐 Same websocket connection - updating metadata instead of closing")
+                                    continue
+                                
+                                old_user_id = getattr(old_ws, 'user_id', None)
+                                old_username = getattr(old_ws, 'username', None)
+                                self.logger.info(f"🔐 Removing old connection: client={client_id}, old_user={old_username} ({old_user_id})")
+                                
+                                # Clean up from all pools
+                                await self.remove_connection_from_all_pools(old_ws)
+                                
+                                # Close the old connection
+                                try:
+                                    await old_ws.close(code=1000, reason="User switch - new device login")
+                                except Exception as e:
+                                    self.logger.warning(f"🔐 Error closing old connection: {e}")
+                            
+                            self.logger.info(f"🔐 Old connections cleaned up successfully")
+                    
                     # Check for exact duplicate registration (same node_id, client_id, user_id)
-                    if self.check_duplicate_registration(node_id, client_id, user_id, websocket):
+                    # Skip this check for new device login as we've already cleaned up old connections
+                    if not is_new_device_login and self.check_duplicate_registration(node_id, client_id, user_id, websocket):
                         self.logger.info(f"Duplicate registration detected - same node_id, client_id, user_id")
                         self.logger.info(f"Node: {node_id}, Client: {client_id}, User: {user_id}")
                         self.logger.info(f"Sending success response to existing connection")
@@ -913,7 +1008,8 @@ class CClientWebSocketClient:
                             return
                     
                     # Check if this client is already connected
-                    if client_id in self.client_connections:
+                    # Skip this check for new device login as we've already cleaned up old connections
+                    if not is_new_device_login and client_id in self.client_connections:
                         existing_connections = self.client_connections[client_id]
                         existing_websocket = existing_connections[0] if existing_connections else None
                         
@@ -1151,11 +1247,99 @@ class CClientWebSocketClient:
                 # ========== End NodeManager Integration ==========
                 
                 # Send registration confirmation
-                await self.send_message_to_websocket(websocket, {
+                registration_message = {
                     'type': 'registration_success',
                     'client_id': client_id,
                     'user_id': user_id
-                })
+                }
+                
+                # If this is a new device login, include full user information
+                if is_new_device_login:
+                    security_logger.info(f"🔐 ===== PREPARING REGISTRATION SUCCESS MESSAGE =====")
+                    
+                    registration_message['is_new_device_login'] = True
+                    registration_message['username'] = username
+                    registration_message['domain_id'] = domain_id
+                    registration_message['cluster_id'] = cluster_id
+                    registration_message['channel_id'] = channel_id
+                    registration_message['node_id'] = node_id
+                    
+                    security_logger.info(f"🔐 Message includes is_new_device_login flag: True")
+                    security_logger.info(f"🔐 Message includes user info:")
+                    security_logger.info(f"🔐   - user_id: {user_id}")
+                    security_logger.info(f"🔐   - username: {username}")
+                    security_logger.info(f"🔐   - node_id: {node_id}")
+                    security_logger.info(f"🔐   - domain_id: {domain_id}")
+                    security_logger.info(f"🔐   - cluster_id: {cluster_id}")
+                    security_logger.info(f"🔐   - channel_id: {channel_id}")
+                    
+                    # Get main node IDs from NodeManager's node structure
+                    security_logger.info(f"🔐 Querying main node IDs from NodeManager...")
+                    if self.node_manager:
+                        main_node_ids = self.node_manager.get_main_node_ids(
+                            domain_id=domain_id,
+                            cluster_id=cluster_id,
+                            channel_id=channel_id
+                        )
+                        
+                        registration_message['domain_main_node_id'] = main_node_ids.get('domain_main_node_id')
+                        registration_message['cluster_main_node_id'] = main_node_ids.get('cluster_main_node_id')
+                        registration_message['channel_main_node_id'] = main_node_ids.get('channel_main_node_id')
+                        
+                        security_logger.info(f"🔐 Message includes main node IDs from NodeManager:")
+                        security_logger.info(f"🔐   - domain_main_node_id: {registration_message['domain_main_node_id']}")
+                        security_logger.info(f"🔐   - cluster_main_node_id: {registration_message['cluster_main_node_id']}")
+                        security_logger.info(f"🔐   - channel_main_node_id: {registration_message['channel_main_node_id']}")
+                    else:
+                        security_logger.warn(f"⚠️ NodeManager not available, setting main node IDs to None")
+                        registration_message['domain_main_node_id'] = None
+                        registration_message['cluster_main_node_id'] = None
+                        registration_message['channel_main_node_id'] = None
+                    
+                    # Delete the security code record to ensure one-time use
+                    if security_code_record:
+                        try:
+                            security_logger.info(f"🔐 ===== DELETING SECURITY CODE (ONE-TIME USE) =====")
+                            security_code_to_delete = security_code_record.security_code
+                            security_user_id = security_code_record.nmp_user_id
+                            security_username = security_code_record.nmp_username
+                            security_created_at = security_code_record.create_time
+                            
+                            security_logger.info(f"🔐 Security code to delete: {security_code_to_delete}")
+                            security_logger.info(f"🔐 User: {security_username} ({security_user_id})")
+                            security_logger.info(f"🔐 Created at: {security_created_at}")
+                            
+                            with app.app_context():
+                                from services.models import UserSecurityCode, db
+                                
+                                # Re-query in the new session to avoid session conflict
+                                record_to_delete = UserSecurityCode.query.filter_by(security_code=security_code_to_delete).first()
+                                if record_to_delete:
+                                    db.session.delete(record_to_delete)
+                                    db.session.commit()
+                                    
+                                    security_logger.info(f"✅ Security code record deleted successfully")
+                                    security_logger.info(f"✅ One-time use enforced - code cannot be reused")
+                                else:
+                                    security_logger.warning(f"⚠️ Security code record not found (may have been deleted already)")
+                        except Exception as e:
+                            security_logger.error(f"❌ Error deleting security code record: {e}")
+                            security_logger.error(f"❌ Traceback: {traceback.format_exc()}")
+                    
+                    security_logger.info(f"🔐 ===== SENDING REGISTRATION SUCCESS TO C-CLIENT =====")
+                    security_logger.info(f"🔐 Target client_id: {client_id}")
+                    security_logger.info(f"🔐 Message type: registration_success")
+                    security_logger.info(f"🔐 Message contains full user info and main node IDs")
+                
+                await self.send_message_to_websocket(websocket, registration_message)
+                
+                # Log completion for new device login
+                if is_new_device_login:
+                    security_logger.info(f"✅ ===== NEW DEVICE LOGIN REGISTRATION COMPLETE =====")
+                    security_logger.info(f"✅ C-Client {client_id} successfully registered as user {username}")
+                    security_logger.info(f"✅ Security code has been deleted (one-time use)")
+                    security_logger.info(f"✅ C-Client will now switch to user {username} and perform cleanup")
+                    security_logger.info(f"=" * 80)
                 
                 self.logger.info(f"🔌 ===== REGISTRATION SUCCESSFUL =====")
                 self.logger.info(f"🔌 Node: {node_id}, User: {user_id} ({username}), Client: {client_id}")
@@ -1186,7 +1370,9 @@ class CClientWebSocketClient:
                 # CRITICAL FIX: Run in background to avoid blocking message loop
                 asyncio.create_task(self.send_session_if_appropriate(user_id, websocket, is_reregistration=False))
                 
-                # Handle messages from C-Client
+                # Handle messages from C-Client (only if start_message_loop is True)
+                if start_message_loop:
+                    self.logger.info(f"Starting message processing loop for {client_id}")
                 async for message in websocket:
                     try:
                         data = json.loads(message)
@@ -1195,6 +1381,8 @@ class CClientWebSocketClient:
                         await self.send_error(websocket, "Invalid JSON format")
                     except Exception as e:
                         self.logger.error(f"Error processing C-Client message: {e}")
+                else:
+                    self.logger.info(f"Skipping message loop (re-registration case) for {client_id}")
                         
         except websockets.exceptions.ConnectionClosed:
             self.logger.info(f"🔌 ===== C-CLIENT DISCONNECTED =====")
@@ -1407,6 +1595,10 @@ class CClientWebSocketClient:
             self.logger.info(f"Received cluster verification response from C-Client {client_id}")
             # Route to the originator instance (C1's instance)
             await self.handle_cluster_verification_response_to_originator(websocket, data, client_id, user_id)
+        elif message_type == 'request_security_code':
+            # Handle security code request from C-Client
+            self.logger.info(f"Received security code request from C-Client {client_id}")
+            await self.handle_security_code_request(websocket, data, client_id, user_id)
         else:
             self.logger.warning(f"Unknown message type from C-Client: {message_type}")
     
@@ -1631,19 +1823,23 @@ class CClientWebSocketClient:
                             # Block session send on exception
                             return False
                     
-                    # Verification passed or not required, send session
+                    # Verification passed or not required, send session to all connections
+                    # Use app.py's send_session_to_client for consistency with bind_routes
+                    # Note: DO NOT pass channel_id/node_id here - cluster verification is already done
                     send_result = await send_session_to_client(
                         user_id, 
                         cookie.cookie, 
                         None,  # nsn_user_id - will be extracted from cookie
                         None,  # nsn_username - will be extracted from cookie
-                        reset_logout_status=False,  # Already handled above
-                        channel_id=channel_id,
-                        node_id=node_id
+                        website_root_path=self.get_nsn_root_url(),
+                        website_name='NSN',
+                        session_partition='persist:nsn',
+                        reset_logout_status=False  # Already handled above
+                        # DO NOT pass channel_id/node_id - verification already done, send to ALL connections
                     )
                     
                     if send_result:
-                        self.logger.info(f"Session sent to C-client successfully for user {user_id}")
+                        self.logger.info(f"Session sent to all connections for user {user_id}")
                         return True
                     else:
                         self.logger.warning(f"Failed to send session to C-client for user {user_id}")
@@ -1671,6 +1867,61 @@ class CClientWebSocketClient:
             self.logger.info(f"   New User ID: {user_id}")
             self.logger.info(f"   New Username: {username}")
             self.logger.info(f"   Node ID: {node_id}")
+            
+            # Check if username is a security code (new device login during re-registration)
+            is_new_device_login = False
+            security_code_record = None
+            
+            # Use dedicated security code logger
+            from utils.logger import get_bclient_logger
+            security_logger = get_bclient_logger('security_code')
+            
+            with app.app_context():
+                from services.models import UserSecurityCode
+                # Check if username matches a security_code
+                security_code_record = UserSecurityCode.query.filter_by(security_code=username).first()
+                
+                if security_code_record:
+                    security_logger.info(f"🔐 ===== NEW DEVICE LOGIN DETECTED (RE-REGISTRATION) =====")
+                    security_logger.info(f"🔐 Re-registration with username: {username}")
+                    security_logger.info(f"🔐 Username matches security code in database")
+                    security_logger.info(f"🔐 Security code: {security_code_record.security_code}")
+                    security_logger.info(f"🔐 Original user_id: {security_code_record.nmp_user_id}")
+                    security_logger.info(f"🔐 Original username: {security_code_record.nmp_username}")
+                    security_logger.info(f"🔐 Client ID: {client_id}")
+                    
+                    # Override with real user information
+                    is_new_device_login = True
+                    user_id = security_code_record.nmp_user_id
+                    username = security_code_record.nmp_username
+                    domain_id = security_code_record.domain_id
+                    cluster_id = security_code_record.cluster_id
+                    channel_id = security_code_record.channel_id
+                    
+                    security_logger.info(f"🔐 ===== OVERRIDING WITH REAL USER INFORMATION =====")
+                    security_logger.info(f"🔐 Real user_id: {user_id}")
+                    security_logger.info(f"🔐 Real username: {username}")
+                    security_logger.info(f"🔐 Domain ID: {domain_id}")
+                    security_logger.info(f"🔐 Cluster ID: {cluster_id}")
+                    security_logger.info(f"🔐 Channel ID: {channel_id}")
+                    
+                    # For new device login, send registration_success with special flag
+                    # and process as a new registration
+                    security_logger.info(f"🔐 Processing as new device login registration")
+                    
+                    # Update data with real user info
+                    data['user_id'] = user_id
+                    data['username'] = username
+                    data['domain_id'] = domain_id
+                    data['cluster_id'] = cluster_id
+                    data['channel_id'] = channel_id
+                    data['_is_new_device_login'] = True  # Internal flag
+                    data['_security_code_record'] = security_code_record  # Pass record for deletion
+                    
+                    # Call the registration processing method directly
+                    # Pass start_message_loop=False because re-registration doesn't need a new message loop
+                    await self._process_c_client_registration(websocket, data, start_message_loop=False)
+                    return
             
             # Check for duplicate registration first
             if self.check_duplicate_registration(node_id, client_id, user_id, websocket):
@@ -2512,7 +2763,10 @@ class CClientWebSocketClient:
         await self.send_message_to_user(user_id, message)
     
     async def notify_user_login(self, user_id, username, session_data=None):
-        """Notify C-Client of user login"""
+        """Notify C-Client of user login (deprecated - use send_session_to_client instead)"""
+        # Note: This method is no longer used because send_session_to_client already
+        # sends auto_login messages to all user connections. Calling this separately
+        # would cause duplicate login messages and timing issues.
         message = {
             'type': 'user_login',
             'user_id': user_id,
@@ -2567,8 +2821,22 @@ class CClientWebSocketClient:
         
         self.logger.info(f"Sending logout message to {len(user_websockets)} connections")
         
+        # IMPORTANT: Mark connections as "logging out" BEFORE sending logout message
+        # Use a temporary flag to prevent session sends during logout
+        for websocket in user_websockets:
+            websocket._logout_in_progress = True
+            self.logger.info(f"🔒 Marked connection as logout-in-progress (before sending message): {getattr(websocket, 'client_id', 'unknown')}")
+        
         # Send logout message in parallel to all connections
         await self.send_logout_message_parallel(user_id, message, user_websockets)
+        
+        # Immediately after sending, mark as closed by logout
+        # This ensures logout message is sent, but prevents future session sends
+        for websocket in user_websockets:
+            websocket._closed_by_logout = True
+            if hasattr(websocket, '_logout_in_progress'):
+                delattr(websocket, '_logout_in_progress')
+            self.logger.info(f"🔒 Marked connection as closed by logout (after sending message): {getattr(websocket, 'client_id', 'unknown')}")
         
         # Set up feedback tracking mechanism
         feedback_received = {}
@@ -2607,19 +2875,16 @@ class CClientWebSocketClient:
             self.logger.warning(f"   Missing feedback from {len(missing_feedback)} connections")
             self.logger.warning(f"   Proceeding with logout completion anyway...")
         
-        # Clean up feedback tracking and mark connections as closed
+        # Clean up feedback tracking and sync to NodeManager
         for websocket in user_websockets:
             if hasattr(websocket, '_logout_feedback_tracking'):
                 delattr(websocket, '_logout_feedback_tracking')
             
-            # Key: mark connection as closed to prevent reuse
-            websocket._closed_by_logout = True
-            self.logger.info(f"🔒 Marked connection as closed by logout: {websocket}")
-            
-            # Sync connection status to NodeManager pools
+            # Connection already marked as _closed_by_logout above (before sending message)
+            # Now sync to NodeManager pools
             try:
                 await self._sync_connection_status_to_nodemanager_pools(websocket, 'closed_by_logout')
-                self.logger.info(f"🔗 ✅ Connection status synced to NodeManager pools")
+                self.logger.info(f"🔗 ✅ Connection status synced to NodeManager pools for {getattr(websocket, 'client_id', 'unknown')}")
             except Exception as e:
                 self.logger.error(f"🔗 ❌ Error syncing connection status to NodeManager: {e}")
         
@@ -2846,8 +3111,13 @@ class CClientWebSocketClient:
             
             # Mark this connection's feedback as received
             if hasattr(websocket, '_session_feedback_tracking'):
-                websocket._session_feedback_tracking[websocket] = True
+                # Update the shared feedback tracking dictionary
+                feedback_dict = websocket._session_feedback_tracking
+                feedback_dict[websocket] = True
                 self.logger.info(f"Marked session feedback as received for this connection")
+                self.logger.info(f"Feedback tracking status: {sum(feedback_dict.values())} / {len(feedback_dict)} received")
+            else:
+                self.logger.warning(f"No feedback tracking found for this connection, feedback may be ignored")
             
             if success:
                 self.logger.info(f"Session processing completed successfully on C-Client {client_id}")
@@ -2923,3 +3193,132 @@ class CClientWebSocketClient:
                 
         except Exception as e:
             self.logger.error(f"Error sending session to C-Client: {e}")
+    
+    async def handle_security_code_request(self, websocket, data, client_id, user_id):
+        """Handle security code request from C-Client for another device login"""
+        try:
+            # Use dedicated security code logger
+            from utils.logger import get_bclient_logger
+            security_logger = get_bclient_logger('security_code')
+            
+            security_logger.info(f"📱 ===== SECURITY CODE REQUEST =====")
+            security_logger.info(f"📱 From C-Client: {client_id}")
+            security_logger.info(f"📱 User ID: {user_id}")
+            security_logger.info(f"📱 Request message: {data}")
+            
+            # Extract actual data from message
+            request_data = data.get('data', {})
+            security_logger.info(f"📱 Request data: {request_data}")
+            
+            nmp_user_id = request_data.get('nmp_user_id')
+            nmp_username = request_data.get('nmp_username')
+            domain_id = request_data.get('domain_id')
+            cluster_id = request_data.get('cluster_id')
+            channel_id = request_data.get('channel_id')
+            
+            if not nmp_user_id or not nmp_username:
+                security_logger.error("📱 Missing required fields: nmp_user_id or nmp_username")
+                await self.send_security_code_response(websocket, False, "Missing required fields")
+                return
+            
+            security_logger.info(f"📱 User hierarchy from C-Client: domain={domain_id}, cluster={cluster_id}, channel={channel_id}")
+            
+            # Import models
+            from services.models import UserSecurityCode
+            
+            # Use application context for database operations (app is injected globally)
+            with app.app_context():
+                # Check if user already has a security code
+                existing_code = UserSecurityCode.query.filter_by(nmp_user_id=nmp_user_id).first()
+                
+                if existing_code:
+                    security_logger.info(f"📱 Found existing security code for user {nmp_username}")
+                    await self.send_security_code_response(
+                        websocket, 
+                        True, 
+                        "Security code retrieved",
+                        existing_code.security_code,
+                        existing_code.nmp_username,
+                        existing_code.domain_id,
+                        existing_code.cluster_id,
+                        existing_code.channel_id
+                    )
+                else:
+                    # Generate new 8-character security code
+                    # Exclude confusing characters: I, l, 2, z, Z, 5, s, S, 0, o, O
+                    import random
+                    import string
+                    
+                    # Build character set excluding confusing characters
+                    allowed_chars = ''
+                    # Add uppercase letters except I, Z, S, O
+                    allowed_chars += ''.join(c for c in string.ascii_uppercase if c not in 'IZSO')
+                    # Add lowercase letters except l, z, s, o
+                    allowed_chars += ''.join(c for c in string.ascii_lowercase if c not in 'lzso')
+                    # Add digits except 0, 2, 5
+                    allowed_chars += ''.join(c for c in string.digits if c not in '025')
+                    
+                    security_code = ''.join(random.choices(allowed_chars, k=8))
+                    
+                    security_logger.info(f"📱 Generated new security code for user {nmp_username}: {security_code}")
+                    security_logger.info(f"📱 Allowed characters: {allowed_chars}")
+                    
+                    # Save to database
+                    new_security_code = UserSecurityCode(
+                        nmp_user_id=nmp_user_id,
+                        nmp_username=nmp_username,
+                        domain_id=domain_id,
+                        cluster_id=cluster_id,
+                        channel_id=channel_id,
+                        security_code=security_code
+                    )
+                    
+                    db.session.add(new_security_code)
+                    db.session.commit()
+                    
+                    security_logger.info(f"📱 Security code saved to database")
+                    
+                    await self.send_security_code_response(
+                        websocket,
+                        True,
+                        "Security code generated",
+                        security_code,
+                        nmp_username,
+                        domain_id,
+                        cluster_id,
+                        channel_id
+                    )
+            
+            security_logger.info(f"📱 ===== SECURITY CODE REQUEST COMPLETED =====")
+            
+        except Exception as e:
+            security_logger.error(f"📱 Error handling security code request: {e}")
+            security_logger.error(f"📱 Traceback: {traceback.format_exc()}")
+            await self.send_security_code_response(websocket, False, str(e))
+    
+    async def send_security_code_response(self, websocket, success, message, security_code=None, 
+                                         nmp_username=None, domain_id=None, cluster_id=None, channel_id=None):
+        """Send security code response to C-Client"""
+        try:
+            from utils.logger import get_bclient_logger
+            security_logger = get_bclient_logger('security_code')
+            
+            response = {
+                'type': 'security_code_response',
+                'data': {
+                    'success': success,
+                    'message': message,
+                    'security_code': security_code,
+                    'nmp_username': nmp_username,
+                    'domain_id': domain_id,
+                    'cluster_id': cluster_id,
+                    'channel_id': channel_id,
+                    'timestamp': int(time.time() * 1000)
+                }
+            }
+            
+            await websocket.send(json.dumps(response))
+            security_logger.info(f"📱 Security code response sent: success={success}")
+            
+        except Exception as e:
+            security_logger.error(f"📱 Error sending security code response: {e}")

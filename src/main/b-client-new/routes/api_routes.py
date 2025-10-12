@@ -9,7 +9,7 @@ import json
 import sys
 import asyncio
 
-# 导入日志系统
+# Import logging system
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from utils.logger import get_bclient_logger
 
@@ -159,12 +159,12 @@ def get_cookies():
         if not user_id:
             return jsonify({'error': 'user_id is required'}), 400
         
-        # 查询用户的cookie（应该只有一条记录）
+        # Query user's cookie (should only have one record)
         cookie = UserCookie.query.filter_by(user_id=user_id).first()
         
         if cookie:
-            # 找到cookie：只返回状态，不立即发送session
-            # Session将在WebSocket注册完成后发送
+            # Found cookie: only return status, don't send session immediately
+            # Session will be sent after WebSocket registration completes
             logger.info(f"Found cookie for user {user_id}")
             logger.info(f"Cookie details - username: {cookie.username}, node_id: {cookie.node_id}")
             print(f"🔍 B-Client: Session will be sent after WebSocket registration completes")
@@ -175,7 +175,7 @@ def get_cookies():
                 'message': 'Cookie found and session sent to C-Client'
             })
         else:
-            # 未找到cookie：返回失败响应
+            # Cookie not found: return failure response
             print(f"🔍 B-Client: No cookie found for user {user_id}")
             return jsonify({
                 'success': False,

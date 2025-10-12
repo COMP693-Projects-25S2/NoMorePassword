@@ -92,8 +92,8 @@ class ClusterVerificationService:
             )
             
             if verification_result and verification_result.get('success'):
-                # 第一次对比已经在_request_client_verification内部完成
-                # 如果返回success=True，说明验证已经通过
+                # First comparison already completed inside _request_client_verification
+                # If returns success=True, verification has passed
                 logger.info(f"🔍 ===== CLUSTER VERIFICATION PASSED =====")
                 logger.info(f"🔍 Client verification successful - records match")
                 return {
@@ -228,7 +228,7 @@ class ClusterVerificationService:
                 'type': 'cluster_verification_query',
                 'data': {
                     'action': 'get_valid_batch',
-                    'user_id': user_id,  # C1的user_id
+                    'user_id': user_id,  # C1's user_id
                     'channel_id': channel_id,
                     'min_batch_size': self.min_batch_size,
                     'timestamp': int(time.time() * 1000)
@@ -309,7 +309,7 @@ class ClusterVerificationService:
                         if node_id in self.pending_responses:
                             response = self.pending_responses.pop(node_id)
                             logger.info(f"🔍 ✅ Received response from node {node_id}: {response}")
-                            # 响应处理完成后才清理事件
+                            # Only clean up event after response processing completes
                             self._cleanup_response_event(node_id)
                             return response
                         else:
@@ -321,7 +321,7 @@ class ClusterVerificationService:
                         logger.warning(f"🔍 Event state: {response_event.is_set()}")
                         logger.warning(f"🔍 Pending responses: {list(self.pending_responses.keys())}")
                         logger.warning(f"🔍 Response events: {list(self.response_events.keys())}")
-                        # 不要立即清理事件，给响应处理一些时间
+                        # Don't clean up event immediately, give response processing some time
                         await asyncio.sleep(0.1)
                         break
                         
@@ -329,13 +329,13 @@ class ClusterVerificationService:
                     logger.warning(f"Error sending to node {node_id}: {e}")
                     continue
             
-            # 超时后清理事件
+            # Clean up event after timeout
             logger.warning(f"🔍 ❌ No response received from node {node_id}")
             logger.warning(f"🔍 ❌ This indicates a problem with response handling")
             logger.warning(f"🔍 ❌ Final response events: {list(self.response_events.keys())}")
             logger.warning(f"🔍 ❌ Final pending responses: {list(self.pending_responses.keys())}")
             
-            # 清理事件
+            # Clean up event
             self._cleanup_response_event(node_id)
             return None
             
@@ -462,15 +462,15 @@ class ClusterVerificationService:
                 return {
                     'success': True, 
                     'message': 'Verification successful',
-                    'record': client_record,  # 返回record以便上层使用
-                    'first_record': client_record  # 兼容性字段
+                    'record': client_record,  # Return record for upper layer use
+                    'first_record': client_record  # Compatibility field
                 }
             else:
                 logger.warning(f"===== B-CLIENT RECORD COMPARISON FAILED FOR USER {user_id} =====")
                 return {
                     'success': False, 
                     'message': 'Record comparison failed',
-                    'record': client_record,  # 即使失败也返回record以便调试
+                    'record': client_record,  # Return record even on failure for debugging
                     'first_record': client_record
                 }
                 
@@ -598,7 +598,7 @@ class ClusterVerificationService:
                         if response_key in self.pending_responses:
                             response = self.pending_responses.pop(response_key)
                             logger.info(f"🔍 ✅ Received response from user {user_id}: {response}")
-                            # 响应处理完成后才清理事件
+                            # Only clean up event after response processing completes
                             self._cleanup_client_response_event(user_id)
                             return response
                         else:
@@ -612,7 +612,7 @@ class ClusterVerificationService:
                     logger.warning(f"🔍 ❌ Error sending to user {user_id}: {e}")
                     continue
             
-            # 超时后清理事件
+            # Clean up event after timeout
             logger.warning(f"🔍 ❌ No response received from user {user_id}")
             self._cleanup_client_response_event(user_id)
             return None
@@ -720,7 +720,7 @@ class ClusterVerificationService:
                 if success:
                     batch_id = data.get('batch_id')
                     record_count = data.get('record_count', 0)
-                    # C1的响应字段是'record'，C2的响应字段是'first_record'
+                    # C1's response field is 'record', C2's response field is 'first_record'
                     first_record = data.get('first_record') or data.get('record')
                     
                     logger.info(f"🔍 ✅ Valid verification response received:")
@@ -729,10 +729,10 @@ class ClusterVerificationService:
                     logger.info(f"🔍   First record: {first_record}")
                     
                     # Check if this is a response from C1 (client verification) or C2 (node verification)
-                    # C2的响应通常没有user_id，或者user_id是C1的user_id
-                    # 我们需要根据是否有等待的事件来判断这是C1还是C2的响应
+                    # C2's response usually has no user_id, or user_id is C1's user_id
+                    # We need to determine if this is C1 or C2's response based on waiting events
                     
-                    # 首先检查是否有等待的C1响应事件
+                    # First check if there are waiting C1 response events
                     client_response_key = f"client_{user_id}" if user_id else None
                     if client_response_key and client_response_key in self.response_events:
                         # This is from C1 (client verification)
@@ -755,13 +755,13 @@ class ClusterVerificationService:
                         else:
                             logger.warning(f"🔍 ❌ Event not found for user {user_id}")
                     else:
-                        # This is from C2 (node verification) - 查找等待的节点事件
+                        # This is from C2 (node verification) - find waiting node events
                         logger.info(f"🔍 Processing node verification response")
                         target_node_id = None
                         logger.info(f"🔍 Available response events: {list(self.response_events.keys())}")
                         logger.info(f"🔍 Event states: {[(k, v.is_set() if v else 'None') for k, v in self.response_events.items()]}")
                         
-                        # 查找等待的节点事件（不是client_开头的事件）
+                        # Find waiting node events (not events starting with client_)
                         logger.info(f"🔍 Searching for waiting node events...")
                         for node_id, event in self.response_events.items():
                             logger.info(f"🔍 Checking event for node {node_id}: event={event}, is_set={event.is_set() if event else 'None'}")

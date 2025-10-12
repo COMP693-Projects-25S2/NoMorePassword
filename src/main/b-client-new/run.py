@@ -9,16 +9,16 @@ import sys
 from app import app
 from services.models import db
 
-# 导入日志系统
+# Import logging system
 from utils.logger import get_bclient_logger, setup_print_redirect
 
-# 集群验证服务现在在websocket_client.py中处理
+# Cluster verification service is now handled in websocket_client.py
 
-# 立即设置日志重定向（在模块导入时就生效）
+# Set up log redirection immediately (takes effect on module import)
 logger = get_bclient_logger('main')
 print_redirect = setup_print_redirect('main')
 
-# 重定向print到日志
+# Redirect print to logger
 import builtins
 builtins.print = print_redirect
 

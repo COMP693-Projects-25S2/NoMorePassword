@@ -40,14 +40,14 @@ class SyncNotification {
             word-wrap: break-word;
         `;
 
-        // 图标
+        // Icon
         const icon = document.createElement('div');
         icon.style.cssText = `
             font-size: 24px;
             animation: bounce 2s infinite;
         `;
 
-        // 文本容器
+        // Text container
         const textContainer = document.createElement('div');
         textContainer.style.cssText = `
             flex: 1;
@@ -76,10 +76,10 @@ class SyncNotification {
         this.notification.appendChild(icon);
         this.notification.appendChild(textContainer);
 
-        // 添加到页面
+        // Add to page
         document.body.appendChild(this.notification);
 
-        // 添加CSS动画
+        // Add CSS animations
         this.addAnimations();
     }
 
@@ -141,13 +141,13 @@ class SyncNotification {
      * @param {number} duration - 显示时长（毫秒），默认3000ms
      */
     show(username, activitiesCount = 0, duration = 3000) {
-        // 清除之前的定时器
+        // Clear previous timer
         if (this.timeoutId) {
             clearTimeout(this.timeoutId);
             this.timeoutId = null;
         }
 
-        // 更新内容
+        // Update content
         const icon = this.notification.querySelector('div');
         const title = document.getElementById('sync-notification-title');
         const message = document.getElementById('sync-notification-message');
@@ -163,12 +163,12 @@ class SyncNotification {
             }
         }
 
-        // 显示通知
+        // Show notification
         this.notification.style.display = 'flex';
         this.notification.classList.remove('sync-notification-hide');
         this.notification.classList.add('sync-notification-show');
 
-        // 设置自动隐藏
+        // Set auto-hide
         this.timeoutId = setTimeout(() => {
             this.hide();
         }, duration);
@@ -180,13 +180,13 @@ class SyncNotification {
      * @param {number} duration - 显示时长（毫秒），默认2000ms
      */
     showSent(activitiesCount = 0, duration = 2000) {
-        // 清除之前的定时器
+        // Clear previous timer
         if (this.timeoutId) {
             clearTimeout(this.timeoutId);
             this.timeoutId = null;
         }
 
-        // 更新内容
+        // Update content
         const icon = this.notification.querySelector('div');
         const title = document.getElementById('sync-notification-title');
         const message = document.getElementById('sync-notification-message');
@@ -202,12 +202,12 @@ class SyncNotification {
             }
         }
 
-        // 显示通知
+        // Show notification
         this.notification.style.display = 'flex';
         this.notification.classList.remove('sync-notification-hide');
         this.notification.classList.add('sync-notification-show');
 
-        // 设置自动隐藏
+        // Set auto-hide
         this.timeoutId = setTimeout(() => {
             this.hide();
         }, duration);
@@ -219,13 +219,13 @@ class SyncNotification {
      * @param {number} duration - 显示时长（毫秒），默认4000ms
      */
     showError(errorMessage, duration = 4000) {
-        // 清除之前的定时器
+        // Clear previous timer
         if (this.timeoutId) {
             clearTimeout(this.timeoutId);
             this.timeoutId = null;
         }
 
-        // 更新内容和样式
+        // Update content and style
         const icon = this.notification.querySelector('div');
         const title = document.getElementById('sync-notification-title');
         const message = document.getElementById('sync-notification-message');
@@ -236,18 +236,18 @@ class SyncNotification {
             message.textContent = errorMessage;
         }
 
-        // 更改样式为错误样式
+        // Change style to error style
         this.notification.style.background = 'linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%)';
 
-        // 显示通知
+        // Show notification
         this.notification.style.display = 'flex';
         this.notification.classList.remove('sync-notification-hide');
         this.notification.classList.add('sync-notification-show');
 
-        // 设置自动隐藏
+        // Set auto-hide
         this.timeoutId = setTimeout(() => {
             this.hide();
-            // 恢复默认样式
+            // Restore default style
             this.notification.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
         }, duration);
     }
@@ -282,7 +282,7 @@ class SyncNotification {
     }
 }
 
-// 全局实例
+// Global instance
 window.syncNotification = new SyncNotification();
 
 module.exports = SyncNotification;
