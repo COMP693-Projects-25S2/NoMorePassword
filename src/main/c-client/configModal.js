@@ -198,11 +198,11 @@ class ConfigModal {
         </div>
 
         <div class="modal-body">
-            <div class="config-option" id="network-config">
+            <div class="config-option" id="network-config" style="display: none;">
                 <span class="config-option-icon">🌐</span>
                 <span class="config-option-text">Network Configuration</span>
             </div>
-            <div class="config-option" id="node-status">
+            <div class="config-option" id="node-status" style="display: none;">
                 <span class="config-option-icon">📊</span>
                 <span class="config-option-text">Node Status</span>
             </div>
@@ -210,11 +210,11 @@ class ConfigModal {
                 <span class="config-option-icon">📈</span>
                 <span class="config-option-text">Check Sync Data</span>
             </div>
-            <div class="config-option" id="b-client-config">
+            <div class="config-option" id="b-client-config" style="display: none;">
                 <span class="config-option-icon">🔗</span>
                 <span class="config-option-text">B-Client Configuration</span>
             </div>
-            <div class="config-option" id="switch-client">
+            <div class="config-option" id="switch-client" style="display: none;">
                 <span class="config-option-icon">🔄</span>
                 <span class="config-option-text">Switch to B-Client</span>
             </div>
@@ -230,11 +230,11 @@ class ConfigModal {
                 <span class="config-option-icon">📱</span>
                 <span class="config-option-text">Login in Another Device</span>
             </div>
-            <div class="config-option" id="node-test">
+            <div class="config-option" id="node-test" style="display: none;">
                 <span class="config-option-icon">🧪</span>
                 <span class="config-option-text">Node Test</span>
             </div>
-            <div class="config-option" id="exit-app">
+            <div class="config-option" id="exit-app" style="display: none;">
                 <span class="config-option-icon">🚪</span>
                 <span class="config-option-text">Exit Application</span>
             </div>

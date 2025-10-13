@@ -18,6 +18,7 @@ module.exports = {
         height: 800,
         minWidth: 800,
         minHeight: 600,
+        resizable: true,  // Allow window resizing
         autoHideMenuBar: true,
         show: false
     },

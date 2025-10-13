@@ -28,6 +28,55 @@ const UrlUtils = {
     },
 
     /**
+     * Normalize URL for history storage (removes NMP params and www prefix)
+     */
+    normalizeUrlForHistory(url) {
+        try {
+            const urlObj = new URL(url);
+
+            // Remove NMP parameters
+            const nmpParams = [
+                'nmp_user_id', 'nmp_username', 'nmp_client_type',
+                'nmp_timestamp', 'nmp_injected', 'nmp_client_id',
+                'nmp_node_id', 'nmp_domain_id', 'nmp_cluster_id', 'nmp_channel_id'
+            ];
+            nmpParams.forEach(param => urlObj.searchParams.delete(param));
+
+            // Remove www. prefix from hostname for consistency
+            let hostname = urlObj.hostname.toLowerCase();
+            if (hostname.startsWith('www.')) {
+                hostname = hostname.substring(4);
+                urlObj.hostname = hostname;
+            }
+
+            // Build pathname (remove trailing slash for consistency, except for root)
+            let pathname = urlObj.pathname;
+            if (pathname !== '/' && pathname.endsWith('/')) {
+                pathname = pathname.slice(0, -1);
+            }
+
+            // Build clean URL with all components
+            let cleanUrl = urlObj.origin + pathname;
+
+            // Add search params if they exist
+            const searchParams = urlObj.searchParams.toString();
+            if (searchParams) {
+                cleanUrl += '?' + searchParams;
+            }
+
+            // Add hash if it exists
+            if (urlObj.hash) {
+                cleanUrl += urlObj.hash;
+            }
+
+            return cleanUrl;
+        } catch (error) {
+            console.error('Failed to normalize URL for history:', url, error);
+            return url;
+        }
+    },
+
+    /**
      * Normalize URL
      */
     normalizeUrl(url) {

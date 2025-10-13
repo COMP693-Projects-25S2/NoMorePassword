@@ -2,6 +2,10 @@ const UrlUtils = require('../utils/urlUtils');
 const HistoryDatabase = require('../sqlite/historyDatabase');
 const { MAX_ACTIVE_RECORDS, MERGE_THRESHOLD, WRITE_INTERVAL } = require('../config/constants');
 
+// Get logger
+const { getCClientLogger } = require('../utils/logger');
+const historyLogger = getCClientLogger('history');
+
 // Visit record tracker - Pure database version
 class VisitTracker {
     constructor() {
@@ -117,11 +121,26 @@ class VisitTracker {
 
             const stayDuration = (endTime - activeRecord.enterTime) / 1000;
             if (stayDuration >= 0) {
-                // Update stay duration in database
-                try {
-                    await this.historyDB.updateRecordDuration(visitId, stayDuration);
-                } catch (error) {
-                    console.error('Failed to update record duration:', error);
+                // Minimum stay duration threshold: 10 seconds (only record meaningful visits)
+                const MIN_STAY_DURATION = 10;
+
+                if (stayDuration < MIN_STAY_DURATION) {
+                    // Delete short-stay records (redirects, quick navigation, or brief views)
+                    historyLogger.info(`⏭️ VisitTracker: Deleting short-stay record (${stayDuration.toFixed(1)}s < ${MIN_STAY_DURATION}s): ${activeRecord.url}`);
+                    try {
+                        // Delete from visit_history table
+                        this.historyDB.deleteVisitRecord(visitId);
+                    } catch (error) {
+                        historyLogger.error(`Failed to delete short-stay visit record: ${error.message}`);
+                    }
+                } else {
+                    // Update stay duration in database for records meeting threshold
+                    historyLogger.info(`✅ VisitTracker: Recording visit (${stayDuration.toFixed(1)}s): ${activeRecord.url}`);
+                    try {
+                        await this.historyDB.updateRecordDuration(visitId, stayDuration);
+                    } catch (error) {
+                        historyLogger.error(`Failed to update record duration: ${error.message}`);
+                    }
                 }
 
                 // Delete from active records table
@@ -222,14 +241,23 @@ class VisitTracker {
      * Main visit record method - all using database
      */
     async recordVisit(url, viewId, userId = null) {
+        historyLogger.info(`🎯 VisitTracker.recordVisit called: url=${url}, viewId=${viewId}, userId=${userId}`);
+
         // Skip special URLs
         if (!UrlUtils.isValidUrl(url)) {
-            console.log(`Skipping invalid URL: ${url}`);
+            historyLogger.info(`⏭️ VisitTracker: Skipping invalid URL: ${url}`);
+            return null;
+        }
+
+        // Skip blank pages
+        if (url === 'about:blank') {
+            historyLogger.info(`⏭️ VisitTracker: Skipping blank page: ${url}`);
             return null;
         }
 
         // Additional check if it's a history page
         if (UrlUtils.isHistoryRelatedPage(url)) {
+            historyLogger.info(`⏭️ VisitTracker: Skipping history page: ${url}`);
             return null;
         }
 

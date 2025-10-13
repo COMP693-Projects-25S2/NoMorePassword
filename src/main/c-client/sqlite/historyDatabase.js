@@ -146,6 +146,36 @@ class HistoryDatabase {
         });
     }
 
+    // Delete visit record (for short-stay visits)
+    deleteVisitRecord(visitId) {
+        try {
+            const stmt = db.prepare(`DELETE FROM visit_history WHERE id = ?`);
+            return stmt.run(visitId);
+        } catch (error) {
+            console.error('Failed to delete visit record:', error);
+            throw error;
+        }
+    }
+
+    // Clean up about:blank and browser:// records
+    cleanupInvalidRecords() {
+        try {
+            const stmt = db.prepare(`
+                DELETE FROM visit_history 
+                WHERE url = 'about:blank' 
+                   OR url LIKE 'browser://%'
+                   OR url IS NULL
+                   OR url = ''
+            `);
+            const result = stmt.run();
+            console.log(`🧹 HistoryDatabase: Cleaned up ${result.changes} invalid visit records`);
+            return result.changes;
+        } catch (error) {
+            console.error('Failed to clean up invalid records:', error);
+            return 0;
+        }
+    }
+
     // Helper method to retry database operations on lock
     async retryDatabaseOperation(operation, maxRetries = 3, delay = 100) {
         for (let i = 0; i < maxRetries; i++) {
@@ -178,6 +208,19 @@ class HistoryDatabase {
         }
 
         query += ` ORDER BY enter_time DESC`;
+
+        if (limit) {
+            query += ` LIMIT ? OFFSET ?`;
+            params.push(limit, offset);
+            return db.prepare(query).all(...params);
+        }
+        return db.prepare(query).all(...params);
+    }
+
+    // Get visit history without user filter (for title updates during startup)
+    getVisitHistoryWithoutUserFilter(limit = null, offset = 0) {
+        let query = `SELECT * FROM visit_history ORDER BY enter_time DESC`;
+        const params = [];
 
         if (limit) {
             query += ` LIMIT ? OFFSET ?`;

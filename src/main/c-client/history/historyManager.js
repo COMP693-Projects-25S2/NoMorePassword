@@ -280,10 +280,11 @@ class HistoryManager {
             const currentUser = this.userActivityManager ? this.userActivityManager.getCurrentUser() : null;
             const userId = currentUser ? currentUser.user_id : null;
 
-            // If no user is logged in, return empty history
+            // If no user is logged in, return all history (without user filter)
+            // This ensures title updates work even during startup
             if (!userId) {
-                console.log('No current user found, returning empty history');
-                return [];
+                console.log('No current user found, returning all history (no user filter)');
+                return this.historyDB.getVisitHistoryWithoutUserFilter(limit, 0);
             }
 
             return this.historyDB.getVisitHistory(limit, 0, userId);

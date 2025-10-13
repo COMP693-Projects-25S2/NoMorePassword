@@ -87,17 +87,9 @@ function switchToTab(tabId) {
     // Call main process to switch tab
     window.electronAPI.switchTab(tabId).then((result) => {
         if (result && result.success) {
-            // Update tab states in renderer
-            if (currentTabId && tabs[currentTabId]) {
-                tabs[currentTabId].el.classList.remove('active');
-            }
-            if (tabs[tabId]) {
-                tabs[tabId].el.classList.add('active');
-            }
-
-            currentTabId = tabId;
-            updateAddressFromTab(tabId);
-            console.log(`✅ Switched to tab ${tabId}`);
+            // Don't manually update styles here - let tab-switched event handle it
+            // This ensures consistent behavior and avoids conflicts
+            console.log(`✅ Switch request sent for tab ${tabId}, waiting for tab-switched event`);
         } else {
             console.error(`Failed to switch to tab ${tabId}:`, result?.error || 'Unknown error');
         }
@@ -107,38 +99,24 @@ function switchToTab(tabId) {
 }
 
 function activateTab(id) {
+    console.log(`🎯 activateTab called for tab ${id}`);
+    console.log(`🎯 Current tabs:`, Object.keys(tabs));
+
     Object.entries(tabs).forEach(([tid, obj]) => {
-        obj.el.classList.toggle('active', parseInt(tid) === id);
+        const isActive = parseInt(tid) === id;
+        obj.el.classList.toggle('active', isActive);
+        console.log(`🎯 Tab ${tid}: ${isActive ? 'ACTIVE' : 'inactive'}`);
     });
+
+    console.log(`✅ activateTab completed for tab ${id}`);
 }
 
 function closeTab(id) {
     window.electronAPI.closeTab(id).then((result) => {
         if (result && result.success) {
-            // Remove tab UI
-            tabs[id]?.el.remove();
-            delete tabs[id];
-
-            // Check if there's a new active tab
-            const remainingTabs = Object.keys(tabs);
-            if (remainingTabs.length > 0) {
-                // Find the next tab to activate
-                const nextTabId = remainingTabs.find(tabId => parseInt(tabId) > parseInt(id)) || remainingTabs[0];
-                if (nextTabId) {
-                    activateTab(nextTabId);
-                    currentTabId = nextTabId;
-
-                    // Check new activity tab type
-                    if (tabs[nextTabId] && tabs[nextTabId].isHistory) {
-                        addressBar.value = 'browser://history';
-                    } else {
-                        updateAddressFromTab(nextTabId);
-                    }
-                }
-            } else {
-                currentTabId = null;
-                addressBar.value = '';
-            }
+            // Don't manually handle tab switching here - let TabManager and events handle it
+            // TabManager will send tab-closed event (to remove UI) and tab-switched event (to activate next tab)
+            console.log(`✅ Close request sent for tab ${id}, waiting for events from TabManager`);
         } else {
             console.error('Failed to close tab:', result?.error || 'Unknown error');
         }
@@ -151,7 +129,10 @@ function updateAddressFromTab(id) {
     setTimeout(() => {
         window.electronAPI.getTabInfo(id).then(info => {
             if (!info) return;
-            if (info.url) addressBar.value = info.url;
+            // Update address bar (including empty string for blank tabs)
+            if (info.url !== undefined && info.url !== null) {
+                addressBar.value = info.url;
+            }
             if (info.title && tabs[id]) {
                 tabs[id].title = info.title;
                 tabs[id].titleNode.textContent = info.title;
@@ -356,25 +337,15 @@ document.addEventListener('DOMContentLoaded', () => {
     window.electronAPI.onTabClosed((_, { id }) => {
         console.log('🔔 TabManager通知: 标签页已关闭:', { id });
 
-        // Remove tab UI
+        // Remove tab UI only
         if (tabs[id]) {
             tabs[id].el.remove();
             delete tabs[id];
-
-            // If closed tab is current tab, switch to next available tab
-            if (currentTabId === id) {
-                const remainingTabs = Object.keys(tabs);
-                if (remainingTabs.length > 0) {
-                    const nextTabId = remainingTabs[0];
-                    currentTabId = nextTabId;
-                    activateTab(nextTabId);
-                    updateAddressFromTab(nextTabId);
-                } else {
-                    currentTabId = null;
-                    addressBar.value = '';
-                }
-            }
+            console.log(`✅ Tab ${id} UI removed from renderer`);
         }
+
+        // Note: Tab switching is handled by TabManager via tab-switched event
+        // Don't manually switch tabs here to avoid conflicts with TabManager's logic
 
         console.log('✅ TabManager关闭的标签页已从界面移除');
     });

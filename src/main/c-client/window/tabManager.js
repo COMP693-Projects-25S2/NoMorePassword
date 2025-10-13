@@ -29,9 +29,9 @@ class TabManager {
             this.onTabSwitched = null;
             this.onTabTitleUpdated = null;
 
-            console.log('✅ TabManager: Initialized unified Tab-BrowserView management');
+            this.logger.info('✅ TabManager: Initialized unified Tab-BrowserView management');
         } catch (error) {
-            console.error('❌ TabManager: Constructor failed:', error);
+            this.logger.error('❌ TabManager: Constructor failed: ' + error.message);
             throw error;
         }
     }
@@ -40,30 +40,14 @@ class TabManager {
      * Create a new tab with synchronized Tab UI and BrowserView
      */
     async createTab(url = 'https://www.google.com', options = {}) {
-        console.log(`🆕 TabManager: Creating synchronized tab with URL: ${url}`);
+        this.logger.info(`🆕 TabManager: Creating synchronized tab with URL: ${url}`);
 
         try {
             // 1. Generate unique ID
             const id = ++this.tabCounter;
-            console.log(`🆕 TabManager: Generated tab ID: ${id}`);
+            this.logger.info(`🆕 TabManager: Generated tab ID: ${id}`);
 
-            // 2. Create BrowserView first
-            const browserView = await this.createBrowserView(url, id, options);
-            if (!browserView) {
-                throw new Error('Failed to create BrowserView');
-            }
-            console.log(`✅ TabManager: BrowserView created for tab ${id}`);
-
-            // 3. Create Tab UI
-            const tabUI = await this.createTabUI(id, url, options);
-            if (!tabUI) {
-                // Cleanup BrowserView if Tab UI creation failed
-                await this.closeBrowserView(browserView);
-                throw new Error('Failed to create Tab UI');
-            }
-            console.log(`✅ TabManager: Tab UI created for tab ${id}`);
-
-            // 4. Establish binding relationship
+            // 2. Determine initial title
             let initialTitle = 'Loading...';
             if (options.isHistory) {
                 initialTitle = 'History';
@@ -72,9 +56,18 @@ class TabManager {
             } else if (url === 'about:blank') {
                 initialTitle = 'New Tab';
             }
-            const tabData = {
+
+            // 3. Create Tab UI first (fast, for immediate user feedback)
+            const tabUI = await this.createTabUI(id, url, options);
+            if (!tabUI) {
+                throw new Error('Failed to create Tab UI');
+            }
+            this.logger.info(`✅ TabManager: Tab UI created for tab ${id}`);
+
+            // 4. Create temporary tab data (without BrowserView) and notify UI immediately
+            const tempTabData = {
                 id,
-                browserView,
+                browserView: null,  // Will be set later
                 tabUI,
                 url,
                 title: initialTitle,
@@ -82,17 +75,28 @@ class TabManager {
                 metadata: options,
                 isActive: false
             };
+            this.tabs.set(id, tempTabData);
 
-            this.tabs.set(id, tabData);
-            console.log(`✅ TabManager: Tab ${id} bound successfully`);
-
-            // 5. Notify creation first (so renderer can create tab UI)
-            this.notifyTabCreated(id, tabData);
-
-            // 6. Then switch to the newly created tab
+            // 5. Notify creation and switch immediately (before loading URL)
+            this.notifyTabCreated(id, tempTabData);
             await this.switchTab(id);
+            this.logger.info(`✅ TabManager: Tab ${id} UI shown, now loading content...`);
 
-            console.log(`🎉 TabManager: Tab ${id} created and synchronized successfully`);
+            // 6. Create BrowserView in background (slower, URL loading)
+            const browserView = await this.createBrowserView(url, id, options);
+            if (!browserView) {
+                // Cleanup Tab UI if BrowserView creation failed
+                this.removeTabUI(id);
+                this.tabs.delete(id);
+                throw new Error('Failed to create BrowserView');
+            }
+            this.logger.info(`✅ TabManager: BrowserView created for tab ${id}`);
+
+            // 7. Update tab data with BrowserView
+            tempTabData.browserView = browserView;
+            this.logger.info(`✅ TabManager: Tab ${id} fully bound`);
+
+            this.logger.info(`🎉 TabManager: Tab ${id} created and synchronized successfully`);
             return {
                 id,
                 title: initialTitle,
@@ -102,7 +106,7 @@ class TabManager {
             };
 
         } catch (error) {
-            console.error(`❌ TabManager: Failed to create tab:`, error);
+            this.logger.error(`❌ TabManager: Failed to create tab: ` + error.message);
             throw error;
         }
     }
@@ -111,34 +115,40 @@ class TabManager {
      * Close a tab with synchronized cleanup
      */
     async closeTab(id) {
-        console.log(`🗑️ TabManager: Closing synchronized tab ${id}`);
+        this.logger.info(`🗑️ TabManager: Closing synchronized tab ${id}`);
 
         const tab = this.tabs.get(id);
         if (!tab) {
-            console.warn(`⚠️ TabManager: Tab ${id} not found`);
+            this.logger.warn(`⚠️ TabManager: Tab ${id} not found`);
             return false;
         }
 
         try {
             // 1. Close BrowserView
-            console.log(`🧹 TabManager: Closing BrowserView for tab ${id}`);
+            this.logger.info(`🧹 TabManager: Closing BrowserView for tab ${id}`);
             await this.closeBrowserView(tab.browserView);
-            console.log(`✅ TabManager: BrowserView closed for tab ${id}`);
+            this.logger.info(`✅ TabManager: BrowserView closed for tab ${id}`);
 
             // 2. Remove Tab UI
-            console.log(`🧹 TabManager: Removing Tab UI for tab ${id}`);
+            this.logger.info(`🧹 TabManager: Removing Tab UI for tab ${id}`);
             await this.removeTabUI(tab.tabUI);
-            console.log(`✅ TabManager: Tab UI removed for tab ${id}`);
+            this.logger.info(`✅ TabManager: Tab UI removed for tab ${id}`);
 
-            // 3. Remove from manager
-            this.tabs.delete(id);
-            console.log(`✅ TabManager: Tab ${id} removed from manager`);
-
-            // 4. Update current tab if needed
+            // 3. Determine next tab BEFORE removing (if this is the current tab)
+            let nextTabId = null;
             if (this.currentTabId === id) {
-                const nextTabId = this.getNextAvailableTabId();
+                nextTabId = this.getNextAvailableTabId(id);
+                this.logger.info(`📌 TabManager: Next tab to focus after closing ${id}: ${nextTabId}`);
+            }
+
+            // 4. Remove from manager
+            this.tabs.delete(id);
+            this.logger.info(`✅ TabManager: Tab ${id} removed from manager`);
+
+            // 5. Update current tab if needed
+            if (this.currentTabId === id) {
                 if (nextTabId) {
-                    await this.setCurrentTab(nextTabId);
+                    await this.switchTab(nextTabId);
                 } else {
                     this.currentTabId = null;
                 }
@@ -147,11 +157,11 @@ class TabManager {
             // 5. Notify closure
             this.notifyTabClosed(id);
 
-            console.log(`🎉 TabManager: Tab ${id} closed and synchronized successfully`);
+            this.logger.info(`🎉 TabManager: Tab ${id} closed and synchronized successfully`);
             return true;
 
         } catch (error) {
-            console.error(`❌ TabManager: Failed to close tab ${id}:`, error);
+            this.logger.error(`❌ TabManager: Failed to close tab ${id}: ` + error.message);
             return false;
         }
     }
@@ -160,11 +170,11 @@ class TabManager {
      * Switch to a specific tab
      */
     async switchTab(id) {
-        console.log(`🔄 TabManager: Switching to tab ${id}`);
+        this.logger.info(`🔄 TabManager: Switching to tab ${id}`);
 
         const tab = this.tabs.get(id);
         if (!tab) {
-            console.warn(`⚠️ TabManager: Tab ${id} not found`);
+            this.logger.warn(`⚠️ TabManager: Tab ${id} not found`);
             return false;
         }
 
@@ -188,11 +198,11 @@ class TabManager {
             // 4. Notify switch
             this.notifyTabSwitched(id, tab);
 
-            console.log(`✅ TabManager: Switched to tab ${id}`);
+            this.logger.info(`✅ TabManager: Switched to tab ${id}`);
             return true;
 
         } catch (error) {
-            console.error(`❌ TabManager: Failed to switch to tab ${id}:`, error);
+            this.logger.error(`❌ TabManager: Failed to switch to tab ${id}:`, error);
             return false;
         }
     }
@@ -202,7 +212,7 @@ class TabManager {
      */
     async createBrowserView(url, id, options = {}) {
         try {
-            console.log(`🆕 TabManager: Creating BrowserView for tab ${id} with URL: ${url}`);
+            this.logger.info(`🆕 TabManager: Creating BrowserView for tab ${id} with URL: ${url}`);
 
             // Create BrowserView directly
             const browserView = new BrowserView({
@@ -210,9 +220,15 @@ class TabManager {
                     nodeIntegration: false,
                     contextIsolation: true,
                     preload: path.join(__dirname, '../pages/preload.js'),
-                    webviewTag: true  // Enable webview tag for embedded page previews in history
+                    webviewTag: true,  // Enable webview tag for embedded page previews in history
+                    partition: 'persist:main',  // Use persistent session for cookies
+                    session: null  // Will use default session with partition
                 }
             });
+
+            // Set a standard browser User-Agent to avoid website detection
+            const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+            browserView.webContents.setUserAgent(userAgent);
 
             // Set bounds
             const bounds = this.getViewBounds();
@@ -225,32 +241,32 @@ class TabManager {
             // Setup title listeners BEFORE loading URL to catch all events
             this.setupTitleListeners(browserView, id);
 
+            // Setup history recording for this BrowserView
+            this.setupHistoryRecording(browserView, id);
+
             // Load URL
             if (url.startsWith('browser://history')) {
                 // Load history page
                 const historyPath = path.join(__dirname, '../pages/history.html');
-                console.log(`📂 TabManager: Loading history file: ${historyPath}`);
+                this.logger.info(`📂 TabManager: Loading history file: ${historyPath}`);
                 await browserView.webContents.loadFile(historyPath);
-                console.log(`✅ TabManager: History file loaded successfully for tab ${id}`);
+                this.logger.info(`✅ TabManager: History file loaded successfully for tab ${id}`);
             } else {
-                // Load regular URL
-                console.log(`🌐 TabManager: Loading URL: ${url} for tab ${id}`);
-                try {
-                    await browserView.webContents.loadURL(url);
-                    console.log(`✅ TabManager: URL loaded successfully for tab ${id}`);
-                } catch (loadError) {
-                    console.error(`❌ TabManager: Failed to load URL ${url} for tab ${id}:`, loadError);
+                // Load regular URL (non-blocking, load in background)
+                this.logger.info(`🌐 TabManager: Starting to load URL: ${url} for tab ${id}`);
+                browserView.webContents.loadURL(url).catch(loadError => {
+                    this.logger.error(`❌ TabManager: Failed to load URL ${url} for tab ${id}:`, loadError);
                     // Set error title
                     this.updateTabTitle(id, `Error loading ${url}`);
-                    throw loadError;
-                }
+                });
+                this.logger.info(`✅ TabManager: URL loading started for tab ${id} (non-blocking)`);
             }
 
             // Add to main window
             const electronMainWindow = this.getElectronMainWindow();
             if (electronMainWindow) {
                 electronMainWindow.addBrowserView(browserView);
-                console.log(`✅ TabManager: BrowserView ${id} added to main window`);
+                this.logger.info(`✅ TabManager: BrowserView ${id} added to main window`);
             }
 
             // Special handling for history tabs
@@ -260,9 +276,9 @@ class TabManager {
 
             return browserView;
         } catch (error) {
-            console.error(`❌ TabManager: Error creating BrowserView for tab ${id}:`, error);
-            console.error(`❌ TabManager: URL:`, url);
-            console.error(`❌ TabManager: Options:`, options);
+            this.logger.error(`❌ TabManager: Error creating BrowserView for tab ${id}:`, error);
+            this.logger.error(`❌ TabManager: URL:`, url);
+            this.logger.error(`❌ TabManager: Options:`, options);
             return null;
         }
     }
@@ -282,7 +298,7 @@ class TabManager {
             // No need to send separate create-tab-ui event
             return { id, url, title: initialTitle }; // Return tab UI data
         } catch (error) {
-            console.error(`❌ TabManager: Error creating Tab UI for tab ${id}:`, error);
+            this.logger.error(`❌ TabManager: Error creating Tab UI for tab ${id}:`, error);
             return null;
         }
     }
@@ -343,46 +359,97 @@ class TabManager {
                 this.updateTabTitle(id, title);
 
             } catch (error) {
-                console.error(`❌ TabManager: Error getting title for tab ${id}:`, error);
+                this.logger.error(`❌ TabManager: Error getting title for tab ${id}:`, error);
                 this.updateTabTitle(id, 'Error');
             }
         };
 
         // Set up listeners
         if (browserView.webContents) {
-            console.log(`🎯 TabManager: Setting up title listeners for tab ${id}`);
+            this.logger.info(`🎯 TabManager: Setting up title listeners for tab ${id}`);
             browserView.webContents.on('page-title-updated', (event, title) => {
-                console.log(`🎯 TabManager: page-title-updated event for tab ${id}: "${title}"`);
+                this.logger.info(`🎯 TabManager: page-title-updated event for tab ${id}: "${title}"`);
                 sendTitle();
+
+                // Update history record title (use historyLogger)
+                try {
+                    const { getCClientLogger } = require('../utils/logger');
+                    const historyLogger = getCClientLogger('history');
+
+                    const currentURL = browserView.webContents.getURL();
+
+                    // Use original URL (do NOT normalize)
+                    historyLogger.info(`📚 [Tab ${id}] page-title-updated: URL=${currentURL}, Title=${title}`);
+
+                    // Update history record if we have electronApp and historyManager
+                    if (this.electronApp && this.electronApp.historyManager) {
+                        if (currentURL && currentURL !== 'about:blank' && !currentURL.startsWith('browser://') && title) {
+                            historyLogger.info(`📚 [Tab ${id}] Calling updateRecordTitle`);
+                            this.electronApp.updateRecordTitle(currentURL, id, title);
+                        } else {
+                            this.logger.info(`📚 TabManager: ⏭️ Skipping update - blank/internal page or no title`);
+                        }
+                    } else {
+                        this.logger.info(`📚 TabManager: ❌ Cannot update - electronApp or historyManager not available`);
+                    }
+                } catch (titleError) {
+                    this.logger.warn(`⚠️ TabManager: Error updating history title for tab ${id}:`, titleError);
+                }
             });
             browserView.webContents.on('did-finish-load', () => {
-                console.log(`🎯 TabManager: did-finish-load event for tab ${id}`);
+                this.logger.info(`🎯 TabManager: did-finish-load event for tab ${id}`);
                 sendTitle();
+
+                // Update history record title (use historyLogger)
+                try {
+                    const { getCClientLogger } = require('../utils/logger');
+                    const historyLogger = getCClientLogger('history');
+
+                    const currentURL = browserView.webContents.getURL();
+                    const currentTitle = browserView.webContents.getTitle();
+
+                    // Use original URL (do NOT normalize)
+                    historyLogger.info(`📚 [Tab ${id}] did-finish-load: URL=${currentURL}, Title=${currentTitle}`);
+
+                    // Update history record if we have electronApp and historyManager
+                    if (this.electronApp && this.electronApp.historyManager) {
+                        if (currentURL && currentURL !== 'about:blank' && !currentURL.startsWith('browser://')) {
+                            historyLogger.info(`📚 [Tab ${id}] Calling updateRecordTitle`);
+                            this.electronApp.updateRecordTitle(currentURL, id, currentTitle);
+                        } else {
+                            this.logger.info(`📚 TabManager: ⏭️ Skipping update - blank/internal page`);
+                        }
+                    } else {
+                        this.logger.info(`📚 TabManager: ❌ Cannot update - electronApp or historyManager not available`);
+                    }
+                } catch (titleError) {
+                    this.logger.warn(`⚠️ TabManager: Error updating history title for tab ${id}:`, titleError);
+                }
 
                 // Check for NSN response after page loads (but skip logout pages)
                 const currentURL = browserView.webContents.getURL();
                 if (!currentURL.includes('/logout')) {
-                    console.log(`🔍 TabManager: Non-logout page detected, checking for NSN response...`);
+                    this.logger.info(`🔍 TabManager: Non-logout page detected, checking for NSN response...`);
                     this.detectNSNResponse(browserView, id, 'did-finish-load');
                 } else {
-                    console.log(`🔍 TabManager: Logout page detected, skipping NSN response detection`);
+                    this.logger.info(`🔍 TabManager: Logout page detected, skipping NSN response detection`);
                 }
             });
             browserView.webContents.on('did-navigate', () => {
-                console.log(`🎯 TabManager: did-navigate event for tab ${id}`);
+                this.logger.info(`🎯 TabManager: did-navigate event for tab ${id}`);
                 sendTitle();
 
                 // Check for NSN response after navigation (but skip logout pages)
                 const currentURL = browserView.webContents.getURL();
                 if (!currentURL.includes('/logout')) {
-                    console.log(`🔍 TabManager: Non-logout page navigation detected, checking for NSN response...`);
+                    this.logger.info(`🔍 TabManager: Non-logout page navigation detected, checking for NSN response...`);
                     this.detectNSNResponse(browserView, id, 'did-navigate');
                 } else {
-                    console.log(`🔍 TabManager: Logout page navigation detected, skipping NSN response detection`);
+                    this.logger.info(`🔍 TabManager: Logout page navigation detected, skipping NSN response detection`);
                 }
             });
             browserView.webContents.on('did-navigate-in-page', () => {
-                console.log(`🎯 TabManager: did-navigate-in-page event for tab ${id}`);
+                this.logger.info(`🎯 TabManager: did-navigate-in-page event for tab ${id}`);
                 sendTitle();
             });
             browserView.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
@@ -391,7 +458,7 @@ class TabManager {
                     return;
                 }
 
-                console.error(`❌ TabManager: did-fail-load event for tab ${id}:`, errorCode, errorDescription, validatedURL);
+                this.logger.error(`❌ TabManager: did-fail-load event for tab ${id}:`, errorCode, errorDescription, validatedURL);
 
                 // Provide user-friendly error messages
                 let userMessage = '';
@@ -497,11 +564,86 @@ class TabManager {
         }
 
         // Initial title check
-        console.log(`🎯 TabManager: Scheduling initial title check for tab ${id} in 100ms`);
+        this.logger.info(`🎯 TabManager: Scheduling initial title check for tab ${id} in 100ms`);
         setTimeout(() => {
-            console.log(`🎯 TabManager: Running initial title check for tab ${id}`);
+            this.logger.info(`🎯 TabManager: Running initial title check for tab ${id}`);
             sendTitle();
         }, 100);
+    }
+
+    /**
+     * Setup history recording for a BrowserView
+     */
+    setupHistoryRecording(browserView, id) {
+        const { getCClientLogger } = require('../utils/logger');
+        const historyLogger = getCClientLogger('history');
+
+        const contents = browserView.webContents;
+
+        contents.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
+            historyLogger.info(`📍 [Tab ${id}] did-start-navigation: url=${url}, isMainFrame=${isMainFrame}, isInPlace=${isInPlace}`);
+
+            if (!isMainFrame) {
+                historyLogger.info(`⏭️ [Tab ${id}] Skipping: not main frame`);
+                return;
+            }
+
+            if (isInPlace) {
+                historyLogger.info(`⏭️ [Tab ${id}] Skipping: in-place navigation (SPA/hash change)`);
+                return;
+            }
+
+            const UrlUtils = require('../utils/urlUtils');
+            if (!UrlUtils.isValidUrl(url)) {
+                historyLogger.info(`⏭️ [Tab ${id}] Skipping invalid URL: ${url}`);
+                return;
+            }
+
+            // Use original URL for history storage (do NOT normalize)
+            historyLogger.info(`📝 [Tab ${id}] Recording visit for viewId=${id}, url=${url}`);
+
+            if (this.electronApp && this.electronApp.historyManager) {
+                setTimeout(async () => {
+                    try {
+                        if (contents.isDestroyed()) return;
+
+                        // Create record first
+                        const record = await this.electronApp.historyManager.recordPageVisitWithContent(url, id, contents);
+                        if (record) {
+                            historyLogger.info(`✅ [Tab ${id}] Visit recorded with ID: ${record.id}, URL: ${url}`);
+
+                            // Immediately try to get the actual title after record creation
+                            // Wait a bit for page to load
+                            setTimeout(() => {
+                                try {
+                                    if (contents.isDestroyed()) return;
+
+                                    const currentTitle = contents.getTitle();
+                                    historyLogger.info(`🔍 [Tab ${id}] Checking title after record creation: "${currentTitle}"`);
+
+                                    if (currentTitle && currentTitle.trim() &&
+                                        currentTitle !== 'Loading...' &&
+                                        currentTitle !== 'about:blank' &&
+                                        currentTitle !== url) {
+                                        // Update title immediately
+                                        this.electronApp.historyManager.updateRecordTitle(record, currentTitle);
+                                        historyLogger.info(`✅ [Tab ${id}] Title updated immediately after record creation: ${currentTitle}`);
+                                    } else {
+                                        historyLogger.info(`⏳ [Tab ${id}] Title not ready yet, will update later via events`);
+                                    }
+                                } catch (titleError) {
+                                    historyLogger.error(`Error updating title after record creation: ${titleError.message}`);
+                                }
+                            }, 1000);  // Wait 1 second for page to load and title to be available
+                        } else {
+                            historyLogger.warn(`⚠️ [Tab ${id}] Failed to record visit for URL: ${url}`);
+                        }
+                    } catch (error) {
+                        historyLogger.error(`Error in did-start-navigation handler for tab ${id}: ${error.message}`);
+                    }
+                }, 200);
+            }
+        });
     }
 
     /**
@@ -509,34 +651,34 @@ class TabManager {
      */
     updateTabTitle(id, title) {
         try {
-            console.log(`📝 TabManager: Updating title for tab ${id} to: "${title}"`);
+            this.logger.info(`📝 TabManager: Updating title for tab ${id} to: "${title}"`);
 
             // Update internal tab data
             const tab = this.tabs.get(id);
             if (tab) {
                 const oldTitle = tab.title;
                 tab.title = title;
-                console.log(`📝 TabManager: Updated internal title for tab ${id}: "${oldTitle}" -> "${title}"`);
+                this.logger.info(`📝 TabManager: Updated internal title for tab ${id}: "${oldTitle}" -> "${title}"`);
             } else {
-                console.warn(`⚠️ TabManager: Tab ${id} not found when updating title`);
+                this.logger.warn(`⚠️ TabManager: Tab ${id} not found when updating title`);
                 return;
             }
 
             // Notify UI of title update
             if (this.electronApp && this.electronApp.sendToWindow) {
-                console.log(`📝 TabManager: Sending tab-title-updated event for tab ${id}`);
+                this.logger.info(`📝 TabManager: Sending tab-title-updated event for tab ${id}`);
                 this.electronApp.sendToWindow('tab-title-updated', {
                     id: parseInt(id),
                     title: title
                 });
-                console.log(`✅ TabManager: tab-title-updated event sent for tab ${id}`);
+                this.logger.info(`✅ TabManager: tab-title-updated event sent for tab ${id}`);
             } else {
-                console.warn(`⚠️ TabManager: electronApp or sendToWindow not available for title update`);
+                this.logger.warn(`⚠️ TabManager: electronApp or sendToWindow not available for title update`);
             }
 
-            console.log(`📝 TabManager: Title update completed for tab ${id}: "${title}"`);
+            this.logger.info(`📝 TabManager: Title update completed for tab ${id}: "${title}"`);
         } catch (error) {
-            console.error(`❌ TabManager: Error updating title for tab ${id}:`, error);
+            this.logger.error(`❌ TabManager: Error updating title for tab ${id}:`, error);
         }
     }
 
@@ -547,15 +689,15 @@ class TabManager {
         try {
             if (browserView && browserView.webContents && !browserView.webContents.isDestroyed()) {
                 // Remove all event listeners before destroying
-                console.log(`🧹 TabManager: Removing event listeners from BrowserView`);
+                this.logger.info(`🧹 TabManager: Removing event listeners from BrowserView`);
                 browserView.webContents.removeAllListeners();
 
                 // Destroy the webContents
                 browserView.webContents.destroy();
-                console.log(`✅ TabManager: BrowserView destroyed successfully`);
+                this.logger.info(`✅ TabManager: BrowserView destroyed successfully`);
             }
         } catch (error) {
-            console.error(`❌ TabManager: Error closing BrowserView:`, error);
+            this.logger.error(`❌ TabManager: Error closing BrowserView:`, error);
         }
     }
 
@@ -570,7 +712,7 @@ class TabManager {
                 });
             }
         } catch (error) {
-            console.error(`❌ TabManager: Error removing Tab UI:`, error);
+            this.logger.error(`❌ TabManager: Error removing Tab UI:`, error);
         }
     }
 
@@ -585,7 +727,7 @@ class TabManager {
                 electronMainWindow.addBrowserView(browserView);
             }
         } catch (error) {
-            console.error(`❌ TabManager: Error showing BrowserView:`, error);
+            this.logger.error(`❌ TabManager: Error showing BrowserView:`, error);
         }
     }
 
@@ -600,7 +742,7 @@ class TabManager {
                 electronMainWindow.removeBrowserView(browserView);
             }
         } catch (error) {
-            console.error(`❌ TabManager: Error hiding BrowserView:`, error);
+            this.logger.error(`❌ TabManager: Error hiding BrowserView:`, error);
         }
     }
 
@@ -626,9 +768,39 @@ class TabManager {
     /**
      * Get next available tab ID
      */
-    getNextAvailableTabId() {
-        const tabIds = Array.from(this.tabs.keys());
-        return tabIds.length > 0 ? tabIds[0] : null;
+    getNextAvailableTabId(closedTabId = null) {
+        const tabIds = Array.from(this.tabs.keys()).sort((a, b) => a - b);
+
+        if (tabIds.length <= 1) {
+            // No tabs or only the tab being closed
+            return null;
+        }
+
+        // If no closedTabId specified, return the last tab
+        if (!closedTabId) {
+            return tabIds[tabIds.length - 1];
+        }
+
+        // Find the position of the closed tab
+        const closedIndex = tabIds.indexOf(closedTabId);
+
+        if (closedIndex === -1) {
+            // Closed tab not found, return last tab
+            return tabIds[tabIds.length - 1];
+        }
+
+        // Try to select the tab to the right (next in array)
+        if (closedIndex + 1 < tabIds.length) {
+            return tabIds[closedIndex + 1];
+        }
+
+        // No tab to the right, select the tab to the left (previous in array)
+        if (closedIndex - 1 >= 0) {
+            return tabIds[closedIndex - 1];
+        }
+
+        // Should not reach here, but return last tab as fallback
+        return tabIds[tabIds.length - 1];
     }
 
     /**
@@ -660,7 +832,7 @@ class TabManager {
      * Close all tabs
      */
     async closeAllTabs() {
-        console.log(`🗑️ TabManager: Closing all tabs`);
+        this.logger.info(`🗑️ TabManager: Closing all tabs`);
 
         const tabIds = Array.from(this.tabs.keys());
         for (const id of tabIds) {
@@ -668,32 +840,32 @@ class TabManager {
         }
 
         this.currentTabId = null;
-        console.log(`✅ TabManager: All tabs closed`);
+        this.logger.info(`✅ TabManager: All tabs closed`);
     }
 
     /**
      * Event notification methods
      */
     notifyTabCreated(id, tabData) {
-        console.log(`📢 TabManager: Notifying tab created - ID: ${id}, Title: ${tabData.title}`);
+        this.logger.info(`📢 TabManager: Notifying tab created - ID: ${id}, Title: ${tabData.title}`);
 
         if (this.onTabCreated) {
-            console.log(`📢 TabManager: Calling onTabCreated callback for tab ${id}`);
+            this.logger.info(`📢 TabManager: Calling onTabCreated callback for tab ${id}`);
             this.onTabCreated(id, tabData);
         }
 
         // Also send to main window
         if (this.electronApp && this.electronApp.sendToWindow) {
-            console.log(`📢 TabManager: Sending tab-created event to renderer for tab ${id}`);
+            this.logger.info(`📢 TabManager: Sending tab-created event to renderer for tab ${id}`);
             this.electronApp.sendToWindow('tab-created', {
                 id,
                 url: tabData.url,
                 title: tabData.title,
                 metadata: tabData.metadata
             });
-            console.log(`✅ TabManager: tab-created event sent successfully for tab ${id}`);
+            this.logger.info(`✅ TabManager: tab-created event sent successfully for tab ${id}`);
         } else {
-            console.error(`❌ TabManager: Cannot send tab-created event - electronApp or sendToWindow not available`);
+            this.logger.error(`❌ TabManager: Cannot send tab-created event - electronApp or sendToWindow not available`);
         }
     }
 
@@ -759,15 +931,15 @@ class TabManager {
         const currentTab = this.getCurrentTab();
         if (currentTab && currentTab.browserView && currentTab.browserView.webContents) {
             try {
-                console.log(`🧭 TabManager: Navigating to URL: ${url}`);
+                this.logger.info(`🧭 TabManager: Navigating to URL: ${url}`);
 
                 // Add error handling for navigation
                 const webContents = currentTab.browserView.webContents;
 
                 // Set up error handlers for this navigation
                 const handleNavigationError = (event, errorCode, errorDescription, validatedURL) => {
-                    console.error(`❌ TabManager: Navigation failed: ${errorCode} (${errorDescription}) loading '${validatedURL}'`);
-                    console.error(`❌ TabManager: Error details:`, {
+                    this.logger.error(`❌ TabManager: Navigation failed: ${errorCode} (${errorDescription}) loading '${validatedURL}'`);
+                    this.logger.error(`❌ TabManager: Error details:`, {
                         errorCode,
                         errorDescription,
                         validatedURL,
@@ -776,7 +948,7 @@ class TabManager {
                 };
 
                 const handleNavigationSuccess = () => {
-                    console.log(`✅ TabManager: Navigation successful: ${url}`);
+                    this.logger.info(`✅ TabManager: Navigation successful: ${url}`);
                 };
 
                 // Add temporary event listeners
@@ -797,7 +969,7 @@ class TabManager {
 
                 return true;
             } catch (error) {
-                console.error(`❌ TabManager: Navigation error for URL ${url}:`, error);
+                this.logger.error(`❌ TabManager: Navigation error for URL ${url}:`, error);
                 return false;
             }
         }
@@ -848,7 +1020,7 @@ class TabManager {
      * Close all tabs and create a new default tab
      */
     async closeAllTabsAndCreateDefault() {
-        console.log(`🧹 TabManager: Closing all tabs and creating default tab`);
+        this.logger.info(`🧹 TabManager: Closing all tabs and creating default tab`);
 
         // Close all tabs
         const allTabs = this.getAllTabs();
@@ -858,7 +1030,7 @@ class TabManager {
 
         // Create new default tab
         await this.createTab();
-        console.log(`✅ TabManager: All tabs closed and default tab created`);
+        this.logger.info(`✅ TabManager: All tabs closed and default tab created`);
     }
 
     /**
@@ -868,21 +1040,21 @@ class TabManager {
         const allTabs = this.getAllTabs();
         const electronMainWindow = this.getElectronMainWindow();
 
-        console.log(`🧹 TabManager: Hiding ${allTabs.length} tabs from main window`);
+        this.logger.info(`🧹 TabManager: Hiding ${allTabs.length} tabs from main window`);
 
         allTabs.forEach(tab => {
             if (tab.browserView && !tab.browserView.webContents.isDestroyed()) {
                 try {
                     electronMainWindow.removeBrowserView(tab.browserView);
-                    console.log(`✅ TabManager: Successfully hid tab ${tab.id} from main window`);
+                    this.logger.info(`✅ TabManager: Successfully hid tab ${tab.id} from main window`);
                 } catch (error) {
-                    console.error(`❌ TabManager: Error hiding tab ${tab.id}:`, error);
+                    this.logger.error(`❌ TabManager: Error hiding tab ${tab.id}:`, error);
                 }
             }
         });
 
         this.currentTabId = null;
-        console.log(`✅ TabManager: All tabs hidden, currentTabId set to null`);
+        this.logger.info(`✅ TabManager: All tabs hidden, currentTabId set to null`);
     }
 
     /**
@@ -900,14 +1072,14 @@ class TabManager {
             if (tab.browserView && !tab.browserView.webContents.isDestroyed()) {
                 try {
                     electronMainWindow.addBrowserView(tab.browserView);
-                    console.log(`✅ TabManager: Successfully showed tab ${tab.id} in main window`);
+                    this.logger.info(`✅ TabManager: Successfully showed tab ${tab.id} in main window`);
                 } catch (error) {
-                    console.error(`❌ TabManager: Error showing tab ${tab.id}:`, error);
+                    this.logger.error(`❌ TabManager: Error showing tab ${tab.id}:`, error);
                 }
             }
         });
 
-        console.log(`✅ TabManager: All tabs shown in main window`);
+        this.logger.info(`✅ TabManager: All tabs shown in main window`);
     }
 
     /**
@@ -971,10 +1143,30 @@ class TabManager {
      * Get view bounds
      */
     getViewBounds() {
-        const mainWindow = this.getElectronMainWindow();
-        if (mainWindow && mainWindow.getViewBounds) {
-            return mainWindow.getViewBounds();
+        // Get bounds from WindowManager (which calculates based on current window size)
+        if (this.electronApp && this.electronApp.windowManager && this.electronApp.windowManager.getViewBounds) {
+            const bounds = this.electronApp.windowManager.getViewBounds();
+            this.logger.info(`📐 TabManager: Getting view bounds from WindowManager: ${bounds.width}x${bounds.height}`);
+            return bounds;
         }
+
+        // Fallback: calculate from main window directly
+        const mainWindow = this.getElectronMainWindow();
+        if (mainWindow) {
+            const [width, height] = mainWindow.getContentSize();
+            const topOffset = 86; // toolbar 50px + tab bar 36px
+            const bounds = {
+                x: 0,
+                y: topOffset,
+                width: width,
+                height: height - topOffset
+            };
+            this.logger.info(`📐 TabManager: Calculated view bounds from main window: ${bounds.width}x${bounds.height}`);
+            return bounds;
+        }
+
+        // Default fallback
+        this.logger.info(`📐 TabManager: Using default view bounds: 1000x714`);
         return { x: 0, y: 86, width: 1000, height: 714 };
     }
 
@@ -1029,7 +1221,7 @@ class TabManager {
      * Check OAuth progress (not implemented)
      */
     async checkOAuthProgress(view, id) {
-        console.warn('⚠️ TabManager: checkOAuthProgress not implemented');
+        this.logger.warn('⚠️ TabManager: checkOAuthProgress not implemented');
         return null;
     }
 
@@ -1037,7 +1229,7 @@ class TabManager {
      * Trigger Google sign in (not implemented)
      */
     async triggerGoogleSignIn(view, id) {
-        console.warn('⚠️ TabManager: triggerGoogleSignIn not implemented');
+        this.logger.warn('⚠️ TabManager: triggerGoogleSignIn not implemented');
         return null;
     }
 
@@ -1045,7 +1237,7 @@ class TabManager {
      * Check login status (not implemented)
      */
     async checkLoginStatus(view, id) {
-        console.warn('⚠️ TabManager: checkLoginStatus not implemented');
+        this.logger.warn('⚠️ TabManager: checkLoginStatus not implemented');
         return null;
     }
 
@@ -1053,7 +1245,7 @@ class TabManager {
      * Check OAuth status for popup (not implemented)
      */
     async checkOAuthStatusForPopup(view, id, isPopupMode = false) {
-        console.warn('⚠️ TabManager: checkOAuthStatusForPopup not implemented');
+        this.logger.warn('⚠️ TabManager: checkOAuthStatusForPopup not implemented');
         return null;
     }
 
@@ -1061,7 +1253,7 @@ class TabManager {
      * Force redirect to X (not implemented)
      */
     async forceRedirectToX(view, id) {
-        console.warn('⚠️ TabManager: forceRedirectToX not implemented');
+        this.logger.warn('⚠️ TabManager: forceRedirectToX not implemented');
         return null;
     }
 
@@ -1069,7 +1261,7 @@ class TabManager {
      * Verify OAuth success and redirect (not implemented)
      */
     async verifyOAuthSuccessAndRedirect(view, id, url) {
-        console.warn('⚠️ TabManager: verifyOAuthSuccessAndRedirect not implemented');
+        this.logger.warn('⚠️ TabManager: verifyOAuthSuccessAndRedirect not implemented');
         return null;
     }
 
@@ -1077,7 +1269,7 @@ class TabManager {
      * Cleanup session (not implemented)
      */
     async cleanupSession(view, id) {
-        console.warn('⚠️ TabManager: cleanupSession not implemented');
+        this.logger.warn('⚠️ TabManager: cleanupSession not implemented');
         return null;
     }
 
@@ -1086,51 +1278,51 @@ class TabManager {
      */
     async clearAllSessions() {
         try {
-            console.log('🧹 TabManager: ===== CLEARING ALL SESSIONS =====');
+            this.logger.info('🧹 TabManager: ===== CLEARING ALL SESSIONS =====');
 
             // Close all tabs and clear their sessions
             const tabIds = Array.from(this.tabs.keys());
-            console.log(`🧹 TabManager: Closing ${tabIds.length} tabs during session clear...`);
+            this.logger.info(`🧹 TabManager: Closing ${tabIds.length} tabs during session clear...`);
 
             for (const tabId of tabIds) {
                 const tabData = this.tabs.get(tabId);
                 if (tabData && tabData.browserView && tabData.browserView.webContents && !tabData.browserView.webContents.isDestroyed()) {
                     try {
                         // Clear session data before closing tab
-                        console.log(`🧹 TabManager: Clearing session data for tab ${tabId}...`);
+                        this.logger.info(`🧹 TabManager: Clearing session data for tab ${tabId}...`);
                         if (tabData.browserView.webContents && tabData.browserView.webContents.session) {
                             await tabData.browserView.webContents.session.clearStorageData({
                                 storages: ['cookies', 'localStorage', 'sessionStorage', 'cache']
                             });
                             await tabData.browserView.webContents.session.clearCache();
-                            console.log(`✅ TabManager: Session data cleared for tab ${tabId}`);
+                            this.logger.info(`✅ TabManager: Session data cleared for tab ${tabId}`);
                         } else {
-                            console.log(`⚠️ TabManager: No session available for tab ${tabId}`);
+                            this.logger.info(`⚠️ TabManager: No session available for tab ${tabId}`);
                         }
                     } catch (sessionError) {
-                        console.error(`❌ TabManager: Error clearing session for tab ${tabId}:`, sessionError);
+                        this.logger.error(`❌ TabManager: Error clearing session for tab ${tabId}:`, sessionError);
                     }
                 }
             }
 
             // Clear persistent session partitions (same as original SessionManager)
-            console.log('🧹 TabManager: Clearing persistent session partitions...');
+            this.logger.info('🧹 TabManager: Clearing persistent session partitions...');
             await this.clearPersistentSessionPartitions();
-            console.log('✅ TabManager: Persistent session partitions cleared');
+            this.logger.info('✅ TabManager: Persistent session partitions cleared');
 
             // Close all tabs
-            console.log(`🧹 TabManager: Closing ${tabIds.length} tabs...`);
+            this.logger.info(`🧹 TabManager: Closing ${tabIds.length} tabs...`);
             for (const tabId of tabIds) {
-                console.log(`🧹 TabManager: Closing tab ${tabId}...`);
+                this.logger.info(`🧹 TabManager: Closing tab ${tabId}...`);
                 await this.closeTab(tabId);
-                console.log(`✅ TabManager: Tab ${tabId} closed`);
+                this.logger.info(`✅ TabManager: Tab ${tabId} closed`);
             }
-            console.log('✅ TabManager: All tabs closed');
+            this.logger.info('✅ TabManager: All tabs closed');
 
-            console.log('✅ TabManager: All sessions cleared successfully');
+            this.logger.info('✅ TabManager: All sessions cleared successfully');
             return true;
         } catch (error) {
-            console.error('❌ TabManager: Error clearing all sessions:', error);
+            this.logger.error('❌ TabManager: Error clearing all sessions:', error);
             return false;
         }
     }
@@ -1140,7 +1332,7 @@ class TabManager {
      */
     async clearNSNSessions() {
         try {
-            console.log('🧹 TabManager: ===== CLEARING NSN SESSIONS =====');
+            this.logger.info('🧹 TabManager: ===== CLEARING NSN SESSIONS =====');
 
             let nsnTabsCleared = 0;
             const tabIds = Array.from(this.tabs.keys());
@@ -1152,7 +1344,7 @@ class TabManager {
                     try {
                         const currentURL = tabData.browserView.webContents.getURL();
                         if (this.isNSNUrl(currentURL)) {
-                            console.log(`🧹 TabManager: Clearing NSN session for tab ${tabId} (${currentURL})`);
+                            this.logger.info(`🧹 TabManager: Clearing NSN session for tab ${tabId} (${currentURL})`);
 
                             // Clear session data
                             if (tabData.browserView.webContents.session) {
@@ -1160,17 +1352,17 @@ class TabManager {
                                     storages: ['cookies', 'localStorage', 'sessionStorage', 'cache']
                                 });
                                 await tabData.browserView.webContents.session.clearCache();
-                                console.log(`✅ TabManager: NSN session cleared for tab ${tabId}`);
+                                this.logger.info(`✅ TabManager: NSN session cleared for tab ${tabId}`);
                             } else {
-                                console.log(`⚠️ TabManager: No session available for NSN tab ${tabId}`);
+                                this.logger.info(`⚠️ TabManager: No session available for NSN tab ${tabId}`);
                             }
 
                             nsnTabsCleared++;
                         } else {
-                            console.log(`ℹ️ TabManager: Skipping non-NSN tab ${tabId} (${currentURL})`);
+                            this.logger.info(`ℹ️ TabManager: Skipping non-NSN tab ${tabId} (${currentURL})`);
                         }
                     } catch (error) {
-                        console.error(`❌ TabManager: Error clearing NSN session for tab ${tabId}:`, error);
+                        this.logger.error(`❌ TabManager: Error clearing NSN session for tab ${tabId}:`, error);
                     }
                 }
             }
@@ -1185,7 +1377,7 @@ class TabManager {
                     try {
                         const currentURL = tabData.browserView.webContents.getURL();
                         if (this.isNSNUrl(currentURL)) {
-                            console.log('🔓 TabManager: Navigating NSN tab to logout URL...');
+                            this.logger.info('🔓 TabManager: Navigating NSN tab to logout URL...');
 
                             // Add error handling for logout navigation
                             const webContents = tabData.browserView.webContents;
@@ -1193,14 +1385,14 @@ class TabManager {
                             // Set up error handlers for logout navigation
                             const handleLogoutNavigationError = (event, errorCode, errorDescription, validatedURL) => {
                                 if (errorCode === -3) { // ERR_ABORTED
-                                    console.log(`⚠️ TabManager: Logout navigation aborted for tab ${tabId} (this is often normal during logout)`);
+                                    this.logger.info(`⚠️ TabManager: Logout navigation aborted for tab ${tabId} (this is often normal during logout)`);
                                 } else {
-                                    console.error(`❌ TabManager: Logout navigation failed for tab ${tabId}: ${errorCode} (${errorDescription})`);
+                                    this.logger.error(`❌ TabManager: Logout navigation failed for tab ${tabId}: ${errorCode} (${errorDescription})`);
                                 }
                             };
 
                             const handleLogoutNavigationSuccess = () => {
-                                console.log(`✅ TabManager: Logout navigation successful for tab ${tabId}`);
+                                this.logger.info(`✅ TabManager: Logout navigation successful for tab ${tabId}`);
                             };
 
                             // Add temporary event listeners
@@ -1217,9 +1409,9 @@ class TabManager {
                                 await Promise.race([logoutPromise, timeoutPromise]);
                             } catch (error) {
                                 if (error.message === 'Logout navigation timeout') {
-                                    console.log(`⚠️ TabManager: Logout navigation timeout for tab ${tabId}, but this is often normal`);
+                                    this.logger.info(`⚠️ TabManager: Logout navigation timeout for tab ${tabId}, but this is often normal`);
                                 } else {
-                                    console.error(`❌ TabManager: Logout navigation error for tab ${tabId}:`, error);
+                                    this.logger.error(`❌ TabManager: Logout navigation error for tab ${tabId}:`, error);
                                 }
                             }
 
@@ -1228,15 +1420,15 @@ class TabManager {
                             webContents.removeListener('did-finish-load', handleLogoutNavigationSuccess);
                         }
                     } catch (error) {
-                        console.error(`❌ TabManager: Error navigating to logout for tab ${tabId}:`, error);
+                        this.logger.error(`❌ TabManager: Error navigating to logout for tab ${tabId}:`, error);
                     }
                 }
             }
 
-            console.log(`✅ TabManager: NSN sessions cleared (${nsnTabsCleared} tabs, 1 partition)`);
+            this.logger.info(`✅ TabManager: NSN sessions cleared (${nsnTabsCleared} tabs, 1 partition)`);
             return true;
         } catch (error) {
-            console.error('❌ TabManager: Error clearing NSN sessions:', error);
+            this.logger.error('❌ TabManager: Error clearing NSN sessions:', error);
             return false;
         }
     }
@@ -1246,7 +1438,7 @@ class TabManager {
      */
     async clearPersistentSessionPartitions() {
         try {
-            console.log('🧹 TabManager: Clearing persistent session partitions...');
+            this.logger.info('🧹 TabManager: Clearing persistent session partitions...');
 
             const { session } = require('electron');
 
@@ -1255,7 +1447,7 @@ class TabManager {
 
             for (const partitionName of partitionsToClear) {
                 try {
-                    console.log(`🧹 TabManager: Clearing session partition: ${partitionName}`);
+                    this.logger.info(`🧹 TabManager: Clearing session partition: ${partitionName}`);
 
                     // Get the session from partition
                     const partitionSession = session.fromPartition(partitionName);
@@ -1276,15 +1468,15 @@ class TabManager {
                     // Clear cache
                     await partitionSession.clearCache();
 
-                    console.log(`✅ TabManager: Session partition cleared: ${partitionName}`);
+                    this.logger.info(`✅ TabManager: Session partition cleared: ${partitionName}`);
                 } catch (partitionError) {
-                    console.error(`❌ TabManager: Error clearing session partition ${partitionName}:`, partitionError);
+                    this.logger.error(`❌ TabManager: Error clearing session partition ${partitionName}:`, partitionError);
                 }
             }
 
-            console.log('✅ TabManager: All persistent session partitions cleared');
+            this.logger.info('✅ TabManager: All persistent session partitions cleared');
         } catch (error) {
-            console.error('❌ TabManager: Error clearing persistent session partitions:', error);
+            this.logger.error('❌ TabManager: Error clearing persistent session partitions:', error);
         }
     }
 
@@ -1293,7 +1485,7 @@ class TabManager {
      */
     async clearNSNPersistentSessionPartition() {
         try {
-            console.log('🧹 TabManager: Clearing NSN persistent session partition...');
+            this.logger.info('🧹 TabManager: Clearing NSN persistent session partition...');
 
             const { session } = require('electron');
 
@@ -1301,7 +1493,7 @@ class TabManager {
             const partitionName = 'persist:nsn';
 
             try {
-                console.log(`🧹 TabManager: Clearing NSN session partition: ${partitionName}`);
+                this.logger.info(`🧹 TabManager: Clearing NSN session partition: ${partitionName}`);
 
                 // Get the session from partition
                 const partitionSession = session.fromPartition(partitionName);
@@ -1322,14 +1514,14 @@ class TabManager {
                 // Clear cache
                 await partitionSession.clearCache();
 
-                console.log(`✅ TabManager: NSN session partition cleared: ${partitionName}`);
+                this.logger.info(`✅ TabManager: NSN session partition cleared: ${partitionName}`);
 
             } catch (error) {
-                console.error(`❌ TabManager: Error clearing NSN session partition ${partitionName}:`, error);
+                this.logger.error(`❌ TabManager: Error clearing NSN session partition ${partitionName}:`, error);
             }
 
         } catch (error) {
-            console.error('❌ TabManager: Error clearing NSN persistent session partition:', error);
+            this.logger.error('❌ TabManager: Error clearing NSN persistent session partition:', error);
         }
     }
 
@@ -1337,7 +1529,7 @@ class TabManager {
      * Auto cleanup loading titles (not implemented)
      */
     autoCleanupLoadingTitles() {
-        console.warn('⚠️ TabManager: autoCleanupLoadingTitles not implemented');
+        this.logger.warn('⚠️ TabManager: autoCleanupLoadingTitles not implemented');
         return null;
     }
 
@@ -1346,22 +1538,22 @@ class TabManager {
      */
     findNSNTab() {
         try {
-            console.log('🔍 TabManager: Looking for NSN tab...');
+            this.logger.info('🔍 TabManager: Looking for NSN tab...');
 
             for (const [tabId, tabData] of this.tabs.entries()) {
                 if (tabData && tabData.browserView && tabData.browserView.webContents && !tabData.browserView.webContents.isDestroyed()) {
                     const currentURL = tabData.browserView.webContents.getURL();
                     if (this.isNSNUrl(currentURL)) {
-                        console.log(`✅ TabManager: Found NSN tab ${tabId} with URL: ${currentURL}`);
+                        this.logger.info(`✅ TabManager: Found NSN tab ${tabId} with URL: ${currentURL}`);
                         return tabData;
                     }
                 }
             }
 
-            console.log('⚠️ TabManager: No NSN tab found');
+            this.logger.info('⚠️ TabManager: No NSN tab found');
             return null;
         } catch (error) {
-            console.error('❌ TabManager: Error finding NSN tab:', error);
+            this.logger.error('❌ TabManager: Error finding NSN tab:', error);
             return null;
         }
     }
@@ -1371,31 +1563,31 @@ class TabManager {
      */
     findAllTabsForWebsite(websiteConfig) {
         try {
-            console.log('🔍 TabManager: Looking for all tabs for website:', websiteConfig?.name || 'Unknown');
+            this.logger.info('🔍 TabManager: Looking for all tabs for website:', websiteConfig?.name || 'Unknown');
             const websiteTabs = [];
 
             if (!websiteConfig || !websiteConfig.root_url) {
-                console.log('⚠️ TabManager: No website config or root_url provided');
+                this.logger.info('⚠️ TabManager: No website config or root_url provided');
                 return websiteTabs;
             }
 
             const rootUrl = websiteConfig.root_url;
-            console.log('🔍 TabManager: Looking for tabs with root URL:', rootUrl);
+            this.logger.info('🔍 TabManager: Looking for tabs with root URL:', rootUrl);
 
             for (const [tabId, tabData] of this.tabs.entries()) {
                 if (tabData && tabData.browserView && tabData.browserView.webContents && !tabData.browserView.webContents.isDestroyed()) {
                     const currentURL = tabData.browserView.webContents.getURL();
                     if (this.isUrlForWebsite(currentURL, rootUrl)) {
-                        console.log(`✅ TabManager: Found ${websiteConfig.name} tab ${tabId} with URL: ${currentURL}`);
+                        this.logger.info(`✅ TabManager: Found ${websiteConfig.name} tab ${tabId} with URL: ${currentURL}`);
                         websiteTabs.push({ id: tabId, ...tabData });
                     }
                 }
             }
 
-            console.log(`🔍 TabManager: Found ${websiteTabs.length} ${websiteConfig.name} tabs`);
+            this.logger.info(`🔍 TabManager: Found ${websiteTabs.length} ${websiteConfig.name} tabs`);
             return websiteTabs;
         } catch (error) {
-            console.error('❌ TabManager: Error finding tabs for website:', error);
+            this.logger.error('❌ TabManager: Error finding tabs for website:', error);
             return [];
         }
     }
@@ -1414,7 +1606,7 @@ class TabManager {
             // Check if same domain and port
             return urlObj.hostname === rootUrlObj.hostname && urlObj.port === rootUrlObj.port;
         } catch (error) {
-            console.error('❌ TabManager: Error checking URL for website:', error);
+            this.logger.error('❌ TabManager: Error checking URL for website:', error);
             return false;
         }
     }
@@ -1424,7 +1616,7 @@ class TabManager {
      */
     registerWebsite(websiteConfig) {
         try {
-            console.log('🌐 TabManager: Registering website configuration:', websiteConfig);
+            this.logger.info('🌐 TabManager: Registering website configuration:', websiteConfig);
 
             if (!this.registeredWebsites) {
                 this.registeredWebsites = [];
@@ -1432,11 +1624,11 @@ class TabManager {
 
             // Add website configuration to registered websites
             this.registeredWebsites.push(websiteConfig);
-            console.log('✅ TabManager: Website configuration registered successfully');
+            this.logger.info('✅ TabManager: Website configuration registered successfully');
 
             return true;
         } catch (error) {
-            console.error('❌ TabManager: Error registering website configuration:', error);
+            this.logger.error('❌ TabManager: Error registering website configuration:', error);
             return false;
         }
     }
@@ -1453,7 +1645,7 @@ class TabManager {
      * Is registered website URL (not implemented)
      */
     isRegisteredWebsiteUrl(url) {
-        console.warn('⚠️ TabManager: isRegisteredWebsiteUrl not implemented');
+        this.logger.warn('⚠️ TabManager: isRegisteredWebsiteUrl not implemented');
         return false;
     }
 
@@ -1461,7 +1653,7 @@ class TabManager {
      * Get website config (not implemented)
      */
     getWebsiteConfig(url) {
-        console.warn('⚠️ TabManager: getWebsiteConfig not implemented');
+        this.logger.warn('⚠️ TabManager: getWebsiteConfig not implemented');
         return null;
     }
 
@@ -1469,7 +1661,7 @@ class TabManager {
      * Get session partition for website (not implemented)
      */
     getSessionPartitionForWebsite(url) {
-        console.warn('⚠️ TabManager: getSessionPartitionForWebsite not implemented');
+        this.logger.warn('⚠️ TabManager: getSessionPartitionForWebsite not implemented');
         return 'persist:main';
     }
 
@@ -1479,7 +1671,7 @@ class TabManager {
      * Get current user info (not implemented)
      */
     async getCurrentUserInfo() {
-        console.warn('⚠️ TabManager: getCurrentUserInfo not implemented');
+        this.logger.warn('⚠️ TabManager: getCurrentUserInfo not implemented');
         return null;
     }
 
@@ -1487,7 +1679,7 @@ class TabManager {
      * Get user cookie (not implemented)
      */
     async getUserCookie(userId) {
-        console.warn('⚠️ TabManager: getUserCookie not implemented');
+        this.logger.warn('⚠️ TabManager: getUserCookie not implemented');
         return null;
     }
 
@@ -1495,7 +1687,7 @@ class TabManager {
      * Set cookie in view (not implemented)
      */
     async setCookieInView(view, cookie, nsnUrl = null) {
-        console.warn('⚠️ TabManager: setCookieInView not implemented');
+        this.logger.warn('⚠️ TabManager: setCookieInView not implemented');
         return null;
     }
 
@@ -1504,16 +1696,16 @@ class TabManager {
      */
     getTabInfo(id) {
         try {
-            console.log(`🔍 TabManager: getTabInfo called for tab ${id}`);
+            this.logger.info(`🔍 TabManager: getTabInfo called for tab ${id}`);
             const tabData = this.tabs.get(id);
             if (!tabData) {
-                console.warn(`⚠️ TabManager: Tab ${id} not found`);
+                this.logger.warn(`⚠️ TabManager: Tab ${id} not found`);
                 return null;
             }
 
             const browserView = tabData.browserView;
             if (!browserView || !browserView.webContents) {
-                console.warn(`⚠️ TabManager: BrowserView not available for tab ${id}`);
+                this.logger.warn(`⚠️ TabManager: BrowserView not available for tab ${id}`);
                 return {
                     id: id,
                     url: tabData.url || '',
@@ -1527,25 +1719,39 @@ class TabManager {
 
             // Clean URL for address bar display (remove NMP parameters)
             let displayUrl = currentUrl || tabData.url || '';
-            try {
-                const urlObj = new URL(displayUrl);
-                // Remove NMP parameters for cleaner address bar display
-                urlObj.searchParams.delete('nmp_user_id');
-                urlObj.searchParams.delete('nmp_username');
-                urlObj.searchParams.delete('nmp_client_type');
-                urlObj.searchParams.delete('nmp_timestamp');
-                urlObj.searchParams.delete('nmp_injected');
-                urlObj.searchParams.delete('nmp_client_id');
-                urlObj.searchParams.delete('nmp_node_id');
-                urlObj.searchParams.delete('nmp_domain_id');
-                urlObj.searchParams.delete('nmp_cluster_id');
-                urlObj.searchParams.delete('nmp_channel_id');
 
-                // If no other parameters remain, show clean URL without '?'
-                displayUrl = urlObj.searchParams.toString() ? urlObj.toString() : `${urlObj.origin}${urlObj.pathname}`;
-            } catch (error) {
-                // If URL parsing fails, use original URL
-                console.warn(`⚠️ TabManager: Failed to clean URL for tab ${id}:`, error);
+            // Special handling for about:blank - show empty string
+            if (displayUrl === 'about:blank' || displayUrl === '') {
+                displayUrl = '';
+            } else {
+                try {
+                    const urlObj = new URL(displayUrl);
+                    // Remove NMP parameters for cleaner address bar display
+                    urlObj.searchParams.delete('nmp_user_id');
+                    urlObj.searchParams.delete('nmp_username');
+                    urlObj.searchParams.delete('nmp_client_type');
+                    urlObj.searchParams.delete('nmp_timestamp');
+                    urlObj.searchParams.delete('nmp_injected');
+                    urlObj.searchParams.delete('nmp_client_id');
+                    urlObj.searchParams.delete('nmp_node_id');
+                    urlObj.searchParams.delete('nmp_domain_id');
+                    urlObj.searchParams.delete('nmp_cluster_id');
+                    urlObj.searchParams.delete('nmp_channel_id');
+
+                    // If no other parameters remain, show clean URL without '?'
+                    displayUrl = urlObj.searchParams.toString() ? urlObj.toString() : `${urlObj.origin}${urlObj.pathname}`;
+
+                    // Final check: if result is 'nullblank' or similar, use empty string
+                    if (displayUrl === 'nullblank' || displayUrl === 'null' || displayUrl.startsWith('null')) {
+                        displayUrl = '';
+                    }
+                } catch (error) {
+                    // If URL parsing fails, use empty string for special URLs
+                    this.logger.warn(`⚠️ TabManager: Failed to clean URL for tab ${id}:`, error);
+                    if (displayUrl.includes('about:') || displayUrl.includes('null')) {
+                        displayUrl = '';
+                    }
+                }
             }
 
             return {
@@ -1555,7 +1761,7 @@ class TabManager {
                 isActive: this.currentTabId === id
             };
         } catch (error) {
-            console.error(`❌ TabManager: Error getting tab info for ${id}:`, error);
+            this.logger.error(`❌ TabManager: Error getting tab info for ${id}:`, error);
             return null;
         }
     }
@@ -1565,7 +1771,7 @@ class TabManager {
      * Create view with cookie (not implemented)
      */
     createViewWithCookie(url, cookie, username, nsnUrl = null) {
-        console.warn('⚠️ TabManager: createViewWithCookie not implemented');
+        this.logger.warn('⚠️ TabManager: createViewWithCookie not implemented');
         return null;
     }
 
@@ -1573,7 +1779,7 @@ class TabManager {
      * Setup website response detection (not implemented)
      */
     setupWebsiteResponseDetection(view, id) {
-        console.warn('⚠️ TabManager: setupWebsiteResponseDetection not implemented');
+        this.logger.warn('⚠️ TabManager: setupWebsiteResponseDetection not implemented');
         return null;
     }
 
@@ -1585,103 +1791,103 @@ class TabManager {
      */
     async detectNSNResponse(browserView, id, trigger) {
         try {
-            console.log(`🔍 TabManager: ===== EXECUTING JAVASCRIPT DETECTION (${trigger}) =====`);
-            console.log(`🔍 TabManager: Tab ID: ${id}`);
-            console.log(`🔍 TabManager: Current URL: ${browserView.webContents.getURL()}`);
-            console.log(`🔍 TabManager: Executing JavaScript to check for NSN response...`);
+            this.logger.info(`🔍 TabManager: ===== EXECUTING JAVASCRIPT DETECTION (${trigger}) =====`);
+            this.logger.info(`🔍 TabManager: Tab ID: ${id}`);
+            this.logger.info(`🔍 TabManager: Current URL: ${browserView.webContents.getURL()}`);
+            this.logger.info(`🔍 TabManager: Executing JavaScript to check for NSN response...`);
 
             const responseData = await browserView.webContents.executeJavaScript(`
                 (() => {
                     try {
-                        console.log('🔍 JavaScript: ===== STARTING NSN RESPONSE DETECTION (${trigger}) =====');
-                        console.log('🔍 JavaScript: Document ready state:', document.readyState);
-                        console.log('🔍 JavaScript: Document title:', document.title);
-                        console.log('🔍 JavaScript: Document URL:', window.location.href);
+                        this.logger.info('🔍 JavaScript: ===== STARTING NSN RESPONSE DETECTION (${trigger}) =====');
+                        this.logger.info('🔍 JavaScript: Document ready state:', document.readyState);
+                        this.logger.info('🔍 JavaScript: Document title:', document.title);
+                        this.logger.info('🔍 JavaScript: Document URL:', window.location.href);
                         
                         // Look for the c-client-responses div
-                        console.log('🔍 JavaScript: Looking for c-client-responses div...');
+                        this.logger.info('🔍 JavaScript: Looking for c-client-responses div...');
                         const cClientResponsesDiv = document.getElementById('c-client-responses');
-                        console.log('🔍 JavaScript: c-client-responses div found:', !!cClientResponsesDiv);
+                        this.logger.info('🔍 JavaScript: c-client-responses div found:', !!cClientResponsesDiv);
                         
                         if (cClientResponsesDiv) {
-                            console.log('🔍 JavaScript: ===== FOUND C-CLIENT-RESPONSES DIV (${trigger}) =====');
-                            console.log('🔍 JavaScript: Div element:', cClientResponsesDiv);
-                            console.log('🔍 JavaScript: Div style display:', cClientResponsesDiv.style.display);
-                            console.log('🔍 JavaScript: Div innerHTML length:', cClientResponsesDiv.innerHTML.length);
+                            this.logger.info('🔍 JavaScript: ===== FOUND C-CLIENT-RESPONSES DIV (${trigger}) =====');
+                            this.logger.info('🔍 JavaScript: Div element:', cClientResponsesDiv);
+                            this.logger.info('🔍 JavaScript: Div style display:', cClientResponsesDiv.style.display);
+                            this.logger.info('🔍 JavaScript: Div innerHTML length:', cClientResponsesDiv.innerHTML.length);
                             
                             const jsonText = cClientResponsesDiv.textContent.trim();
-                            console.log('🔍 JavaScript: JSON text length:', jsonText.length);
-                            console.log('🔍 JavaScript: JSON text preview:', jsonText.substring(0, 200));
-                            console.log('🔍 JavaScript: Full JSON text:', jsonText);
+                            this.logger.info('🔍 JavaScript: JSON text length:', jsonText.length);
+                            this.logger.info('🔍 JavaScript: JSON text preview:', jsonText.substring(0, 200));
+                            this.logger.info('🔍 JavaScript: Full JSON text:', jsonText);
                             
                             try {
                                 const parsed = JSON.parse(jsonText);
-                                console.log('🔍 JavaScript: ===== JSON PARSING SUCCESS (${trigger}) =====');
-                                console.log('🔍 JavaScript: Parsed JSON object:', parsed);
-                                console.log('🔍 JavaScript: Action:', parsed.action);
-                                console.log('🔍 JavaScript: WebSocket URL:', parsed.websocket_url);
-                                console.log('🔍 JavaScript: User ID:', parsed.user_id);
-                                console.log('🔍 JavaScript: Username:', parsed.username);
-                                console.log('🔍 JavaScript: Needs Registration:', parsed.needs_registration);
-                                console.log('🔍 JavaScript: ===== RETURNING PARSED DATA (${trigger}) =====');
+                                this.logger.info('🔍 JavaScript: ===== JSON PARSING SUCCESS (${trigger}) =====');
+                                this.logger.info('🔍 JavaScript: Parsed JSON object:', parsed);
+                                this.logger.info('🔍 JavaScript: Action:', parsed.action);
+                                this.logger.info('🔍 JavaScript: WebSocket URL:', parsed.websocket_url);
+                                this.logger.info('🔍 JavaScript: User ID:', parsed.user_id);
+                                this.logger.info('🔍 JavaScript: Username:', parsed.username);
+                                this.logger.info('🔍 JavaScript: Needs Registration:', parsed.needs_registration);
+                                this.logger.info('🔍 JavaScript: ===== RETURNING PARSED DATA (${trigger}) =====');
                                 return parsed;
                             } catch (e) {
-                                console.log('🔍 JavaScript: ===== JSON PARSING FAILED (${trigger}) =====');
-                                console.log('🔍 JavaScript: Parse error:', e.message);
-                                console.log('🔍 JavaScript: Error stack:', e.stack);
-                                console.log('🔍 JavaScript: Raw JSON text:', jsonText);
+                                this.logger.info('🔍 JavaScript: ===== JSON PARSING FAILED (${trigger}) =====');
+                                this.logger.info('🔍 JavaScript: Parse error:', e.message);
+                                this.logger.info('🔍 JavaScript: Error stack:', e.stack);
+                                this.logger.info('🔍 JavaScript: Raw JSON text:', jsonText);
                                 return null;
                             }
                         }
                         
                         // Fallback: Check if the page contains NSN response data in body text
-                        console.log('🔍 JavaScript: ===== FALLBACK: CHECKING BODY TEXT (${trigger}) =====');
-                        console.log('🔍 JavaScript: No c-client-responses div found, checking body text...');
+                        this.logger.info('🔍 JavaScript: ===== FALLBACK: CHECKING BODY TEXT (${trigger}) =====');
+                        this.logger.info('🔍 JavaScript: No c-client-responses div found, checking body text...');
                         const bodyText = document.body ? document.body.innerText : '';
-                        console.log('🔍 JavaScript: Body text length:', bodyText.length);
-                        console.log('🔍 JavaScript: Body text preview:', bodyText.substring(0, 300));
+                        this.logger.info('🔍 JavaScript: Body text length:', bodyText.length);
+                        this.logger.info('🔍 JavaScript: Body text preview:', bodyText.substring(0, 300));
                         
                         // Use regex to find JSON in body text
                         const jsonMatch = bodyText.match(/\\{[\\s\\S]*?"action"[\\s\\S]*?\\}/);
-                        console.log('🔍 JavaScript: JSON match found in body:', !!jsonMatch);
+                        this.logger.info('🔍 JavaScript: JSON match found in body:', !!jsonMatch);
                         
                         if (jsonMatch) {
-                            console.log('🔍 JavaScript: ===== FOUND JSON IN BODY TEXT (${trigger}) =====');
-                            console.log('🔍 JavaScript: Matched text:', jsonMatch[0]);
+                            this.logger.info('🔍 JavaScript: ===== FOUND JSON IN BODY TEXT (${trigger}) =====');
+                            this.logger.info('🔍 JavaScript: Matched text:', jsonMatch[0]);
                             try {
                                 const parsed = JSON.parse(jsonMatch[0]);
-                                console.log('🔍 JavaScript: Successfully parsed JSON from body text:', parsed);
+                                this.logger.info('🔍 JavaScript: Successfully parsed JSON from body text:', parsed);
                                 return parsed;
                             } catch (e) {
-                                console.log('🔍 JavaScript: Failed to parse JSON from body:', e.message);
+                                this.logger.info('🔍 JavaScript: Failed to parse JSON from body:', e.message);
                                 return null;
                             }
                         }
                         
-                        console.log('🔍 JavaScript: ===== NO NSN RESPONSE FOUND (${trigger}) =====');
-                        console.log('🔍 JavaScript: No c-client-responses div and no JSON in body text');
+                        this.logger.info('🔍 JavaScript: ===== NO NSN RESPONSE FOUND (${trigger}) =====');
+                        this.logger.info('🔍 JavaScript: No c-client-responses div and no JSON in body text');
                         return null;
                     } catch (error) {
-                        console.error('❌ JavaScript: ===== ERROR IN DETECTION (${trigger}) =====');
-                        console.error('❌ JavaScript: Error checking for NSN response:', error);
-                        console.error('❌ JavaScript: Error stack:', error.stack);
+                        this.logger.error('❌ JavaScript: ===== ERROR IN DETECTION (${trigger}) =====');
+                        this.logger.error('❌ JavaScript: Error checking for NSN response:', error);
+                        this.logger.error('❌ JavaScript: Error stack:', error.stack);
                         return null;
                     }
                 })()
             `);
 
             if (responseData && responseData.action) {
-                console.log(`🔍 TabManager: NSN response detected (${trigger}): ${responseData.action}`);
+                this.logger.info(`🔍 TabManager: NSN response detected (${trigger}): ${responseData.action}`);
                 // Process the NSN response
                 await this.processNSNResponse(responseData, id, trigger);
             } else {
-                console.log(`🔍 TabManager: No NSN response data (${trigger})`);
+                this.logger.info(`🔍 TabManager: No NSN response data (${trigger})`);
             }
 
         } catch (error) {
-            console.error(`❌ TabManager: ===== ERROR IN DETECTION (${trigger}) =====`);
-            console.error(`❌ TabManager: Error detecting NSN response for tab ${id}:`, error);
-            console.error(`❌ TabManager: Error stack:`, error.stack);
+            this.logger.error(`❌ TabManager: ===== ERROR IN DETECTION (${trigger}) =====`);
+            this.logger.error(`❌ TabManager: Error detecting NSN response for tab ${id}:`, error);
+            this.logger.error(`❌ TabManager: Error stack:`, error.stack);
         }
     }
 
@@ -1764,7 +1970,7 @@ class TabManager {
      * Cleanup (not implemented)
      */
     cleanup() {
-        console.warn('⚠️ TabManager: cleanup not implemented');
+        this.logger.warn('⚠️ TabManager: cleanup not implemented');
         return null;
     }
 }

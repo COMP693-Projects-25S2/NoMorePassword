@@ -206,10 +206,14 @@ class IpcHandlers {
                 // Create synchronized tab with processed URL
                 const result = await this.tabManager.createTab(processedUrl, options);
                 if (result && result.id && this.historyManager) {
-                    // Record visit start (use original URL for history)
-                    const record = await this.historyManager.recordVisit(url, result.id);
-                    if (record) {
-                        console.log(`📊 C-Client IPC: Visit recorded for tab ${result.id}`);
+                    // Record visit start (skip blank pages and browser internal pages)
+                    if (url && url !== 'about:blank' && !url.startsWith('browser://')) {
+                        const record = await this.historyManager.recordVisit(url, result.id);
+                        if (record) {
+                            console.log(`📊 C-Client IPC: Visit recorded for tab ${result.id}`);
+                        }
+                    } else {
+                        console.log(`⏭️ C-Client IPC: Skipping visit record for blank/internal page: ${url}`);
                     }
                 }
 
@@ -524,8 +528,8 @@ class IpcHandlers {
 
                 await this.tabManager.navigateTo(processedUrl);
 
-                // Record new visit (use original URL for history)
-                if (url && this.historyManager) {
+                // Record new visit (skip blank pages and browser internal pages)
+                if (url && url !== 'about:blank' && !url.startsWith('browser://') && this.historyManager) {
                     if (this.tabManager) {
                         // Use TabManager to get current tab
                         const currentTab = this.tabManager.getCurrentTab();
@@ -548,6 +552,8 @@ class IpcHandlers {
                             this.historyManager.recordNavigationActivity(url, 'Loading...', 'navigate');
                         }
                     }
+                } else {
+                    console.log(`⏭️ C-Client IPC: Skipping visit record for blank/internal page: ${url}`);
                 }
 
                 console.log(`✅ C-Client IPC: Navigation completed successfully`);

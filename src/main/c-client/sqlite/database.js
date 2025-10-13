@@ -132,6 +132,25 @@ db.exec(`
     )
 `);
 
+// Create table: window_state, store window size and position preferences
+db.exec(`
+    CREATE TABLE IF NOT EXISTS window_state (
+        id              INTEGER PRIMARY KEY CHECK (id = 1),
+        width           INTEGER DEFAULT 1000,
+        height          INTEGER DEFAULT 800,
+        x               INTEGER,
+        y               INTEGER,
+        is_maximized    INTEGER DEFAULT 0,
+        updated_at      INTEGER DEFAULT (strftime('%s', 'now'))
+    )
+`);
+
+// Insert default window state if not exists
+db.exec(`
+    INSERT OR IGNORE INTO window_state (id, width, height)
+    VALUES (1, 1000, 800)
+`);
+
 // Disable foreign key constraints for simpler data management
 db.pragma('foreign_keys = OFF');
 
@@ -141,5 +160,28 @@ db.pragma('synchronous = NORMAL');
 db.pragma('cache_size = 1000');
 db.pragma('temp_store = memory');
 
+// Clean up invalid visit history records on startup (only if table exists)
+try {
+    // Check if visit_history table exists
+    const tableExists = db.prepare(`
+        SELECT name FROM sqlite_master 
+        WHERE type='table' AND name='visit_history'
+    `).get();
+
+    if (tableExists) {
+        const cleanupResult = db.prepare(`
+            DELETE FROM visit_history 
+            WHERE url = 'about:blank' 
+               OR url LIKE 'browser://%'
+               OR url IS NULL
+               OR url = ''
+        `).run();
+        if (cleanupResult.changes > 0) {
+            console.log(`🧹 Database: Cleaned up ${cleanupResult.changes} invalid visit records on startup`);
+        }
+    }
+} catch (error) {
+    console.warn('Database: Failed to clean up invalid records on startup:', error);
+}
 
 module.exports = db;

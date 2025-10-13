@@ -12,6 +12,57 @@ class WindowManager {
     }
 
     /**
+     * Load saved window state from database
+     * @returns {object|null} Saved window state or null
+     */
+    loadWindowState() {
+        try {
+            const db = require('../sqlite/database');
+            const state = db.prepare('SELECT * FROM window_state WHERE id = 1').get();
+
+            if (state) {
+                console.log('🪟 WindowManager: Loaded saved window state:', state);
+                return {
+                    width: state.width || 1000,
+                    height: state.height || 800,
+                    x: state.x,
+                    y: state.y,
+                    isMaximized: state.is_maximized === 1
+                };
+            }
+        } catch (error) {
+            console.error('❌ WindowManager: Error loading window state:', error);
+        }
+        return null;
+    }
+
+    /**
+     * Save window state to database
+     */
+    saveWindowState() {
+        if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+            return;
+        }
+
+        try {
+            const db = require('../sqlite/database');
+            const bounds = this.mainWindow.getBounds();
+            const isMaximized = this.mainWindow.isMaximized();
+            const now = Math.floor(Date.now() / 1000);
+
+            db.prepare(`
+                UPDATE window_state 
+                SET width = ?, height = ?, x = ?, y = ?, is_maximized = ?, updated_at = ?
+                WHERE id = 1
+            `).run(bounds.width, bounds.height, bounds.x, bounds.y, isMaximized ? 1 : 0, now);
+
+            console.log(`🪟 WindowManager: Saved window state: ${bounds.width}x${bounds.height} at (${bounds.x}, ${bounds.y}), maximized: ${isMaximized}`);
+        } catch (error) {
+            console.error('❌ WindowManager: Error saving window state:', error);
+        }
+    }
+
+    /**
      * Create main window
      * @returns {BrowserWindow} Main window instance
      */
@@ -21,8 +72,22 @@ class WindowManager {
             this.clientManager.getClientWindowConfig() :
             require('../config/constants').WINDOW_CONFIG;
 
-        this.mainWindow = new BrowserWindow({
+        // Load saved window state
+        const savedState = this.loadWindowState();
+
+        // Merge saved state with default config
+        const finalConfig = {
             ...windowConfig,
+            width: savedState?.width || windowConfig.width,
+            height: savedState?.height || windowConfig.height,
+            x: savedState?.x,
+            y: savedState?.y
+        };
+
+        console.log('🪟 WindowManager: Creating window with config:', finalConfig);
+
+        this.mainWindow = new BrowserWindow({
+            ...finalConfig,
             title: this.clientManager ? this.clientManager.getClientWindowTitle() : 'NoMorePassword Browser',
             webPreferences: {
                 contextIsolation: true,
@@ -31,6 +96,12 @@ class WindowManager {
                 webviewTag: true  // Enable webview tag for embedded page previews
             }
         });
+
+        // Restore maximized state after window is created
+        if (savedState?.isMaximized) {
+            console.log('🪟 WindowManager: Restoring maximized state');
+            this.mainWindow.maximize();
+        }
 
         // Add debugging for renderer process
         this.mainWindow.webContents.on('did-finish-load', () => {
@@ -114,17 +185,36 @@ class WindowManager {
             clearTimeout(resizeTimeout);
             resizeTimeout = setTimeout(() => {
                 this.onWindowResize();
+                // Save window state after resize
+                this.saveWindowState();
             }, 100); // 100ms debounce
         });
 
         // Window move event (optional)
         this.mainWindow.on('moved', () => {
             this.onWindowMove();
+            // Save window position after move
+            this.saveWindowState();
+        });
+
+        // Window maximize event
+        this.mainWindow.on('maximize', () => {
+            // Save maximized state
+            this.saveWindowState();
+        });
+
+        // Window unmaximize event
+        this.mainWindow.on('unmaximize', () => {
+            // Save unmaximized state
+            this.saveWindowState();
         });
 
         // Window close event
         this.mainWindow.on('close', async (event) => {
             console.log('🚪 WindowManager: Main window closing, starting cleanup...');
+
+            // Save window state before closing
+            this.saveWindowState();
 
             // Clear all sessions and login status (same as user switch)
             if (this.viewManager) {
@@ -173,16 +263,6 @@ class WindowManager {
         // Window restore event
         this.mainWindow.on('restore', () => {
             // Window restored
-        });
-
-        // Window maximize event
-        this.mainWindow.on('maximize', () => {
-            // Window maximized
-        });
-
-        // Window unmaximize event
-        this.mainWindow.on('unmaximize', () => {
-            // Window unmaximized
         });
 
         // Window enter full screen event

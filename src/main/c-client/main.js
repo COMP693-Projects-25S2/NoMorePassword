@@ -172,6 +172,15 @@ class ElectronApp {
                 console.log(`🌐 C-Client: TabManager module loaded successfully`);
                 this.tabManager = new TabManager(this);
                 console.log(`🌐 C-Client: TabManager initialized successfully`);
+
+                // Set up window resize callback to update tab views
+                if (this.windowManager && this.tabManager) {
+                    this.windowManager.setResizeCallback((bounds) => {
+                        console.log(`🔄 C-Client: Window resized to ${bounds.width}x${bounds.height}, updating all tab views`);
+                        this.tabManager.updateAllViewBounds(bounds);
+                    });
+                    console.log(`🌐 C-Client: Window resize callback configured`);
+                }
             } catch (error) {
                 console.error(`❌ C-Client: Failed to create TabManager:`, error);
                 console.error(`❌ C-Client: TabManager error details:`, {
@@ -438,6 +447,11 @@ class ElectronApp {
                         const result = await this.tabManager.createTab('https://www.google.com');
                         if (result) {
                             console.log('✅ C-Client: Initial tab created successfully with ID:', result.id);
+
+                            // Immediately adjust tab bounds to match current window size
+                            const bounds = this.windowManager.getViewBounds();
+                            console.log(`🔄 C-Client: Adjusting initial tab to window size: ${bounds.width}x${bounds.height}`);
+                            this.tabManager.updateAllViewBounds(bounds);
                         } else {
                             console.error('❌ C-Client: Failed to create initial tab');
                         }
@@ -527,45 +541,64 @@ class ElectronApp {
     }
 
     setupHistoryRecording() {
+        const { getCClientLogger } = require('./utils/logger');
+        const historyLogger = getCClientLogger('history');
+
         app.on('web-contents-created', (event, contents) => {
             contents.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
-                if (isMainFrame && !isInPlace) {
-                    const UrlUtils = require('./utils/urlUtils');
-                    if (!UrlUtils.isValidUrl(url)) {
-                        return;
-                    }
+                historyLogger.info(`📍 did-start-navigation: url=${url}, isMainFrame=${isMainFrame}, isInPlace=${isInPlace}`);
 
-                    const viewId = this.getViewIdFromWebContents(contents);
-                    if (viewId && this.historyManager) {
-                        setTimeout(async () => {
-                            try {
-                                if (contents.isDestroyed()) return;
+                if (!isMainFrame) {
+                    historyLogger.info(`⏭️ Skipping: not main frame`);
+                    return;
+                }
 
-                                let initialTitle = 'Loading...';
-                                const currentTitle = contents.getTitle();
-                                if (currentTitle && currentTitle.trim() && currentTitle !== url) {
-                                    initialTitle = currentTitle;
-                                }
+                if (isInPlace) {
+                    historyLogger.info(`⏭️ Skipping: in-place navigation (SPA/hash change)`);
+                    return;
+                }
 
-                                // Use new recordPageVisitWithContent method to record visit and extract content
-                                const record = await this.historyManager.recordPageVisitWithContent(url, viewId, contents);
-                                if (record) {
-                                    if (initialTitle !== 'Loading...') {
-                                        this.historyManager.updateRecordTitle(record, initialTitle);
-                                    } else {
-                                        this.pendingTitleUpdates.set(`${url}-${viewId}`, {
-                                            record: record,
-                                            url: url,
-                                            viewId: viewId,
-                                            timestamp: Date.now()
-                                        });
-                                    }
-                                }
-                            } catch (error) {
-                                console.error('Error in did-start-navigation handler:', error);
+                const UrlUtils = require('./utils/urlUtils');
+                if (!UrlUtils.isValidUrl(url)) {
+                    historyLogger.info(`⏭️ Skipping invalid URL: ${url}`);
+                    return;
+                }
+
+                // Use original URL for history storage (do NOT normalize)
+                // URL cleaning is only for display purposes, not storage
+
+                const viewId = this.getViewIdFromWebContents(contents);
+                historyLogger.info(`📝 Recording visit for viewId=${viewId}, url=${url}`);
+
+                if (viewId && this.historyManager) {
+                    setTimeout(async () => {
+                        try {
+                            if (contents.isDestroyed()) return;
+
+                            let initialTitle = 'Loading...';
+                            const currentTitle = contents.getTitle();
+                            if (currentTitle && currentTitle.trim() && currentTitle !== url) {
+                                initialTitle = currentTitle;
                             }
-                        }, 200);
-                    }
+
+                            // Use new recordPageVisitWithContent method to record visit and extract content
+                            const record = await this.historyManager.recordPageVisitWithContent(url, viewId, contents);
+                            if (record) {
+                                if (initialTitle !== 'Loading...') {
+                                    this.historyManager.updateRecordTitle(record, initialTitle);
+                                } else {
+                                    this.pendingTitleUpdates.set(`${url}-${viewId}`, {
+                                        record: record,
+                                        url: url,
+                                        viewId: viewId,
+                                        timestamp: Date.now()
+                                    });
+                                }
+                            }
+                        } catch (error) {
+                            historyLogger.error(`Error in did-start-navigation handler: ${error.message}`);
+                        }
+                    }, 200);
                 }
             });
 
@@ -573,19 +606,20 @@ class ElectronApp {
                 try {
                     if (contents.isDestroyed()) return;
 
-                    const url = contents.getURL();
+                    const currentUrl = contents.getURL();
                     const title = contents.getTitle();
 
                     const UrlUtils = require('./utils/urlUtils');
-                    if (!UrlUtils.isValidUrl(url)) {
+                    if (!UrlUtils.isValidUrl(currentUrl)) {
                         return;
                     }
 
-                    if (url && this.historyManager) {
+                    // Use original URL (do NOT normalize)
+                    if (currentUrl && this.historyManager) {
                         const viewId = this.getViewIdFromWebContents(contents);
                         if (viewId) {
                             // Update title
-                            this.updateRecordTitle(url, viewId, title);
+                            this.updateRecordTitle(currentUrl, viewId, title);
 
                             // After page load completes, extract more complete content info
                             try {
@@ -613,16 +647,17 @@ class ElectronApp {
                 try {
                     if (contents.isDestroyed()) return;
 
-                    const url = contents.getURL();
+                    const currentUrl = contents.getURL();
                     const UrlUtils = require('./utils/urlUtils');
-                    if (!UrlUtils.isValidUrl(url)) {
+                    if (!UrlUtils.isValidUrl(currentUrl)) {
                         return;
                     }
 
-                    if (url && title && this.historyManager) {
+                    // Use original URL (do NOT normalize)
+                    if (currentUrl && title && this.historyManager) {
                         const viewId = this.getViewIdFromWebContents(contents);
                         if (viewId) {
-                            this.updateRecordTitle(url, viewId, title);
+                            this.updateRecordTitle(currentUrl, viewId, title);
                         }
                     }
                 } catch (error) {
@@ -648,14 +683,38 @@ class ElectronApp {
                 }
             });
 
-            contents.on('new-window', (event, navigationUrl) => {
+            // Handle new window requests (popups, target="_blank", window.open)
+            contents.setWindowOpenHandler(({ url }) => {
+                console.log(`🪟 New window requested: ${url}`);
+
                 try {
-                    const parsedUrl = new URL(navigationUrl);
-                    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-                        event.preventDefault();
+                    const parsedUrl = new URL(url);
+                    // Only allow http/https protocols
+                    if (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') {
+                        // Open in new tab immediately (synchronously if possible)
+                        console.log(`✅ Opening in new tab immediately: ${url}`);
+
+                        if (this.tabManager) {
+                            // Create tab immediately without await to avoid blocking
+                            this.tabManager.createTab(url).then((result) => {
+                                if (result) {
+                                    console.log(`✅ New tab created for: ${url}`);
+                                } else {
+                                    console.error(`❌ Failed to create tab for new window`);
+                                }
+                            }).catch((error) => {
+                                console.error(`❌ Error creating tab for new window:`, error);
+                            });
+                        }
+
+                        return { action: 'deny' }; // Deny popup, we handle it in tab
+                    } else {
+                        console.log(`❌ Blocking non-http(s) protocol: ${parsedUrl.protocol}`);
+                        return { action: 'deny' };
                     }
                 } catch (error) {
-                    event.preventDefault();
+                    console.error(`❌ Error parsing new window URL:`, error);
+                    return { action: 'deny' };
                 }
             });
 
@@ -679,24 +738,60 @@ class ElectronApp {
 
     updateRecordTitle(url, viewId, title) {
         try {
+            const { getCClientLogger } = require('./utils/logger');
+            const historyLogger = getCClientLogger('history');
+
+            historyLogger.info(`📚 Main.updateRecordTitle: URL=${url}, viewId=${viewId}, title=${title}`);
+
             const key = `${url}-${viewId}`;
             const pendingUpdate = this.pendingTitleUpdates.get(key);
 
+            historyLogger.info(`📚 Pending update key: ${key}`);
+            historyLogger.info(`📚 Pending updates map has ${this.pendingTitleUpdates.size} entries`);
+
             if (pendingUpdate) {
+                historyLogger.info(`✅ Found in pendingUpdates, updating record ID: ${pendingUpdate.record.id}`);
                 const finalTitle = title || 'Untitled Page';
                 this.historyManager.updateRecordTitle(pendingUpdate.record, finalTitle);
                 this.pendingTitleUpdates.delete(key);
+                historyLogger.info(`✅ Title updated via pendingUpdates: ${finalTitle}`);
             } else {
-                const recentRecords = this.historyManager.getHistory(10);
-                const recentRecord = recentRecords.find(record =>
-                    record.url === url &&
-                    record.view_id === viewId &&
-                    (record.title === 'Loading...' || !record.title || record.title === 'Untitled Page')
-                );
+                historyLogger.info(`⚠️ Not in pendingUpdates, searching database directly...`);
 
-                if (recentRecord) {
-                    const finalTitle = title || 'Untitled Page';
-                    this.historyManager.updateRecordTitle(recentRecord, finalTitle);
+                // Query directly from database
+                // Strategy: Find the most recent record for this viewId with temporary title
+                // This handles the timing issue where title update arrives before record creation completes
+                try {
+                    const db = require('./sqlite/database');
+
+                    // Query: Find most recent record for this viewId with a temporary title
+                    // This works regardless of exact URL match (handles redirect chains)
+                    const recentRecord = db.prepare(`
+                        SELECT * FROM visit_history 
+                        WHERE view_id = ?
+                        AND (title = 'Loading...' OR title = 'about:blank' OR title = 'Untitled Page' OR title IS NULL)
+                        ORDER BY id DESC 
+                        LIMIT 1
+                    `).get(viewId);
+
+                    if (recentRecord) {
+                        historyLogger.info(`✅ Found record: ID=${recentRecord.id}, URL="${recentRecord.url}", old_title="${recentRecord.title}"`);
+
+                        const finalTitle = title || 'Untitled Page';
+                        const now = Math.floor(Date.now() / 1000);
+
+                        db.prepare(`
+                            UPDATE visit_history 
+                            SET title = ?, updated_at = ?
+                            WHERE id = ?
+                        `).run(finalTitle, now, recentRecord.id);
+
+                        historyLogger.info(`✅ Title updated: "${recentRecord.title}" -> "${finalTitle}"`);
+                    } else {
+                        historyLogger.warn(`❌ No recent record with temporary title for viewId=${viewId}`);
+                    }
+                } catch (dbError) {
+                    console.error(`📚   ❌ Database query error:`, dbError);
                 }
             }
         } catch (error) {
