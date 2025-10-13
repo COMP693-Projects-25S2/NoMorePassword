@@ -271,6 +271,9 @@ class ElectronApp {
         }
 
         this.reloadCheckInterval = setInterval(() => {
+            // Skip if cleanup is in progress
+            if (this.isCleaningUp) return;
+
             if (this.apiServer && this.apiServer.pendingReload) {
                 const reloadData = this.apiServer.pendingReload;
                 console.log(`🔄 C-Client: Processing pending reload for user: ${reloadData.username}`);
@@ -832,17 +835,20 @@ class ElectronApp {
 
     setupPeriodicCleanup() {
         // Auto-fetch titles every 2 minutes for recent loading records
-        setInterval(async () => {
+        this.cleanupLoadingRecordsInterval = setInterval(async () => {
             await this.cleanupLoadingRecords();
         }, 2 * 60 * 1000);
 
         // Cleanup pending updates every 5 minutes
-        setInterval(() => {
+        this.cleanupPendingUpdatesInterval = setInterval(() => {
             this.cleanupPendingUpdates();
         }, 5 * 60 * 1000);
     }
 
     async cleanupLoadingRecords() {
+        // Skip if cleanup is in progress
+        if (this.isCleaningUp) return;
+
         try {
             if (this.historyManager) {
                 console.log('[Main] Starting auto-fetch for loading records...');
@@ -855,6 +861,9 @@ class ElectronApp {
     }
 
     cleanupPendingUpdates() {
+        // Skip if cleanup is in progress
+        if (this.isCleaningUp) return;
+
         try {
             const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
             let cleanedCount = 0;
@@ -1263,14 +1272,44 @@ class ElectronApp {
     async cleanup() {
         if (!this.isInitialized) return;
 
+        // Set cleanup flag to stop all background tasks immediately
+        this.isCleaningUp = true;
+
         // Cleaning up application resources
 
         try {
+            // Clear all timers first
+            if (this.reloadCheckInterval) {
+                clearInterval(this.reloadCheckInterval);
+                this.reloadCheckInterval = null;
+                console.log('✅ C-Client: Reload check interval cleared');
+            }
+            if (this.cleanupLoadingRecordsInterval) {
+                clearInterval(this.cleanupLoadingRecordsInterval);
+                this.cleanupLoadingRecordsInterval = null;
+                console.log('✅ C-Client: Cleanup loading records interval cleared');
+            }
+            if (this.cleanupPendingUpdatesInterval) {
+                clearInterval(this.cleanupPendingUpdatesInterval);
+                this.cleanupPendingUpdatesInterval = null;
+                console.log('✅ C-Client: Cleanup pending updates interval cleared');
+            }
+
             // Clear all sessions BEFORE destroying ViewManager
             if (this.tabManager) {
                 try {
                     console.log('🧹 C-Client: Clearing all sessions before cleanup...');
-                    await this.tabManager.clearAllSessions();
+
+                    // Add timeout to prevent cleanup from hanging
+                    const clearSessionsPromise = this.tabManager.clearAllSessions();
+                    const timeoutPromise = new Promise((resolve) => {
+                        setTimeout(() => {
+                            console.log('⚠️ C-Client: Session clearing timeout (3s), forcing continue...');
+                            resolve();
+                        }, 3000);
+                    });
+
+                    await Promise.race([clearSessionsPromise, timeoutPromise]);
                     console.log('✅ C-Client: All sessions cleared before cleanup');
                 } catch (error) {
                     console.error('❌ C-Client: Error clearing sessions during cleanup:', error);
@@ -1315,6 +1354,17 @@ class ElectronApp {
             this.pendingTitleUpdates.clear();
             globalShortcut.unregisterAll();
             this.isInitialized = false;
+
+            // Close database connection
+            try {
+                const db = require('./sqlite/database');
+                if (db && typeof db.close === 'function') {
+                    db.close();
+                    console.log('✅ C-Client: Database connection closed');
+                }
+            } catch (dbError) {
+                console.error('❌ C-Client: Error closing database:', dbError);
+            }
 
         } catch (error) {
             console.error('Error during cleanup:', error);
@@ -2217,8 +2267,9 @@ class ElectronApp {
                         const apiConfig = require('./config/apiConfig');
                         const nsnConfig = apiConfig.getCurrentNsnWebsite();
                         const nsnDomain = nsnConfig.domain;
+                        const nsnUrl = nsnConfig.url || 'http://localhost:5000';
 
-                        if (currentUrl && (currentUrl.includes('localhost:5000') || currentUrl.includes(nsnDomain))) {
+                        if (currentUrl && (currentUrl.includes(nsnUrl) || currentUrl.includes(nsnDomain))) {
                             console.log(`🔓 C-Client: Navigating to NSN homepage for view ${viewId}`);
                             // Use navigation method to ensure URL parameter injection
                             if (this.viewOperations) {

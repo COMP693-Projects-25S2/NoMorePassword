@@ -927,6 +927,14 @@ class CClientWebSocketClient:
                 websocket.channel_id = channel_id
                 websocket.websocket_port = websocket_port  # Store C-Client WebSocket port
                 
+                # Clear any logout flags from previous session (fresh registration)
+                if hasattr(websocket, '_closed_by_logout'):
+                    delattr(websocket, '_closed_by_logout')
+                    self.logger.info(f"Cleared _closed_by_logout flag from fresh registration")
+                if hasattr(websocket, '_logout_in_progress'):
+                    delattr(websocket, '_logout_in_progress')
+                    self.logger.info(f"Cleared _logout_in_progress flag from fresh registration")
+                
                 # Note: Cluster verification instance is created on-demand during verification
                 # to avoid memory overhead and ensure clean state for each verification
                 
@@ -1163,6 +1171,19 @@ class CClientWebSocketClient:
                     if user_id not in self.user_connections:
                         self.user_connections[user_id] = []
                         self.logger.info(f"Created new user pool for {user_id}")
+                    
+                    # Clean up old connections with closed_by_logout flag before adding new one
+                    old_connections = self.user_connections[user_id][:]
+                    cleaned_count = 0
+                    for old_ws in old_connections:
+                        if hasattr(old_ws, '_closed_by_logout') and old_ws._closed_by_logout:
+                            self.logger.info(f"Removing old closed_by_logout connection for user {user_id}")
+                            self.user_connections[user_id].remove(old_ws)
+                            cleaned_count += 1
+                    
+                    if cleaned_count > 0:
+                        self.logger.info(f"Cleaned up {cleaned_count} old closed_by_logout connections for user {user_id}")
+                    
                     self.user_connections[user_id].append(websocket)
                     self.logger.info(f"User connection added: {user_id} (total: {len(self.user_connections[user_id])})")
                     
@@ -2786,7 +2807,7 @@ class CClientWebSocketClient:
             'user_id': user_id,
             'username': username,
             'website_config': {
-                'root_path': website_root_path or 'http://localhost:5000',
+                'root_path': website_root_path or self.get_nsn_root_url(),
                 'name': website_name or 'NSN'
             },
             'logout_api': {
@@ -3134,13 +3155,19 @@ class CClientWebSocketClient:
             with open(config_path, 'r') as f:
                 config = json.load(f)
             environment = config.get('current_environment', 'local')
-        else:
-            environment = 'local'
+            
+            # Get target websites configuration
+            target_websites = config.get('targetWebsites', {})
+            
+            # Find the website config for current environment
+            for domain, website_config in target_websites.items():
+                if (environment == 'local' and 'localhost' in domain) or \
+                   (environment == 'production' and 'localhost' not in domain):
+                    home_url = website_config.get('homeUrl', 'http://localhost:5000')
+                    return f"{home_url}/logout"
         
-        if environment == 'local':
-            return 'http://localhost:5000/logout'
-        else:
-            return 'https://comp639nsn.pythonanywhere.com/logout'
+        # Fallback
+        return 'http://localhost:5000/logout'
     
     def get_nsn_root_url(self):
         """Get NSN root URL based on current environment"""
@@ -3149,13 +3176,20 @@ class CClientWebSocketClient:
             with open(config_path, 'r') as f:
                 config = json.load(f)
             environment = config.get('current_environment', 'local')
-        else:
-            environment = 'local'
+            
+            # Get target websites configuration
+            target_websites = config.get('targetWebsites', {})
+            
+            # Find the website config for current environment
+            for domain, website_config in target_websites.items():
+                if (environment == 'local' and 'localhost' in domain) or \
+                   (environment == 'production' and 'localhost' not in domain):
+                    home_url = website_config.get('homeUrl', 'http://localhost:5000')
+                    # Ensure trailing slash
+                    return home_url if home_url.endswith('/') else f"{home_url}/"
         
-        if environment == 'local':
-            return 'http://localhost:5000/'
-        else:
-            return 'https://comp639nsn.pythonanywhere.com/'
+        # Fallback
+        return 'http://localhost:5000/'
     
     async def sync_session(self, user_id, session_data):
         """Sync session data with C-Client"""

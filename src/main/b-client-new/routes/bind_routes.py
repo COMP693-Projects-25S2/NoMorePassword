@@ -144,12 +144,19 @@ def _save_and_send_session(nmp_user_id, nsn_username, session_cookie, nsn_user_i
         save_cookie_to_db_func(nmp_user_id, nsn_username, session_cookie, node_id, auto_refresh, nsn_user_id, nsn_username)
         logger.info(f"Session saved to database successfully")
         
-        # Send to C-Client with cluster verification
-        # Note: send_session_to_client already sends to all user connections
-        # No need to call notify_user_login separately (would cause duplicate messages)
+        # Try to send to C-Client (if WebSocket is connected)
+        # Note: Even if send fails (no connections), we still return success
+        # because the session is saved and will be sent when C-Client reconnects
         logger.info(f"===== SENDING SESSION TO C-CLIENT =====")
-        _send_session_to_client(nmp_user_id, session_cookie, nsn_user_id, nsn_username, reset_logout_status, channel_id, node_id)
+        send_result = _send_session_to_client(nmp_user_id, session_cookie, nsn_user_id, nsn_username, reset_logout_status, channel_id, node_id)
         
+        if send_result:
+            logger.info(f"Session sent to C-Client successfully")
+        else:
+            logger.warning(f"Failed to send session to C-Client (no active connections), but session is saved to database")
+            logger.info(f"Session will be sent when C-Client reconnects to WebSocket")
+        
+        # Return True even if send failed, because session is saved
         return True
     except Exception as e:
         logger.error(f"Failed to save and send session: {e}")

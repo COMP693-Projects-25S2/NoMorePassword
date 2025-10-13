@@ -512,13 +512,20 @@ class NSNClient:
             with open(config_path, 'r') as f:
                 config = json.load(f)
             environment = config.get('current_environment', 'local')
-        else:
-            environment = 'local'
+            
+            # Get target websites configuration
+            target_websites = config.get('targetWebsites', {})
+            
+            # Find the website config for current environment
+            for domain, website_config in target_websites.items():
+                if (environment == 'local' and 'localhost' in domain) or \
+                   (environment == 'production' and 'localhost' not in domain):
+                    home_url = website_config.get('homeUrl', 'http://localhost:5000')
+                    # Remove trailing slash for consistency
+                    return home_url.rstrip('/')
         
-        if environment == 'local':
-            return 'http://localhost:5000'
-        else:
-            return 'https://comp639nsn.pythonanywhere.com'
+        # Fallback
+        return 'http://localhost:5000'
     
     def query_user_info(self, username):
         """Query user information from NSN"""
@@ -1357,7 +1364,9 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
             return False
             
         logger.info(f"WebSocket client available: {c_client_ws}")
+        logger.info(f"WebSocket client instance ID: {id(c_client_ws)}")
         logger.info(f"User connections: {c_client_ws.user_connections}")
+        logger.info(f"User connections object ID: {id(c_client_ws.user_connections)}")
         
         # Find WebSocket connections for this user
         logger.info(f"===== SESSION SEND DEBUG INFO =====")
@@ -1476,8 +1485,10 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                         }
                         
                         # Add website config info
+                        # Get NSN root URL from environment configuration
+                        nsn_root_url = c_client_ws.get_nsn_root_url() if hasattr(c_client_ws, 'get_nsn_root_url') else 'http://localhost:5000'
                         website_config = {
-                            'root_path': website_root_path or 'http://localhost:5000',
+                            'root_path': website_root_path or nsn_root_url,
                             'name': website_name or 'NSN',
                             'session_partition': session_partition or 'persist:nsn',
                             'root_url': c_client_ws.get_nsn_root_url()  # Add NSN root URL

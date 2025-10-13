@@ -32,13 +32,20 @@ class NSNClient:
             with open(config_path, 'r') as f:
                 config = json.load(f)
             environment = config.get('current_environment', 'local')
-        else:
-            environment = 'local'
+            
+            # Get target websites configuration
+            target_websites = config.get('targetWebsites', {})
+            
+            # Find the website config for current environment
+            for domain, website_config in target_websites.items():
+                if (environment == 'local' and 'localhost' in domain) or \
+                   (environment == 'production' and 'localhost' not in domain):
+                    home_url = website_config.get('homeUrl', 'http://localhost:5000')
+                    # Remove trailing slash for consistency
+                    return home_url.rstrip('/')
         
-        if environment == 'local':
-            return 'http://localhost:5000'
-        else:
-            return 'https://comp639nsn.pythonanywhere.com'
+        # Fallback
+        return 'http://localhost:5000'
     
     def query_user_info(self, username):
         """Query user information from NSN"""

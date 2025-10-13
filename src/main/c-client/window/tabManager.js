@@ -1280,6 +1280,17 @@ class TabManager {
         try {
             this.logger.info('🧹 TabManager: ===== CLEARING ALL SESSIONS =====');
 
+            // Helper function to add timeout to async operations
+            const withTimeout = (promise, timeoutMs = 2000) => {
+                return Promise.race([
+                    promise,
+                    new Promise((resolve) => setTimeout(() => {
+                        this.logger.warn(`⚠️ TabManager: Operation timeout (${timeoutMs}ms), continuing...`);
+                        resolve();
+                    }, timeoutMs))
+                ]);
+            };
+
             // Close all tabs and clear their sessions
             const tabIds = Array.from(this.tabs.keys());
             this.logger.info(`🧹 TabManager: Closing ${tabIds.length} tabs during session clear...`);
@@ -1291,10 +1302,14 @@ class TabManager {
                         // Clear session data before closing tab
                         this.logger.info(`🧹 TabManager: Clearing session data for tab ${tabId}...`);
                         if (tabData.browserView.webContents && tabData.browserView.webContents.session) {
-                            await tabData.browserView.webContents.session.clearStorageData({
-                                storages: ['cookies', 'localStorage', 'sessionStorage', 'cache']
-                            });
-                            await tabData.browserView.webContents.session.clearCache();
+                            await withTimeout(
+                                tabData.browserView.webContents.session.clearStorageData({
+                                    storages: ['cookies', 'localStorage', 'sessionStorage', 'cache']
+                                })
+                            );
+                            await withTimeout(
+                                tabData.browserView.webContents.session.clearCache()
+                            );
                             this.logger.info(`✅ TabManager: Session data cleared for tab ${tabId}`);
                         } else {
                             this.logger.info(`⚠️ TabManager: No session available for tab ${tabId}`);
@@ -1442,6 +1457,17 @@ class TabManager {
 
             const { session } = require('electron');
 
+            // Helper function to add timeout to async operations
+            const withTimeout = (promise, timeoutMs = 2000) => {
+                return Promise.race([
+                    promise,
+                    new Promise((resolve) => setTimeout(() => {
+                        this.logger.warn(`⚠️ TabManager: Partition clear timeout (${timeoutMs}ms), continuing...`);
+                        resolve();
+                    }, timeoutMs))
+                ]);
+            };
+
             // List of persistent session partitions to clear (same as original SessionManager)
             const partitionsToClear = ['persist:main', 'persist:nsn', 'persist:registered'];
 
@@ -1453,20 +1479,24 @@ class TabManager {
                     const partitionSession = session.fromPartition(partitionName);
 
                     // Clear all storage data (same as original SessionManager)
-                    await partitionSession.clearStorageData({
-                        storages: [
-                            'cookies',
-                            'localStorage',
-                            'sessionStorage',
-                            'indexeddb',
-                            'websql',
-                            'cache',
-                            'serviceworkers'
-                        ]
-                    });
+                    await withTimeout(
+                        partitionSession.clearStorageData({
+                            storages: [
+                                'cookies',
+                                'localStorage',
+                                'sessionStorage',
+                                'indexeddb',
+                                'websql',
+                                'cache',
+                                'serviceworkers'
+                            ]
+                        })
+                    );
 
                     // Clear cache
-                    await partitionSession.clearCache();
+                    await withTimeout(
+                        partitionSession.clearCache()
+                    );
 
                     this.logger.info(`✅ TabManager: Session partition cleared: ${partitionName}`);
                 } catch (partitionError) {
@@ -1799,78 +1829,78 @@ class TabManager {
             const responseData = await browserView.webContents.executeJavaScript(`
                 (() => {
                     try {
-                        this.logger.info('🔍 JavaScript: ===== STARTING NSN RESPONSE DETECTION (${trigger}) =====');
-                        this.logger.info('🔍 JavaScript: Document ready state:', document.readyState);
-                        this.logger.info('🔍 JavaScript: Document title:', document.title);
-                        this.logger.info('🔍 JavaScript: Document URL:', window.location.href);
+                        console.log('🔍 JavaScript: ===== STARTING NSN RESPONSE DETECTION (${trigger}) =====');
+                        console.log('🔍 JavaScript: Document ready state:', document.readyState);
+                        console.log('🔍 JavaScript: Document title:', document.title);
+                        console.log('🔍 JavaScript: Document URL:', window.location.href);
                         
                         // Look for the c-client-responses div
-                        this.logger.info('🔍 JavaScript: Looking for c-client-responses div...');
+                        console.log('🔍 JavaScript: Looking for c-client-responses div...');
                         const cClientResponsesDiv = document.getElementById('c-client-responses');
-                        this.logger.info('🔍 JavaScript: c-client-responses div found:', !!cClientResponsesDiv);
+                        console.log('🔍 JavaScript: c-client-responses div found:', !!cClientResponsesDiv);
                         
                         if (cClientResponsesDiv) {
-                            this.logger.info('🔍 JavaScript: ===== FOUND C-CLIENT-RESPONSES DIV (${trigger}) =====');
-                            this.logger.info('🔍 JavaScript: Div element:', cClientResponsesDiv);
-                            this.logger.info('🔍 JavaScript: Div style display:', cClientResponsesDiv.style.display);
-                            this.logger.info('🔍 JavaScript: Div innerHTML length:', cClientResponsesDiv.innerHTML.length);
+                            console.log('🔍 JavaScript: ===== FOUND C-CLIENT-RESPONSES DIV (${trigger}) =====');
+                            console.log('🔍 JavaScript: Div element:', cClientResponsesDiv);
+                            console.log('🔍 JavaScript: Div style display:', cClientResponsesDiv.style.display);
+                            console.log('🔍 JavaScript: Div innerHTML length:', cClientResponsesDiv.innerHTML.length);
                             
                             const jsonText = cClientResponsesDiv.textContent.trim();
-                            this.logger.info('🔍 JavaScript: JSON text length:', jsonText.length);
-                            this.logger.info('🔍 JavaScript: JSON text preview:', jsonText.substring(0, 200));
-                            this.logger.info('🔍 JavaScript: Full JSON text:', jsonText);
+                            console.log('🔍 JavaScript: JSON text length:', jsonText.length);
+                            console.log('🔍 JavaScript: JSON text preview:', jsonText.substring(0, 200));
+                            console.log('🔍 JavaScript: Full JSON text:', jsonText);
                             
                             try {
                                 const parsed = JSON.parse(jsonText);
-                                this.logger.info('🔍 JavaScript: ===== JSON PARSING SUCCESS (${trigger}) =====');
-                                this.logger.info('🔍 JavaScript: Parsed JSON object:', parsed);
-                                this.logger.info('🔍 JavaScript: Action:', parsed.action);
-                                this.logger.info('🔍 JavaScript: WebSocket URL:', parsed.websocket_url);
-                                this.logger.info('🔍 JavaScript: User ID:', parsed.user_id);
-                                this.logger.info('🔍 JavaScript: Username:', parsed.username);
-                                this.logger.info('🔍 JavaScript: Needs Registration:', parsed.needs_registration);
-                                this.logger.info('🔍 JavaScript: ===== RETURNING PARSED DATA (${trigger}) =====');
+                                console.log('🔍 JavaScript: ===== JSON PARSING SUCCESS (${trigger}) =====');
+                                console.log('🔍 JavaScript: Parsed JSON object:', parsed);
+                                console.log('🔍 JavaScript: Action:', parsed.action);
+                                console.log('🔍 JavaScript: WebSocket URL:', parsed.websocket_url);
+                                console.log('🔍 JavaScript: User ID:', parsed.user_id);
+                                console.log('🔍 JavaScript: Username:', parsed.username);
+                                console.log('🔍 JavaScript: Needs Registration:', parsed.needs_registration);
+                                console.log('🔍 JavaScript: ===== RETURNING PARSED DATA (${trigger}) =====');
                                 return parsed;
                             } catch (e) {
-                                this.logger.info('🔍 JavaScript: ===== JSON PARSING FAILED (${trigger}) =====');
-                                this.logger.info('🔍 JavaScript: Parse error:', e.message);
-                                this.logger.info('🔍 JavaScript: Error stack:', e.stack);
-                                this.logger.info('🔍 JavaScript: Raw JSON text:', jsonText);
+                                console.log('🔍 JavaScript: ===== JSON PARSING FAILED (${trigger}) =====');
+                                console.log('🔍 JavaScript: Parse error:', e.message);
+                                console.log('🔍 JavaScript: Error stack:', e.stack);
+                                console.log('🔍 JavaScript: Raw JSON text:', jsonText);
                                 return null;
                             }
                         }
                         
                         // Fallback: Check if the page contains NSN response data in body text
-                        this.logger.info('🔍 JavaScript: ===== FALLBACK: CHECKING BODY TEXT (${trigger}) =====');
-                        this.logger.info('🔍 JavaScript: No c-client-responses div found, checking body text...');
+                        console.log('🔍 JavaScript: ===== FALLBACK: CHECKING BODY TEXT (${trigger}) =====');
+                        console.log('🔍 JavaScript: No c-client-responses div found, checking body text...');
                         const bodyText = document.body ? document.body.innerText : '';
-                        this.logger.info('🔍 JavaScript: Body text length:', bodyText.length);
-                        this.logger.info('🔍 JavaScript: Body text preview:', bodyText.substring(0, 300));
+                        console.log('🔍 JavaScript: Body text length:', bodyText.length);
+                        console.log('🔍 JavaScript: Body text preview:', bodyText.substring(0, 300));
                         
                         // Use regex to find JSON in body text
                         const jsonMatch = bodyText.match(/\\{[\\s\\S]*?"action"[\\s\\S]*?\\}/);
-                        this.logger.info('🔍 JavaScript: JSON match found in body:', !!jsonMatch);
+                        console.log('🔍 JavaScript: JSON match found in body:', !!jsonMatch);
                         
                         if (jsonMatch) {
-                            this.logger.info('🔍 JavaScript: ===== FOUND JSON IN BODY TEXT (${trigger}) =====');
-                            this.logger.info('🔍 JavaScript: Matched text:', jsonMatch[0]);
+                            console.log('🔍 JavaScript: ===== FOUND JSON IN BODY TEXT (${trigger}) =====');
+                            console.log('🔍 JavaScript: Matched text:', jsonMatch[0]);
                             try {
                                 const parsed = JSON.parse(jsonMatch[0]);
-                                this.logger.info('🔍 JavaScript: Successfully parsed JSON from body text:', parsed);
+                                console.log('🔍 JavaScript: Successfully parsed JSON from body text:', parsed);
                                 return parsed;
                             } catch (e) {
-                                this.logger.info('🔍 JavaScript: Failed to parse JSON from body:', e.message);
+                                console.log('🔍 JavaScript: Failed to parse JSON from body:', e.message);
                                 return null;
                             }
                         }
                         
-                        this.logger.info('🔍 JavaScript: ===== NO NSN RESPONSE FOUND (${trigger}) =====');
-                        this.logger.info('🔍 JavaScript: No c-client-responses div and no JSON in body text');
+                        console.log('🔍 JavaScript: ===== NO NSN RESPONSE FOUND (${trigger}) =====');
+                        console.log('🔍 JavaScript: No c-client-responses div and no JSON in body text');
                         return null;
                     } catch (error) {
-                        this.logger.error('❌ JavaScript: ===== ERROR IN DETECTION (${trigger}) =====');
-                        this.logger.error('❌ JavaScript: Error checking for NSN response:', error);
-                        this.logger.error('❌ JavaScript: Error stack:', error.stack);
+                        console.error('❌ JavaScript: ===== ERROR IN DETECTION (${trigger}) =====');
+                        console.error('❌ JavaScript: Error checking for NSN response:', error);
+                        console.error('❌ JavaScript: Error stack:', error.stack);
                         return null;
                     }
                 })()
@@ -1886,8 +1916,8 @@ class TabManager {
 
         } catch (error) {
             this.logger.error(`❌ TabManager: ===== ERROR IN DETECTION (${trigger}) =====`);
-            this.logger.error(`❌ TabManager: Error detecting NSN response for tab ${id}:`, error);
-            this.logger.error(`❌ TabManager: Error stack:`, error.stack);
+            this.logger.error(`❌ TabManager: Error detecting NSN response for tab ${id}: ${error.message}`);
+            this.logger.error(`❌ TabManager: Error stack: ${error.stack}`);
         }
     }
 
