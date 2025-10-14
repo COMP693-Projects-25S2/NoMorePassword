@@ -61,6 +61,8 @@ def save_nmp_to_session(nmp_params, additional_params=None):
     session['nmp_timestamp'] = nmp_params['nmp_timestamp']
     
     # 保存可选的NMP参数
+    if nmp_params.get('nmp_client_id'):
+        session['nmp_client_id'] = nmp_params['nmp_client_id']
     if nmp_params.get('nmp_node_id'):
         session['nmp_node_id'] = nmp_params['nmp_node_id']
     if nmp_params.get('nmp_domain_id'):
@@ -1590,17 +1592,41 @@ def login():
                 print(f"🔗 NSN: ===== CALLING B-CLIENT /bind API =====")
                 try:
                     import requests
+                    
+                    # Get domain_id, node_id, cluster_id, channel_id, client_id from session or use defaults
+                    # These should have been set from URL parameters when user first accessed NSN
+                    bind_domain_id = session.get('nmp_domain_id', 'localhost:5000')
+                    bind_node_id = session.get('nmp_node_id', 'nsn-node-001')
+                    bind_cluster_id = session.get('nmp_cluster_id')
+                    bind_channel_id = session.get('nmp_channel_id')
+                    bind_client_id = session.get('nmp_client_id')
+                    
+                    print(f"🔗 NSN: Using IDs from session:")
+                    print(f"   domain_id: {bind_domain_id}")
+                    print(f"   node_id: {bind_node_id}")
+                    print(f"   cluster_id: {bind_cluster_id}")
+                    print(f"   channel_id: {bind_channel_id}")
+                    print(f"   client_id: {bind_client_id}")
+                    
                     bind_data = {
                         'user_id': nmp_user_id,
                         'user_name': nmp_username,
                         'request_type': 1,  # 1 = login
-                        'domain_id': 'localhost:5000',
-                        'node_id': 'nsn-node-001',
+                        'domain_id': bind_domain_id,
+                        'node_id': bind_node_id,
                         'auto_refresh': True,
                         'session_cookie': session_cookie,
                         'nsn_user_id': user_data['user_id'],
                         'nsn_username': user_data['username']
                     }
+                    
+                    # Add cluster_id, channel_id and client_id if available
+                    if bind_cluster_id:
+                        bind_data['cluster_id'] = bind_cluster_id
+                    if bind_channel_id:
+                        bind_data['channel_id'] = bind_channel_id
+                    if bind_client_id:
+                        bind_data['client_id'] = bind_client_id
                     
                     print(f"🔗 NSN: Sending bind request to B-Client: {bind_data}")
                     bclient_response = requests.post('http://localhost:3000/bind', json=bind_data, timeout=30)
@@ -2274,18 +2300,30 @@ def logout():
     user_id = session.get('user_id')  # NSN user ID (integer)
     username = session.get('username')  # NSN username
     
+    # CRITICAL FIX: Get NMP parameters from URL first, then fallback to session
+    # This ensures logout can work even if session is partially cleared
+    nmp_params_from_url = get_nmp_params_from_request(request)
+    
     # Check session for C-Client access (primary source)
-    nmp_user_id = session.get('nmp_user_id')
-    nmp_client_type = session.get('nmp_client_type')
-    nmp_client_id = session.get('nmp_client_id')
-    nmp_username = session.get('nmp_username')
+    nmp_user_id = nmp_params_from_url.get('nmp_user_id') or session.get('nmp_user_id')
+    nmp_client_type = nmp_params_from_url.get('nmp_client_type') or session.get('nmp_client_type')
+    nmp_client_id = nmp_params_from_url.get('nmp_client_id') or session.get('nmp_client_id')
+    nmp_username = nmp_params_from_url.get('nmp_username') or session.get('nmp_username')
+    nmp_node_id = nmp_params_from_url.get('nmp_node_id') or session.get('nmp_node_id')
+    nmp_domain_id = nmp_params_from_url.get('nmp_domain_id') or session.get('nmp_domain_id')
+    nmp_cluster_id = nmp_params_from_url.get('nmp_cluster_id') or session.get('nmp_cluster_id')
+    nmp_channel_id = nmp_params_from_url.get('nmp_channel_id') or session.get('nmp_channel_id')
     
     print(f"🔓 NSN: ===== LOGOUT PROCESS START =====")
     print(f"🔓 NSN: User: {username} (NSN ID: {user_id})")
-    print(f"🔓 NSN: NMP User ID from session: {nmp_user_id}")
-    print(f"🔓 NSN: NMP Client Type from session: {nmp_client_type}")
-    print(f"🔓 NSN: NMP Client ID from session: {nmp_client_id}")
-    print(f"🔓 NSN: NMP Username from session: {nmp_username}")
+    print(f"🔓 NSN: NMP User ID: {nmp_user_id} (from URL: {nmp_params_from_url.get('nmp_user_id')}, from session: {session.get('nmp_user_id')})")
+    print(f"🔓 NSN: NMP Client Type: {nmp_client_type}")
+    print(f"🔓 NSN: NMP Client ID: {nmp_client_id} (from URL: {nmp_params_from_url.get('nmp_client_id')}, from session: {session.get('nmp_client_id')})")
+    print(f"🔓 NSN: NMP Username: {nmp_username}")
+    print(f"🔓 NSN: NMP Node ID: {nmp_node_id}")
+    print(f"🔓 NSN: NMP Domain ID: {nmp_domain_id}")
+    print(f"🔓 NSN: NMP Cluster ID: {nmp_cluster_id}")
+    print(f"🔓 NSN: NMP Channel ID: {nmp_channel_id}")
     
     # Determine logout type - if we have nmp_user_id, it's a C-Client user
     is_c_client_user = bool(nmp_user_id)
@@ -2332,17 +2370,39 @@ def logout():
                     
                     # Call B-Client logout API using C-Client user ID (UUID)
                     url = f"{B_CLIENT_API_URL}/bind"
+                    
+                    # Use IDs from URL parameters (already extracted above) with fallback to defaults
+                    logout_domain_id = nmp_domain_id or 'localhost:5000'
+                    logout_node_id = nmp_node_id or 'nsn-node-001'
+                    logout_cluster_id = nmp_cluster_id
+                    logout_channel_id = nmp_channel_id
+                    logout_client_id = nmp_client_id  # CRITICAL: Get client_id to identify specific C-Client
+                    
                     data = {
                         "request_type": 2,  # Use numeric request_type for clear_user_cookies
                         "user_id": nmp_user_id,  # Use C-Client user ID (UUID)
                         "user_name": nmp_username or username,  # Use NMP username or NSN username for reference
-                        "domain_id": "localhost:5000",  # Add required domain_id
-                        "node_id": "nsn-node-001"  # Add required node_id
+                        "domain_id": logout_domain_id,
+                        "node_id": logout_node_id
                     }
+                    
+                    # Add cluster_id and channel_id if available
+                    if logout_cluster_id:
+                        data['cluster_id'] = logout_cluster_id
+                    if logout_channel_id:
+                        data['channel_id'] = logout_channel_id
+                    # CRITICAL: Add client_id to identify which specific C-Client is logging out
+                    if logout_client_id:
+                        data['client_id'] = logout_client_id
                     
                     print(f"🔓 NSN: B-Client logout request data:")
                     print(f"   user_id: '{nmp_user_id}'")
                     print(f"   user_name: '{nmp_username or username}'")
+                    print(f"   domain_id: '{logout_domain_id}'")
+                    print(f"   node_id: '{logout_node_id}'")
+                    print(f"   cluster_id: '{logout_cluster_id}'")
+                    print(f"   channel_id: '{logout_channel_id}'")
+                    print(f"   client_id: '{logout_client_id}'")
                     
                     print(f"🔓 NSN: Request data: {data}")
                     response = requests.post(url, json=data, timeout=30)  # Extended timeout for async operation

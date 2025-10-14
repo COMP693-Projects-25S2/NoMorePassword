@@ -216,6 +216,83 @@ class AuthHandler {
                 this.client.mainWindow.tabManager.registerWebsite(website_config);
             }
 
+            // Show cluster verification result dialog if verification was performed
+            if (message.cluster_verification) {
+                this.logger.info('🔍 [WebSocket Client] ===== CLUSTER VERIFICATION RESULT DETECTED =====');
+                this.logger.info('🔍 Verification result:', message.cluster_verification);
+
+                try {
+                    const { ipcMain } = require('electron');
+
+                    // Show verification result dialog via IPC
+                    // We need to invoke from the main process, so we'll use the client's window
+                    if (this.client.mainWindow && this.client.mainWindow.webContents) {
+                        // Send IPC event to show verification dialog
+                        // Note: We can't use ipcRenderer.invoke from main process, 
+                        // so we need to call the IPC handler directly or use a different approach
+
+                        // Import IPC handlers
+                        const { BrowserWindow } = require('electron');
+                        const path = require('path');
+
+                        this.logger.info('🔍 Creating cluster verification dialog window');
+
+                        const verificationDialog = new BrowserWindow({
+                            width: 520,
+                            height: 480,
+                            modal: false,
+                            parent: this.client.mainWindow,
+                            resizable: false,
+                            minimizable: false,
+                            maximizable: false,
+                            alwaysOnTop: false,
+                            webPreferences: {
+                                nodeIntegration: true,
+                                contextIsolation: false
+                            }
+                        });
+
+                        const encodedResult = encodeURIComponent(JSON.stringify(message.cluster_verification));
+                        const dialogPath = path.join(__dirname, '..', '..', 'clusterVerificationDialog.html');
+
+                        await verificationDialog.loadFile(dialogPath, {
+                            query: {
+                                result: encodedResult
+                            }
+                        });
+
+                        verificationDialog.removeMenu();
+
+                        // Auto-close when main window closes
+                        if (this.client.mainWindow) {
+                            const mainWindowCloseHandler = () => {
+                                if (verificationDialog && !verificationDialog.isDestroyed()) {
+                                    this.logger.info('🔍 Main window closing, auto-closing verification dialog');
+                                    verificationDialog.close();
+                                }
+                            };
+
+                            this.client.mainWindow.once('close', mainWindowCloseHandler);
+
+                            // Clean up listener when dialog is closed
+                            verificationDialog.once('closed', () => {
+                                if (this.client.mainWindow && !this.client.mainWindow.isDestroyed()) {
+                                    this.client.mainWindow.removeListener('close', mainWindowCloseHandler);
+                                }
+                            });
+                        }
+
+                        this.logger.info('✅ [WebSocket Client] Cluster verification dialog shown successfully');
+                    } else {
+                        this.logger.warning('⚠️ [WebSocket Client] Main window not available for showing verification dialog');
+                    }
+                } catch (error) {
+                    this.logger.error('❌ [WebSocket Client] Error showing cluster verification dialog:', error);
+                }
+
+                this.logger.info('🔍 [WebSocket Client] ===== END CLUSTER VERIFICATION RESULT =====');
+            }
+
             if (!session_data) {
                 this.logger.error('❌ [WebSocket Client] No session data provided for auto-login');
                 // Send error feedback to B-Client

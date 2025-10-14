@@ -299,7 +299,7 @@
                                 <hr class="dropdown-divider">
                             </li>
                             <li><a class="dropdown-item"
-                                    href="{{ url_for('logout') }}{% if nmp_injected %}?nmp_injected=true&nmp_user_id={{ nmp_user_id }}&nmp_username={{ nmp_username }}&nmp_client_type={{ nmp_client_type }}&nmp_timestamp={{ nmp_timestamp }}&nmp_ip_address={{ nmp_ip_address }}&nmp_port={{ nmp_port }}{% endif %}">
+                                    href="{{ url_for('logout') }}{% if nmp_injected %}?nmp_injected=true&nmp_user_id={{ nmp_user_id }}&nmp_username={{ nmp_username }}&nmp_client_type={{ nmp_client_type }}&nmp_timestamp={{ nmp_timestamp }}&nmp_ip_address={{ nmp_ip_address }}&nmp_port={{ nmp_port }}&nmp_client_id={{ nmp_client_id }}&nmp_node_id={{ nmp_node_id }}&nmp_domain_id={{ nmp_domain_id }}&nmp_cluster_id={{ nmp_cluster_id }}&nmp_channel_id={{ nmp_channel_id }}{% endif %}">
                                     <i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
                         </ul>
                     </li>

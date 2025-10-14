@@ -1832,6 +1832,10 @@ class CClientWebSocketClient:
                             self.logger.info(f"===== CLUSTER VERIFICATION COMPLETED =====")
                             self.logger.info(f"Verification Result: {verification_result}")
                             
+                            # Save verification result to websocket connection for later use in session send
+                            websocket.cluster_verification_result = verification_result
+                            self.logger.info(f"Saved verification result to websocket connection")
+                            
                             # Check verification result
                             if verification_result.get('success', False):
                                 if verification_result.get('verification_passed', False):
@@ -2819,7 +2823,7 @@ class CClientWebSocketClient:
         # Send to all connections for this user
         await self.send_message_to_user(user_id, message)
     
-    async def notify_user_logout(self, user_id, username, website_root_path=None, website_name=None):
+    async def notify_user_logout(self, user_id, username, website_root_path=None, website_name=None, client_id=None):
         """Notify C-Client of user logout and wait for feedback"""
         # Get NSN logout URL from environment configuration
         nsn_logout_url = self.get_nsn_logout_url()
@@ -2840,24 +2844,40 @@ class CClientWebSocketClient:
         }
         
         # Send to all connections for this user and wait for feedback
-        await self.send_message_to_user_with_feedback(user_id, message)
+        # If client_id is provided, only send to connections matching that client_id
+        await self.send_message_to_user_with_feedback(user_id, message, client_id=client_id)
     
-    async def send_message_to_user_with_feedback(self, user_id, message, timeout=None):
+    async def send_message_to_user_with_feedback(self, user_id, message, timeout=None, client_id=None):
         """Send message to user and wait for ALL feedback before cleanup - 可靠的反馈机制"""
         
-        self.logger.info(f"Sending logout message to user {user_id} (WAITING FOR ALL FEEDBACK)...")
+        self.logger.info(f"Sending logout message to user {user_id}" + (f" (client_id: {client_id})" if client_id else "") + " (WAITING FOR ALL FEEDBACK)...")
         
         # CRITICAL FIX: For logout operations, always check connections in real-time (no cache)
         user_websockets = self.get_cached_user_connections(user_id, use_cache=False)
         
+        # Filter by client_id if provided (to only logout specific C-Client)
+        if client_id:
+            self.logger.info(f"Filtering connections by client_id: {client_id}")
+            user_websockets = [ws for ws in user_websockets if getattr(ws, 'client_id', None) == client_id]
+            self.logger.info(f"Found {len(user_websockets)} connections matching client_id {client_id}")
+        
         if not user_websockets:
-            self.logger.warning(f"No active connections for user {user_id}")
+            self.logger.warning(f"No active connections for user {user_id}" + (f" with client_id {client_id}" if client_id else ""))
             # Double-check by looking directly in user_connections pool
             direct_connections = self.user_connections.get(user_id, [])
             if direct_connections:
+                # Filter by client_id if provided
+                if client_id:
+                    direct_connections = [ws for ws in direct_connections if getattr(ws, 'client_id', None) == client_id]
+                
                 self.logger.info(f"Found {len(direct_connections)} connections in direct pool, but all are invalid")
                 # Clean up invalid connections immediately
-                self.user_connections[user_id] = []
+                if client_id:
+                    # Only remove connections matching client_id
+                    self.user_connections[user_id] = [ws for ws in self.user_connections[user_id] if getattr(ws, 'client_id', None) != client_id]
+                else:
+                    self.user_connections[user_id] = []
+                
                 if not self.user_connections[user_id]:
                     del self.user_connections[user_id]
             return

@@ -151,7 +151,7 @@
                         // 创建隐藏的表单并提交，包含NMP参数
                         const form = document.createElement('form');
                         form.method = 'POST';
-                        form.action = '{{ url_for("login") }}?nmp_injected=true&nmp_user_id={{ nmp_user_id }}&nmp_username={{ nmp_username }}&nmp_client_type={{ nmp_client_type }}&nmp_timestamp={{ nmp_timestamp }}';
+                        form.action = '{{ url_for("login") }}';
 
                         // 添加用户名和密码字段
                         const usernameField = document.createElement('input');
@@ -166,6 +166,31 @@
                         passwordField.value = password;
                         form.appendChild(passwordField);
 
+                        // 添加所有NMP参数作为hidden fields
+                        const nmpFields = {
+                            'nmp_user_id': '{{ nmp_user_id }}',
+                            'nmp_username': '{{ nmp_username }}',
+                            'nmp_client_type': '{{ nmp_client_type }}',
+                            'nmp_timestamp': '{{ nmp_timestamp }}',
+                            'nmp_ip_address': '{{ nmp_ip_address }}',
+                            'nmp_port': '{{ nmp_port }}',
+                            'nmp_client_id': '{{ nmp_client_id }}',
+                            'nmp_node_id': '{{ nmp_node_id }}',
+                            'nmp_domain_id': '{{ nmp_domain_id }}',
+                            'nmp_cluster_id': '{{ nmp_cluster_id }}',
+                            'nmp_channel_id': '{{ nmp_channel_id }}'
+                        };
+
+                        for (const [fieldName, fieldValue] of Object.entries(nmpFields)) {
+                            if (fieldValue && fieldValue !== '') {
+                                const nmpField = document.createElement('input');
+                                nmpField.type = 'hidden';
+                                nmpField.name = fieldName;
+                                nmpField.value = fieldValue;
+                                form.appendChild(nmpField);
+                            }
+                        }
+
                         document.body.appendChild(form);
                         form.submit();
                         return;
@@ -175,20 +200,29 @@
                         statusDiv.innerHTML = '<div class="alert alert-info">Logging in with No More Password...</div>';
 
                         // 直接调用B-client API，不提供账号密码
+                        const bindPayload = {
+                            request_type: 1,
+                            user_id: '{{ nmp_user_id }}',
+                            user_name: '{{ nmp_username }}',
+                            domain_id: '{{ nmp_domain_id }}' || 'localhost:5000',
+                            node_id: '{{ nmp_node_id }}' || 'nsn-node-001',
+                            auto_refresh: autoRefresh,
+                            login_source: 'direct' // 直接调用，非表单来源
+                        };
+
+                        // Add optional NMP parameters if available
+                        {% if nmp_client_id %} bindPayload.client_id = '{{ nmp_client_id }}'; {% endif %}
+                        {% if nmp_cluster_id %} bindPayload.cluster_id = '{{ nmp_cluster_id }}'; {% endif %}
+                        {% if nmp_channel_id %} bindPayload.channel_id = '{{ nmp_channel_id }}'; {% endif %}
+
+                        console.log('🔐 Sending bind request with payload:', bindPayload);
+
                         let response = await fetch('http://localhost:3000/bind', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
                             },
-                            body: JSON.stringify({
-                                request_type: 1,
-                                user_id: '{{ nmp_user_id }}',
-                                user_name: '{{ nmp_username }}',
-                                domain_id: 'localhost:5000',
-                                node_id: 'nsn-node-001',
-                                auto_refresh: autoRefresh,
-                                login_source: 'direct' // 直接调用，非表单来源
-                            })
+                            body: JSON.stringify(bindPayload)
                         });
 
                         console.log('🔐 Login with NMP response status:', response.status);

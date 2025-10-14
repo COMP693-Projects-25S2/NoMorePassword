@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cluster Verification Result</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        .dialog-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            overflow: hidden;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .dialog-body {
+            padding: 32px 24px;
+        }
+
+        .dialog-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+
+        .dialog-icon {
+            font-size: 48px;
+            text-align: center;
+            margin-bottom: 16px;
+        }
+
+        .status-container {
+            background: #f7fafc;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+
+        .status-container.new-user {
+            border: 2px solid #48bb78;
+            background: #f0fff4;
+        }
+
+        .status-container.verified {
+            border: 2px solid #4299e1;
+            background: #ebf8ff;
+        }
+
+        .status-container.failed {
+            border: 2px solid #f56565;
+            background: #fff5f5;
+        }
+
+        .status-container.error {
+            border: 2px solid #ed8936;
+            background: #fffaf0;
+        }
+
+        .status-label {
+            font-size: 14px;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .status-message {
+            font-size: 16px;
+            font-weight: 600;
+            color: #2d3748;
+            line-height: 1.5;
+            margin-bottom: 12px;
+        }
+
+        .status-details {
+            font-size: 14px;
+            color: #4a5568;
+            line-height: 1.6;
+            text-align: left;
+            padding: 12px;
+            background: white;
+            border-radius: 6px;
+            margin-top: 12px;
+        }
+
+        .detail-item {
+            margin-bottom: 8px;
+        }
+
+        .detail-label {
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .detail-value {
+            color: #4a5568;
+        }
+
+        .instruction-text {
+            font-size: 13px;
+            color: #4a5568;
+            line-height: 1.5;
+            text-align: center;
+            margin-top: 16px;
+            padding: 12px;
+            background: #edf2f7;
+            border-radius: 6px;
+        }
+
+        .dialog-footer {
+            padding: 0 24px 24px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .close-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .close-button:hover {
+            background: #5568d3;
+        }
+
+        .close-button:active {
+            background: #4a5ab8;
+        }
+
+        /* Status-specific colors */
+        .new-user .status-message {
+            color: #22543d;
+        }
+
+        .verified .status-message {
+            color: #2c5282;
+        }
+
+        .failed .status-message {
+            color: #742a2a;
+        }
+
+        .error .status-message {
+            color: #7c2d12;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="dialog-container">
+        <div class="dialog-body">
+            <div class="dialog-icon" id="dialogIcon">🔍</div>
+            <div class="dialog-title">Cluster Verification Result</div>
+
+            <div class="status-container" id="statusContainer">
+                <div class="status-label">Verification Status</div>
+                <div class="status-message" id="statusMessage">Checking...</div>
+
+                <div class="status-details" id="statusDetails" style="display: none;">
+                    <!-- Details will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <div class="instruction-text" id="instructionText">
+                <!-- Instructions will be populated by JavaScript -->
+            </div>
+        </div>
+
+        <div class="dialog-footer">
+            <button class="close-button" id="closeBtn">Continue</button>
+        </div>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+
+        // Get verification result from query parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const resultJson = urlParams.get('result');
+
+        let verificationResult = null;
+        try {
+            verificationResult = resultJson ? JSON.parse(decodeURIComponent(resultJson)) : null;
+        } catch (error) {
+            console.error('Failed to parse verification result:', error);
+        }
+
+        // Update UI based on verification result
+        const dialogIcon = document.getElementById('dialogIcon');
+        const statusContainer = document.getElementById('statusContainer');
+        const statusMessage = document.getElementById('statusMessage');
+        const statusDetails = document.getElementById('statusDetails');
+        const instructionText = document.getElementById('instructionText');
+
+        if (!verificationResult) {
+            // No verification result (shouldn't happen, but handle gracefully)
+            dialogIcon.textContent = '❓';
+            statusMessage.textContent = 'No verification information available';
+            instructionText.textContent = 'Please try logging in again.';
+        } else if (verificationResult.is_new_user) {
+            // Case 1: New user - login success as new node
+            dialogIcon.textContent = '✨';
+            statusContainer.classList.add('new-user');
+            statusMessage.textContent = 'Login Success as New Node';
+            instructionText.textContent = 'No previous records found in the cluster. You are logged in as a new node and can start using the system immediately.';
+        } else if (verificationResult.verification_passed) {
+            // Case 2: Existing user - login success by validation
+            dialogIcon.textContent = '✅';
+            statusContainer.classList.add('verified');
+            statusMessage.textContent = 'Login Success by Validation';
+            instructionText.textContent = 'Your identity has been verified against cluster records. Login successful!';
+
+            // Show additional details if available
+            if (verificationResult.message) {
+                statusDetails.style.display = 'block';
+                statusDetails.innerHTML = `
+                    <div class="detail-item">
+                        <span class="detail-label">Details:</span>
+                        <span class="detail-value">${verificationResult.message}</span>
+                    </div>
+                `;
+            }
+        } else if (!verificationResult.verification_passed && verificationResult.success === false) {
+            // Case 3: Existing user - login failed by validation
+            dialogIcon.textContent = '❌';
+            statusContainer.classList.add('failed');
+            statusMessage.textContent = 'Login Failed by Validation';
+            instructionText.textContent = 'Your records do not match the cluster data. Authentication failed. Please contact support if this persists.';
+
+            if (verificationResult.message) {
+                statusDetails.style.display = 'block';
+                statusDetails.innerHTML = `
+                    <div class="detail-item">
+                        <span class="detail-label">Reason:</span>
+                        <span class="detail-value">${verificationResult.message}</span>
+                    </div>
+                `;
+            }
+        } else {
+            // Case 4: Error or timeout - login success with no validation
+            dialogIcon.textContent = '⚠️';
+            statusContainer.classList.add('error');
+            statusMessage.textContent = 'Login Success with No Validation';
+            instructionText.textContent = 'Verification could not be completed due to timeout or error. You are logged in and being treated as a new user for this session.';
+
+            if (verificationResult.message) {
+                statusDetails.style.display = 'block';
+                statusDetails.innerHTML = `
+                    <div class="detail-item">
+                        <span class="detail-label">Note:</span>
+                        <span class="detail-value">${verificationResult.message}</span>
+                    </div>
+                `;
+            }
+        }
+
+        // Handle close button
+        document.getElementById('closeBtn').addEventListener('click', () => {
+            window.close();
+        });
+
+        // Close on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                window.close();
+            }
+        });
+
+        // Auto-close after 5 seconds for successful cases
+        if (verificationResult && (verificationResult.is_new_user || verificationResult.verification_passed)) {
+            setTimeout(() => {
+                console.log('Auto-closing verification dialog after 5 seconds');
+                window.close();
+            }, 5000);
+        }
+    </script>
+</body>
+
+</html>

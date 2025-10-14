@@ -209,6 +209,7 @@ def _parse_bind_request():
     domain_id = data.get('domain_id', get_nsn_base_url().replace('http://', '').replace('https://', ''))
     node_id = data.get('node_id', 'nsn-node-001')
     channel_id = data.get('channel_id', None)  # Channel ID for cluster verification
+    client_id = data.get('client_id', None)  # Client ID to identify specific C-Client (for logout)
     auto_refresh = data.get('auto_refresh', True)
     provided_account = data.get('account', '')  # Account from NSN form
     provided_password = data.get('password', '')  # Password from NSN form
@@ -225,6 +226,7 @@ def _parse_bind_request():
     logger.info(f"domain_id: {domain_id}")
     logger.info(f"node_id: {node_id}")
     logger.info(f"channel_id: {channel_id}")
+    logger.info(f"client_id: {client_id}")
     logger.info(f"auto_refresh: {auto_refresh}")
     logger.info(f"provided_account: {provided_account}")
     logger.info(f"provided_password: {'*' * len(provided_password) if provided_password else 'None'}")
@@ -244,6 +246,7 @@ def _parse_bind_request():
         'domain_id': domain_id,
         'node_id': node_id,
         'channel_id': channel_id,
+        'client_id': client_id,
         'auto_refresh': auto_refresh,
         'provided_account': provided_account,
         'provided_password': provided_password,
@@ -290,14 +293,21 @@ def _delete_user_data(nmp_user_id):
     return deleted_cookies_count
 
 
-def _notify_c_client_logout(nmp_user_id, nmp_username):
+def _notify_c_client_logout(nmp_user_id, nmp_username, client_id=None):
     """Notify C-Client user logout"""
     # Check if there are active connections
     user_connections = c_client_ws.user_connections.get(nmp_user_id, []) if hasattr(c_client_ws, 'user_connections') else []
+    
+    # Filter connections by client_id if provided (to only logout specific C-Client)
+    if client_id:
+        logger.info(f"Filtering connections by client_id: {client_id}")
+        user_connections = [ws for ws in user_connections if getattr(ws, 'client_id', None) == client_id]
+        logger.info(f"Found {len(user_connections)} connections matching client_id {client_id}")
+    
     active_connections = [ws for ws in user_connections if c_client_ws.is_connection_valid(ws)]
     
     if not active_connections:
-        logger.info(f"No active connections for user {nmp_user_id}")
+        logger.info(f"No active connections for user {nmp_user_id}" + (f" with client_id {client_id}" if client_id else ""))
         return False
     
     # Send logout notification
@@ -310,7 +320,8 @@ def _notify_c_client_logout(nmp_user_id, nmp_username):
                 nmp_user_id, 
                 nmp_username,
                 website_root_path=get_nsn_base_url(),
-                website_name='NSN'
+                website_name='NSN',
+                client_id=client_id  # Pass client_id to only notify specific C-Client
             ))
             logger.info(f"Logout notification sent: {notify_result}")
             return notify_result
@@ -730,16 +741,17 @@ def _handle_signup_with_nmp(nmp_user_id, nmp_username, node_id, auto_refresh, ch
         return _return_error_response(f'Signup to website failed: {str(e)}')
 
 
-def _handle_logout_request(nmp_user_id, nmp_username):
+def _handle_logout_request(nmp_user_id, nmp_username, client_id=None):
     """Handle logout request"""
-    logger.info(f"Processing logout request for user {nmp_user_id}")
+    logger.info(f"Processing logout request for user {nmp_user_id}" + (f" (client_id: {client_id})" if client_id else ""))
     
     try:
         # 1. Delete database records
         deleted_count = _delete_user_data(nmp_user_id)
         
         # 2. Notify C-Client (this handles connection cleanup internally)
-        _notify_c_client_logout(nmp_user_id, nmp_username)
+        # Pass client_id to only logout specific C-Client connection
+        _notify_c_client_logout(nmp_user_id, nmp_username, client_id)
         
         # 3. Clean up WebSocket connections
         # CRITICAL FIX: Don't directly delete connections here
@@ -784,6 +796,7 @@ def bind():
         domain_id = request_data['domain_id']
         node_id = request_data['node_id']
         channel_id = request_data['channel_id']
+        client_id = request_data['client_id']
         auto_refresh = request_data['auto_refresh']
         provided_account = request_data['provided_account']
         provided_password = request_data['provided_password']
@@ -793,7 +806,7 @@ def bind():
         
         # Handle logout request (request_type = 2)
         if request_type == 2:  # logout
-            return _handle_logout_request(nmp_user_id, nmp_username)
+            return _handle_logout_request(nmp_user_id, nmp_username, client_id)
         
         # 0. Handle NSN already logged in successfully case (new flow)
         if nsn_session_cookie and nsn_user_id and nsn_username:

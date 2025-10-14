@@ -2157,6 +2157,68 @@ class IpcHandlers {
                 return { success: false, error: error.message };
             }
         });
+
+        // Show cluster verification result dialog
+        this.safeRegisterHandler('show-cluster-verification-dialog', async (event, options) => {
+            try {
+                const { BrowserWindow } = require('electron');
+                const path = require('path');
+
+                this.logger.info('🔍 C-Client IPC: Showing cluster verification dialog');
+                this.logger.info('🔍 Verification result:', options.result);
+
+                const verificationDialog = new BrowserWindow({
+                    width: 520,
+                    height: 480,
+                    modal: false,
+                    parent: this.mainWindow,
+                    resizable: false,
+                    minimizable: false,
+                    maximizable: false,
+                    alwaysOnTop: false,
+                    webPreferences: {
+                        nodeIntegration: true,
+                        contextIsolation: false
+                    }
+                });
+
+                const encodedResult = encodeURIComponent(JSON.stringify(options.result || {}));
+                const dialogPath = path.join(__dirname, '..', 'clusterVerificationDialog.html');
+
+                await verificationDialog.loadFile(dialogPath, {
+                    query: {
+                        result: encodedResult
+                    }
+                });
+
+                verificationDialog.removeMenu();
+
+                // Auto-close when main window closes
+                if (this.mainWindow) {
+                    const mainWindowCloseHandler = () => {
+                        if (verificationDialog && !verificationDialog.isDestroyed()) {
+                            this.logger.info('🔍 Main window closing, auto-closing verification dialog');
+                            verificationDialog.close();
+                        }
+                    };
+
+                    this.mainWindow.once('close', mainWindowCloseHandler);
+
+                    // Clean up listener when dialog is closed
+                    verificationDialog.once('closed', () => {
+                        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                            this.mainWindow.removeListener('close', mainWindowCloseHandler);
+                        }
+                    });
+                }
+
+                this.logger.info('✅ C-Client IPC: Cluster verification dialog shown successfully');
+                return { success: true };
+            } catch (error) {
+                this.logger.error('❌ C-Client IPC: Error showing cluster verification dialog:', error);
+                return { success: false, error: error.message };
+            }
+        });
     }
 
     /**

@@ -1494,6 +1494,12 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                             'root_url': c_client_ws.get_nsn_root_url()  # Add NSN root URL
                         }
                         
+                        # Get cluster verification result from websocket connection if available
+                        verification_result = None
+                        if hasattr(websocket, 'cluster_verification_result'):
+                            verification_result = websocket.cluster_verification_result
+                            logger.info(f"Found cluster verification result: {verification_result}")
+                        
                         message = {
                             'type': 'auto_login',
                             'user_id': user_id,
@@ -1504,7 +1510,8 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                             'message': 'Auto-login with pre-processed session data from B-Client',
                             'timestamp': datetime.utcnow().isoformat(),
                             'channel_id': channel_id,
-                            'node_id': node_id
+                            'node_id': node_id,
+                            'cluster_verification': verification_result  # Add verification result to message
                         }
                         
                         # Check if WebSocket connection is still open using centralized validation
