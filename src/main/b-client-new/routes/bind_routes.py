@@ -108,7 +108,9 @@ def _send_session_to_client(nmp_user_id, session_cookie, nsn_user_id, nsn_userna
             website_root_path=get_nsn_base_url(),
             website_name='NSN',
             session_partition='persist:nsn',
-            reset_logout_status=reset_logout_status
+            reset_logout_status=reset_logout_status,
+            channel_id=channel_id,
+            node_id=node_id
         ))
         logger.info(f"Session send result: {send_result}")
         logger.info(f"Session sent to C-Client for user {nmp_user_id}")
@@ -258,6 +260,8 @@ def _handle_nsn_session_provided(nmp_user_id, nmp_username, nsn_session_cookie, 
     logger.info(f"NSN user ID: {nsn_user_id}, Username: {nsn_username}")
     
     # Reset logout status to allow user to login again
+    # This is called AFTER NSN login success, so we should always allow it
+    # The logout check is handled in send_session_if_appropriate (auto-reconnect)
     logger.info(f"===== RESETTING LOGOUT STATUS =====")
     try:
         updated_accounts = UserAccount.query.filter_by(
@@ -616,7 +620,7 @@ def _handle_signup_with_nmp(nmp_user_id, nmp_username, node_id, auto_refresh, ch
     
     if existing_account:
         logger.info(f"Found existing account for user {nmp_user_id}, using existing credentials")
-        unique_username = existing_account.nsn_username
+        unique_username = existing_account.account  # FIXED: Use 'account' field, not 'nsn_username'
         generated_password = existing_account.password
         skip_nsn_registration = True
     else:
@@ -698,7 +702,8 @@ def _handle_signup_with_nmp(nmp_user_id, nmp_username, node_id, auto_refresh, ch
                 save_cookie_to_db_func(nmp_user_id, nsn_username, session_cookie, node_id, auto_refresh, nsn_user_id, nsn_username)
                 
                 def send_session_async():
-                    _send_session_to_client(nmp_user_id, session_cookie, nsn_user_id, nsn_username, reset_logout_status=True)
+                    # CRITICAL FIX: Pass channel_id and node_id for cluster verification
+                    _send_session_to_client(nmp_user_id, session_cookie, nsn_user_id, nsn_username, reset_logout_status=True, channel_id=channel_id, node_id=node_id)
                 
                 thread = threading.Thread(target=send_session_async)
                 thread.daemon = True
@@ -733,11 +738,14 @@ def _handle_logout_request(nmp_user_id, nmp_username):
         # 1. Delete database records
         deleted_count = _delete_user_data(nmp_user_id)
         
-        # 2. Notify C-Client
+        # 2. Notify C-Client (this handles connection cleanup internally)
         _notify_c_client_logout(nmp_user_id, nmp_username)
         
         # 3. Clean up WebSocket connections
-        _cleanup_websocket_connections(nmp_user_id)
+        # CRITICAL FIX: Don't directly delete connections here
+        # notify_user_logout already handles connection cleanup (marks as closed_by_logout, waits for feedback)
+        # Directly deleting connections can interfere with concurrent login requests
+        # _cleanup_websocket_connections(nmp_user_id)  # Commented out - handled by notify_user_logout
         
         # 4. Clean up internal cache
         _cleanup_internal_cache(nmp_user_id)

@@ -173,6 +173,12 @@ class ElectronApp {
                 this.tabManager = new TabManager(this);
                 console.log(`🌐 C-Client: TabManager initialized successfully`);
 
+                // CRITICAL: Update WebSocket client's mainWindow reference after TabManager is created
+                if (this.webSocketClient) {
+                    this.webSocketClient.setMainWindow(this);
+                    console.log(`🔌 C-Client: WebSocket client mainWindow reference updated after TabManager creation`);
+                }
+
                 // Set up window resize callback to update tab views
                 if (this.windowManager && this.tabManager) {
                     this.windowManager.setResizeCallback((bounds) => {

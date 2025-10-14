@@ -2,8 +2,9 @@
 // Automatically injects user parameters when navigating to specific websites
 
 class UrlParameterInjector {
-    constructor(apiPort = null) {
+    constructor(apiPort = null, webSocketClient = null) {
         this.apiPort = apiPort;
+        this.webSocketClient = webSocketClient;  // Store global webSocketClient instance
         this.config = this.loadConfig();
         // Target websites that should receive user parameters
         // Note: Now injecting parameters to ALL websites for universal tracking
@@ -377,9 +378,14 @@ class UrlParameterInjector {
         try {
             console.log('🔌 URLParameterInjector: Connecting to B-Client WebSocket...');
 
-            // Import WebSocket client
-            const CClientWebSocketClient = require('../websocket/cClientWebSocketClient');
-            const wsClient = new CClientWebSocketClient();
+            // CRITICAL FIX: Use global webSocketClient instance instead of creating new one
+            if (!this.webSocketClient) {
+                console.error('❌ URLParameterInjector: No webSocketClient instance available');
+                console.error('❌ URLParameterInjector: Cannot connect to B-Client WebSocket');
+                return;
+            }
+
+            const wsClient = this.webSocketClient; // Use global instance
 
             // Update configuration with B-Client info
             wsClient.config.host = bClientInfo.websocket.host;
@@ -388,7 +394,7 @@ class UrlParameterInjector {
             // Connect to B-Client
             await wsClient.connect();
 
-            console.log('✅ URLParameterInjector: Connected to B-Client WebSocket');
+            console.log('✅ URLParameterInjector: Connected to B-Client WebSocket using global instance');
         } catch (error) {
             console.error('❌ URLParameterInjector: Error connecting to B-Client:', error);
         }
@@ -510,14 +516,21 @@ class UrlParameterInjector {
 let globalInstance = null;
 
 // Factory function to get or create global instance
-function getUrlParameterInjector(apiPort = null) {
+function getUrlParameterInjector(apiPort = null, webSocketClient = null) {
     if (!globalInstance) {
-        globalInstance = new UrlParameterInjector(apiPort);
+        globalInstance = new UrlParameterInjector(apiPort, webSocketClient);
         console.log('[UrlParameterInjector] Created global instance');
-    } else if (apiPort && apiPort !== globalInstance.apiPort) {
-        // Update API port if provided and different
-        globalInstance.apiPort = apiPort;
-        console.log(`[UrlParameterInjector] Updated global instance API port to ${apiPort}`);
+    } else {
+        // Update apiPort if provided and different
+        if (apiPort && apiPort !== globalInstance.apiPort) {
+            globalInstance.apiPort = apiPort;
+            console.log(`[UrlParameterInjector] Updated global instance API port to ${apiPort}`);
+        }
+        // Update webSocketClient if provided
+        if (webSocketClient && webSocketClient !== globalInstance.webSocketClient) {
+            globalInstance.webSocketClient = webSocketClient;
+            console.log(`[UrlParameterInjector] Updated global instance webSocketClient`);
+        }
     }
     return globalInstance;
 }

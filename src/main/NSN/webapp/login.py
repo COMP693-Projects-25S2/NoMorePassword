@@ -982,7 +982,7 @@ def dashboard():
     if 'loggedin' not in session or not session.get('user_id'):
         print(f"⚠️ NSN: Dashboard accessed without valid login session")
         print(f"⚠️ NSN: Redirecting to login page")
-        return redirect(url_for('index'))
+        return redirect(url_for('login'))
     
     # 优先检查C端认证流程
     nmp_params = get_nmp_params_from_request(request)
@@ -2299,62 +2299,85 @@ def logout():
     
     # For C-Client users (both signup with nmp and bind to nmp), call B-Client to clear cookies
     if is_c_client_user:
+        # Check if this user already initiated logout recently (prevent duplicate logout requests)
+        import threading
+        if not hasattr(logout, '_logout_lock'):
+            logout._logout_lock = threading.Lock()
+            logout._recent_logouts = {}  # {nmp_user_id: timestamp}
+        
+        with logout._logout_lock:
+            import time
+            current_time = time.time()
+            last_logout_time = logout._recent_logouts.get(nmp_user_id, 0)
+            
+            # If this user logged out within last 15 seconds, skip B-Client call
+            if current_time - last_logout_time < 15:
+                print(f"🔓 NSN: ===== DUPLICATE LOGOUT DETECTED =====")
+                print(f"🔓 NSN: User {username} logged out {current_time - last_logout_time:.1f}s ago")
+                print(f"🔓 NSN: Skipping B-Client logout API call (already processed)")
+                print(f"🔓 NSN: ===== DUPLICATE LOGOUT SKIPPED =====")
+                is_c_client_user = False  # Skip async logout thread
+            else:
+                # Record this logout
+                logout._recent_logouts[nmp_user_id] = current_time
+                print(f"🔓 NSN: Recorded logout for user {username} at {current_time}")
+        
         # Asynchronous logout processing to prevent blocking
-        def async_logout():
-            try:
-                print(f"🔓 NSN: ===== ASYNC LOGOUT PROCESS START =====")
-                print(f"🔓 NSN: Calling B-Client logout API asynchronously...")
-                print(f"🔓 NSN: B-Client URL: {B_CLIENT_API_URL}/bind")
-                
-                # Call B-Client logout API using C-Client user ID (UUID)
-                url = f"{B_CLIENT_API_URL}/bind"
-                data = {
-                    "request_type": 2,  # Use numeric request_type for clear_user_cookies
-                    "user_id": nmp_user_id,  # Use C-Client user ID (UUID)
-                    "user_name": nmp_username or username,  # Use NMP username or NSN username for reference
-                    "domain_id": "localhost:5000",  # Add required domain_id
-                    "node_id": "nsn-node-001"  # Add required node_id
-                }
-                
-                print(f"🔓 NSN: B-Client logout request data:")
-                print(f"   user_id: '{nmp_user_id}'")
-                print(f"   user_name: '{nmp_username or username}'")
-                
-                print(f"🔓 NSN: Request data: {data}")
-                response = requests.post(url, json=data, timeout=30)  # Extended timeout for async operation
-                print(f"🔓 NSN: B-Client response status: {response.status_code}")
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    print(f"🔓 NSN: B-Client response: {result}")
+        if is_c_client_user:  # Only if not skipped by duplicate check
+            def async_logout():
+                try:
+                    print(f"🔓 NSN: ===== ASYNC LOGOUT PROCESS START =====")
+                    print(f"🔓 NSN: Calling B-Client logout API asynchronously...")
+                    print(f"🔓 NSN: B-Client URL: {B_CLIENT_API_URL}/bind")
                     
-                    if result.get('success'):
-                        print(f"✅ NSN: ===== ASYNC LOGOUT SUCCESS =====")
-                        print(f"✅ NSN: C-Client user {username} logged out successfully")
-                        print(f"✅ NSN: B-Client cleared {result.get('cleared_count', 0)} cookies")
-                        print(f"✅ NSN: C-Client session cleared: {result.get('c_client_notified', False)}")
-                        print(f"✅ NSN: ===== ASYNC LOGOUT PROCESS END =====")
+                    # Call B-Client logout API using C-Client user ID (UUID)
+                    url = f"{B_CLIENT_API_URL}/bind"
+                    data = {
+                        "request_type": 2,  # Use numeric request_type for clear_user_cookies
+                        "user_id": nmp_user_id,  # Use C-Client user ID (UUID)
+                        "user_name": nmp_username or username,  # Use NMP username or NSN username for reference
+                        "domain_id": "localhost:5000",  # Add required domain_id
+                        "node_id": "nsn-node-001"  # Add required node_id
+                    }
+                    
+                    print(f"🔓 NSN: B-Client logout request data:")
+                    print(f"   user_id: '{nmp_user_id}'")
+                    print(f"   user_name: '{nmp_username or username}'")
+                    
+                    print(f"🔓 NSN: Request data: {data}")
+                    response = requests.post(url, json=data, timeout=30)  # Extended timeout for async operation
+                    print(f"🔓 NSN: B-Client response status: {response.status_code}")
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        print(f"🔓 NSN: B-Client response: {result}")
+                        
+                        if result.get('success'):
+                            print(f"✅ NSN: ===== ASYNC LOGOUT SUCCESS =====")
+                            print(f"✅ NSN: C-Client user {username} logged out successfully")
+                            print(f"✅ NSN: B-Client cleared {result.get('cleared_count', 0)} cookies")
+                            print(f"✅ NSN: C-Client session cleared: {result.get('c_client_notified', False)}")
+                            print(f"✅ NSN: ===== ASYNC LOGOUT PROCESS END =====")
+                        else:
+                            print(f"⚠️ NSN: ===== ASYNC LOGOUT FAILED =====")
+                            print(f"⚠️ NSN: Failed to logout C-Client user {username}: {result.get('error', 'Unknown error')}")
+                            print(f"⚠️ NSN: ===== ASYNC LOGOUT PROCESS END =====")
                     else:
                         print(f"⚠️ NSN: ===== ASYNC LOGOUT FAILED =====")
-                        print(f"⚠️ NSN: Failed to logout C-Client user {username}: {result.get('error', 'Unknown error')}")
+                        print(f"⚠️ NSN: B-Client API call failed with status {response.status_code}")
+                        print(f"⚠️ NSN: Response text: {response.text}")
                         print(f"⚠️ NSN: ===== ASYNC LOGOUT PROCESS END =====")
-                else:
-                    print(f"⚠️ NSN: ===== ASYNC LOGOUT FAILED =====")
-                    print(f"⚠️ NSN: B-Client API call failed with status {response.status_code}")
-                    print(f"⚠️ NSN: Response text: {response.text}")
+                        
+                except Exception as e:
+                    print(f"⚠️ NSN: ===== ASYNC LOGOUT ERROR =====")
+                    print(f"⚠️ NSN: Error calling B-Client logout API: {e}")
                     print(f"⚠️ NSN: ===== ASYNC LOGOUT PROCESS END =====")
-                    
-            except Exception as e:
-                print(f"⚠️ NSN: ===== ASYNC LOGOUT ERROR =====")
-                print(f"⚠️ NSN: Error calling B-Client logout API: {e}")
-                print(f"⚠️ NSN: ===== ASYNC LOGOUT PROCESS END =====")
-        
-        # Start async logout process in background thread
-        import threading
-        logout_thread = threading.Thread(target=async_logout, daemon=True)
-        logout_thread.start()
-        print(f"🔓 NSN: Started async logout process for C-Client user {username}")
-        print(f"🔓 NSN: Logout will be processed in background, page will not be blocked")
+            
+            # Start async logout process in background thread
+            logout_thread = threading.Thread(target=async_logout, daemon=True)
+            logout_thread.start()
+            print(f"🔓 NSN: Started async logout process for C-Client user {username}")
+            print(f"🔓 NSN: Logout will be processed in background, page will not be blocked")
     
     # Step 4: Clear NSN session AFTER B-Client call (for both C-Client and browser direct users)
     print(f"🔓 NSN: Step 4: Clearing NSN session...")

@@ -30,6 +30,7 @@ class BClientLogger:
         self.app_log_file = self.log_dir / f"bclient_app_{start_time}.log"
         self.cluster_verification_log_file = self.log_dir / f"bclient_cluster_verification_{start_time}.log"
         self.security_code_log_file = self.log_dir / f"bclient_security_code_{start_time}.log"
+        self.history_log_file = self.log_dir / f"bclient_history_{start_time}.log"
         
         # Initialize loggers for each module
         self._setup_loggers()
@@ -91,6 +92,13 @@ class BClientLogger:
             self.security_code_log_file,
             level=logging.INFO
         )
+        
+        # History module logger
+        self.history_logger = self._create_logger(
+            'bclient_history',
+            self.history_log_file,
+            level=logging.INFO
+        )
     
     def _create_logger(self, name, log_file, level=logging.INFO):
         """创建logger实例"""
@@ -138,7 +146,8 @@ class BClientLogger:
             'app': self.app_logger,
             'main': self.main_logger,
             'cluster_verification': self.cluster_verification_logger,
-            'security_code': self.security_code_logger
+            'security_code': self.security_code_logger,
+            'history': self.history_logger
         }
         return module_map.get(module_name, self.main_logger)
     
@@ -155,6 +164,7 @@ class BClientLogger:
         self.main_logger.info(f"  App: {self.app_log_file}")
         self.main_logger.info(f"  Cluster Verification: {self.cluster_verification_log_file}")
         self.main_logger.info(f"  Security Code: {self.security_code_log_file}")
+        self.main_logger.info(f"  History: {self.history_log_file}")
         self.main_logger.info("=" * 60)
 
 # Global logger instance

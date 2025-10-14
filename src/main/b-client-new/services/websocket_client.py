@@ -1006,6 +1006,7 @@ class CClientWebSocketClient:
                                 'type': 'registration_success',
                                 'client_id': client_id,
                                 'user_id': user_id,
+                                'username': username,
                                 'message': 'Already registered with same credentials'
                             })
                             
@@ -1035,6 +1036,7 @@ class CClientWebSocketClient:
                                     'type': 'registration_success',
                                     'client_id': client_id,
                                     'user_id': user_id,
+                                    'username': username,
                                     'message': 'Already registered with same credentials'
                                 })
                                 
@@ -1097,7 +1099,8 @@ class CClientWebSocketClient:
                                 await self.send_message_to_websocket(existing_websocket, {
                                     'type': 'registration_success',
                                     'client_id': client_id,
-                                    'user_id': user_id
+                                    'user_id': user_id,
+                                    'username': username
                                 })
                                 
                                 self.logger.info(f"Re-registration response sent to existing connection")
@@ -1173,10 +1176,16 @@ class CClientWebSocketClient:
                         self.logger.info(f"Created new user pool for {user_id}")
                     
                     # Clean up old connections with closed_by_logout flag before adding new one
+                    # CRITICAL: Don't clean up connections that are waiting for logout feedback
                     old_connections = self.user_connections[user_id][:]
                     cleaned_count = 0
                     for old_ws in old_connections:
                         if hasattr(old_ws, '_closed_by_logout') and old_ws._closed_by_logout:
+                            # CRITICAL: Check if connection is waiting for logout feedback
+                            if hasattr(old_ws, '_logout_feedback_tracking'):
+                                self.logger.info(f"Skipping cleanup of connection waiting for logout feedback for user {user_id}")
+                                continue  # Don't remove connections waiting for feedback
+                            
                             self.logger.info(f"Removing old closed_by_logout connection for user {user_id}")
                             self.user_connections[user_id].remove(old_ws)
                             cleaned_count += 1
@@ -1271,7 +1280,8 @@ class CClientWebSocketClient:
                 registration_message = {
                     'type': 'registration_success',
                     'client_id': client_id,
-                    'user_id': user_id
+                    'user_id': user_id,
+                    'username': username
                 }
                 
                 # If this is a new device login, include full user information
@@ -1959,6 +1969,7 @@ class CClientWebSocketClient:
                         'type': 'registration_success',
                         'client_id': client_id,
                         'user_id': user_id,
+                        'username': username,
                         'message': 'Already registered with same credentials'
                     })
                     
@@ -2370,6 +2381,17 @@ class CClientWebSocketClient:
     def is_connection_valid(self, websocket):
         """Check if a WebSocket connection is still valid"""
         try:
+            # CRITICAL: If logout is in progress, keep connection valid during the brief sending window
+            if hasattr(websocket, '_logout_in_progress'):
+                self.logger.debug(f"🔍 Connection has logout in progress, keeping valid during message send")
+                return True
+            
+            # CRITICAL: If logout feedback tracking is active, keep connection valid
+            # to prevent cleanup from removing it before feedback arrives
+            if hasattr(websocket, '_logout_feedback_tracking'):
+                self.logger.debug(f"🔍 Connection has logout feedback tracking, keeping valid during feedback wait")
+                return True
+            
             # Check if connection was marked as closed by logout
             if hasattr(websocket, '_closed_by_logout') and websocket._closed_by_logout:
                 self.logger.debug(f"🔍 Connection invalid: marked as closed by logout")
@@ -3080,28 +3102,56 @@ class CClientWebSocketClient:
             self.logger.info(f"   Immediate: {immediate}")
             self.logger.info(f"   Timestamp: {timestamp}")
             
-            # Find the connection index for this websocket
-            user_websockets = self.user_connections.get(user_id, [])
-            connection_index = None
+            # CRITICAL FIX: Find feedback tracking using ALL connections for this user
+            # (including ones that may have already disconnected)
+            feedback_marked = False
             
+            # First, try to find in current active connections
+            user_websockets = self.user_connections.get(user_id, [])
             for i, ws in enumerate(user_websockets):
-                if ws == websocket:
-                    connection_index = i
+                # Match by client_id (more reliable than websocket object reference)
+                if hasattr(ws, 'client_id') and ws.client_id == feedback_client_id:
+                    self.logger.info(f"Logout feedback matched to active connection {i} for user {user_id}")
+                    
+                    # Mark feedback as received in tracking dict
+                    if hasattr(ws, '_logout_feedback_tracking'):
+                        ws._logout_feedback_tracking[ws] = True
+                        self.logger.info(f"IMMEDIATELY marked logout feedback as received")
+                        feedback_marked = True
+                        
+                        # Show current feedback progress
+                        total_connections = len(ws._logout_feedback_tracking)
+                        received_count = sum(1 for received in ws._logout_feedback_tracking.values() if received)
+                        self.logger.info(f"Feedback progress: {received_count}/{total_connections} received")
                     break
             
-            if connection_index is not None:
-                self.logger.info(f"Logout feedback received from connection {connection_index} for user {user_id}")
+            # If not found in active connections, check if ANY connection has the tracking dict
+            # This handles cases where C-Client disconnected before B-Client processed feedback
+            if not feedback_marked:
+                self.logger.info(f"Connection for {feedback_client_id} not in active list, checking tracking dicts...")
                 
-                # Mark this connection's feedback as received IMMEDIATELY
-                if hasattr(websocket, '_logout_feedback_tracking'):
-                    websocket._logout_feedback_tracking[websocket] = True
-                    self.logger.info(f"IMMEDIATELY marked logout feedback as received")
-                    
-                    # Show current feedback progress
-                    total_connections = len(websocket._logout_feedback_tracking)
-                    received_count = sum(1 for received in websocket._logout_feedback_tracking.values() if received)
-                    self.logger.info(f"Feedback progress: {received_count}/{total_connections} received")
-                
+                # Check all connections to find the one with tracking dict
+                for ws_list in self.user_connections.values():
+                    for ws in ws_list:
+                        if hasattr(ws, '_logout_feedback_tracking'):
+                            # Mark feedback as received for THIS client_id
+                            # Use client_id matching instead of websocket object matching
+                            for tracked_ws in ws._logout_feedback_tracking.keys():
+                                if hasattr(tracked_ws, 'client_id') and tracked_ws.client_id == feedback_client_id:
+                                    ws._logout_feedback_tracking[tracked_ws] = True
+                                    self.logger.info(f"IMMEDIATELY marked logout feedback as received (via tracking dict)")
+                                    feedback_marked = True
+                                    
+                                    total_connections = len(ws._logout_feedback_tracking)
+                                    received_count = sum(1 for received in ws._logout_feedback_tracking.values() if received)
+                                    self.logger.info(f"Feedback progress: {received_count}/{total_connections} received")
+                                    break
+                            if feedback_marked:
+                                break
+                    if feedback_marked:
+                        break
+            
+            if feedback_marked:
                 if success:
                     self.logger.info(f"Logout completed successfully on C-Client {client_id}")
                 else:
@@ -3112,6 +3162,7 @@ class CClientWebSocketClient:
                     self.logger.info(f"Immediate feedback detected from {feedback_client_id}")
             else:
                 self.logger.warning(f"Received logout feedback from unknown connection for user {user_id}")
+                self.logger.warning(f"Could not find tracking dict for client_id: {feedback_client_id}")
                 
         except Exception as e:
             self.logger.error(f"Error handling logout feedback: {e}")

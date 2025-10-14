@@ -306,7 +306,8 @@ class ViewOperations {
         try {
             // Process URL with parameter injection
             const { getUrlParameterInjector } = require('../utils/urlParameterInjector');
-            const urlInjector = getUrlParameterInjector();
+            const webSocketClient = this.viewManager.electronApp ? this.viewManager.electronApp.webSocketClient : null;
+            const urlInjector = getUrlParameterInjector(null, webSocketClient);
 
             // Get clientId from viewManager's electronApp if available
             const clientId = this.viewManager.electronApp && this.viewManager.electronApp.clientId ? this.viewManager.electronApp.clientId : null;

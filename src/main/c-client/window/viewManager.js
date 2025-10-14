@@ -241,8 +241,10 @@ class ViewManager {
             console.log(`🔄 ViewManager: Step 5 - Creating new default page...`);
             try {
                 const { getUrlParameterInjector } = require('../utils/urlParameterInjector');
-                const urlInjector = getUrlParameterInjector();
+                const webSocketClient = this.electronApp ? this.electronApp.webSocketClient : null;
+                const urlInjector = getUrlParameterInjector(null, webSocketClient);
                 console.log(`   - URL injector available: ${!!urlInjector}`);
+                console.log(`   - WebSocketClient available: ${!!webSocketClient}`);
 
                 // Get clientId from electronApp if available
                 const clientId = this.electronApp && this.electronApp.clientId ? this.electronApp.clientId : null;
@@ -618,7 +620,8 @@ class ViewManager {
 
             // Process URL with parameter injection
             const { getUrlParameterInjector } = require('../utils/urlParameterInjector');
-            const urlInjector = getUrlParameterInjector();
+            const webSocketClient = this.electronApp ? this.electronApp.webSocketClient : null;
+            const urlInjector = getUrlParameterInjector(null, webSocketClient);
             // Get clientId from electronApp if available
             const clientId = this.electronApp && this.electronApp.clientId ? this.electronApp.clientId : null;
             processedUrl = await urlInjector.processUrl(url, clientId);

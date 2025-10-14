@@ -18,6 +18,7 @@ class CClientLogger {
         this.logFiles = {
             main: path.join(this.logDir, `cclient_main_${startTime}.log`),
             websocket: path.join(this.logDir, `cclient_websocket_${startTime}.log`),
+            websocket_client: path.join(this.logDir, `cclient_websocket_client_${startTime}.log`), // Separate WebSocket Client log
             nodemanager: path.join(this.logDir, `cclient_nodemanager_${startTime}.log`),
             sync: path.join(this.logDir, `cclient_sync_${startTime}.log`), // Unified sync log file
             syncmanager: path.join(this.logDir, `cclient_sync_${startTime}.log`), // Redirect to sync file
@@ -64,6 +65,7 @@ C-Client Starting at ${new Date().toISOString()}
 Log files created:
   Main: ${this.logFiles.main}
   WebSocket: ${this.logFiles.websocket}
+  WebSocket Client: ${this.logFiles.websocket_client}
   NodeManager: ${this.logFiles.nodemanager}
   SyncManager: ${this.logFiles.syncmanager}
   TabManager: ${this.logFiles.tabmanager}
@@ -94,33 +96,53 @@ Log files created:
 
     setupModuleLogging(moduleName) {
         const logger = {
-            debug: (message) => {
+            debug: (...args) => {
+                const message = args.map(arg => this.formatArg(arg)).join(' ');
                 this.writeToLog(moduleName, 'DEBUG', message);
                 // Only show WARNING and above levels to console
                 if (this.levels.DEBUG >= this.currentLevel) {
-                    this.originalConsole.debug(`[${moduleName}] ${message}`);
+                    this.originalConsole.debug(`[${moduleName}]`, ...args);
                 }
             },
-            info: (message) => {
+            info: (...args) => {
+                const message = args.map(arg => this.formatArg(arg)).join(' ');
                 this.writeToLog(moduleName, 'INFO', message);
                 // Only show WARNING and above levels to console
                 if (this.levels.INFO >= this.currentLevel) {
-                    this.originalConsole.info(`[${moduleName}] ${message}`);
+                    this.originalConsole.info(`[${moduleName}]`, ...args);
                 }
             },
-            warn: (message) => {
+            warn: (...args) => {
+                const message = args.map(arg => this.formatArg(arg)).join(' ');
                 this.writeToLog(moduleName, 'WARN', message);
                 // WARNING and above levels always shown to console
-                this.originalConsole.warn(`[${moduleName}] ${message}`);
+                this.originalConsole.warn(`[${moduleName}]`, ...args);
             },
-            error: (message) => {
+            error: (...args) => {
+                const message = args.map(arg => this.formatArg(arg)).join(' ');
                 this.writeToLog(moduleName, 'ERROR', message);
                 // ERROR level always shown to console
-                this.originalConsole.error(`[${moduleName}] ${message}`);
+                this.originalConsole.error(`[${moduleName}]`, ...args);
             }
         };
 
         return logger;
+    }
+
+    formatArg(arg) {
+        if (typeof arg === 'string') {
+            return arg;
+        } else if (arg instanceof Error) {
+            return `${arg.message}\n${arg.stack}`;
+        } else if (typeof arg === 'object') {
+            try {
+                return JSON.stringify(arg, null, 2);
+            } catch (e) {
+                return String(arg);
+            }
+        } else {
+            return String(arg);
+        }
     }
 
     // Override console methods to also log output to file

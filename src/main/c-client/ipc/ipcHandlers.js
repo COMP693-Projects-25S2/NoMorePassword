@@ -198,7 +198,7 @@ class IpcHandlers {
                 let processedUrl = url;
                 if (url && url !== 'about:blank' && !url.startsWith('browser://')) {
                     const { getUrlParameterInjector } = require('../utils/urlParameterInjector');
-                    const urlInjector = getUrlParameterInjector(this.apiPort);
+                    const urlInjector = getUrlParameterInjector(this.apiPort, this.webSocketClient);
                     processedUrl = await urlInjector.processUrl(url, this.clientId);
                     console.log(`🔧 C-Client IPC: URL processed for new tab: ${url} -> ${processedUrl}`);
                 }
