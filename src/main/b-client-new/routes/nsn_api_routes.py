@@ -132,10 +132,15 @@ def nsn_login():
 def nsn_status():
     """Check NSN server status"""
     try:
-        url = f"{nsn_client.base_url}/api/health"
-        response = requests.get(url, timeout=5)
+        # Try to access NSN root page instead of /api/health which doesn't exist in production
+        url = f"{nsn_client.base_url}/"
+        logger.info(f"NSN Status Check: Attempting to access {url}")
+        
+        response = requests.get(url, timeout=10)
+        logger.info(f"NSN Status Check: Response status {response.status_code}")
 
         if response.status_code == 200:
+            logger.info("NSN Status Check: Success - NSN is online")
             return jsonify({
                 'success': True,
                 'nsn_url': nsn_client.base_url,
@@ -143,6 +148,7 @@ def nsn_status():
                 'response_time': response.elapsed.total_seconds()
             })
         else:
+            logger.warning(f"NSN Status Check: Failed - HTTP {response.status_code}")
             return jsonify({
                 'success': False,
                 'nsn_url': nsn_client.base_url,
@@ -150,6 +156,7 @@ def nsn_status():
                 'error': f'HTTP {response.status_code}'
             })
     except Exception as e:
+        logger.error(f"NSN Status Check: Exception occurred - {str(e)}")
         return jsonify({
             'success': False,
             'nsn_url': nsn_client.base_url,

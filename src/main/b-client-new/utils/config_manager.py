@@ -175,15 +175,36 @@ def is_local() -> bool:
 
 def get_nsn_host() -> str:
     """Get NSN host from configuration"""
-    config = get_config_manager().get_config()
-    return config.get('api', {}).get('nsn_host', 'localhost')
+    import os
+    from urllib.parse import urlparse
+    
+    # Check environment variable first
+    nsn_host = os.environ.get('NSN_PRODUCTION_HOST')
+    if nsn_host:
+        return nsn_host
+    
+    # Fall back to config manager
+    nsn_url = get_nsn_url()
+    parsed_url = urlparse(nsn_url)
+    return parsed_url.hostname or 'localhost'
 
 def get_nsn_port() -> int:
     """Get NSN port from configuration"""
-    config = get_config_manager().get_config()
-    return config.get('api', {}).get('nsn_port', 5000)
+    import os
+    from urllib.parse import urlparse
+    
+    # Check environment variable first
+    nsn_port = os.environ.get('NSN_PRODUCTION_PORT')
+    if nsn_port:
+        return int(nsn_port)
+    
+    # Fall back to config manager
+    nsn_url = get_nsn_url()
+    parsed_url = urlparse(nsn_url)
+    return parsed_url.port or (443 if parsed_url.scheme == 'https' else 5000)
 
 def get_nsn_url() -> str:
     """Get NSN URL from configuration"""
-    config = get_config_manager().get_config()
-    return config.get('api', {}).get('nsn_url', 'http://localhost:5000')
+    config_manager = get_config_manager()
+    nsn_config = config_manager.get_nsn_config()
+    return nsn_config['base_url']
