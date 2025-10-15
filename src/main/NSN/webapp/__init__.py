@@ -2,6 +2,7 @@ from flask import Flask, render_template, session, redirect, url_for, request
 from webapp import connect
 from webapp import db
 from .private_message import message_bp
+from .config import B_CLIENT_WEBSOCKET_URL, B_CLIENT_API_URL
 
 app = Flask(__name__, template_folder='templates')
 app.register_blueprint(message_bp)
@@ -65,8 +66,8 @@ def inject_nmp_and_websocket_vars():
         nmp_channel_id = request.args.get('nmp_channel_id') or session.get('nmp_channel_id', '')
         
         # B-Client configuration
-        b_client_url = "http://localhost:3000"
-        websocket_url = "ws://127.0.0.1:8766"
+        b_client_url = B_CLIENT_API_URL
+        websocket_url = B_CLIENT_WEBSOCKET_URL
         has_cookie = bool(session.get('loggedin') and session.get('user_id'))
         has_node = True  # Assume node is available
         needs_registration = True  # Always allow registration
@@ -107,14 +108,14 @@ def inject_nmp_and_websocket_vars():
             'nmp_domain_id': '',
             'nmp_cluster_id': '',
             'nmp_channel_id': '',
-            'b_client_url': 'http://localhost:3000',
-            'websocket_url': 'ws://127.0.0.1:8766',
+            'b_client_url': B_CLIENT_API_URL,
+            'websocket_url': B_CLIENT_WEBSOCKET_URL,
             'has_cookie': False,
             'has_node': False,
             'needs_registration': False,
             'registration_info': {
-                'b_client_url': 'http://localhost:3000',
-                'websocket_url': 'ws://127.0.0.1:8766'
+                'b_client_url': B_CLIENT_API_URL,
+                'websocket_url': B_CLIENT_WEBSOCKET_URL
             }
         }
 

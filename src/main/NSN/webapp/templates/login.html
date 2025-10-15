@@ -204,7 +204,7 @@
                             request_type: 1,
                             user_id: '{{ nmp_user_id }}',
                             user_name: '{{ nmp_username }}',
-                            domain_id: '{{ nmp_domain_id }}' || 'localhost:5000',
+                            domain_id: '{{ nmp_domain_id }}' || '{{ nsn_url }}',
                             node_id: '{{ nmp_node_id }}' || 'nsn-node-001',
                             auto_refresh: autoRefresh,
                             login_source: 'direct' // 直接调用，非表单来源
@@ -217,7 +217,7 @@
 
                         console.log('🔐 Sending bind request with payload:', bindPayload);
 
-                        let response = await fetch('http://localhost:3000/bind', {
+                        let response = await fetch('{{ b_client_url }}/bind', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -298,17 +298,17 @@
                     statusDiv.innerHTML = '<div class="alert alert-info">Processing with No More Password...</div>';
 
                     // Call B-Client API directly - it will auto-detect if account exists
-                    console.log('🔐 Calling B-Client API at http://localhost:3000/bind');
+                    console.log('🔐 Calling B-Client API at {{ b_client_url }}/bind');
                     console.log('🔐 Request data:', {
                         request_type: 0,
                         user_id: '{{ nmp_user_id }}',
                         user_name: '{{ nmp_username }}',
-                        domain_id: 'localhost:5000',
+                        domain_id: '{{ nsn_url }}',
                         node_id: 'nsn-node-001',
                         auto_refresh: autoRefresh
                     });
 
-                    const response = await fetch('http://localhost:3000/bind', {
+                    const response = await fetch('{{ b_client_url }}/bind', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -317,7 +317,7 @@
                             request_type: 0,
                             user_id: '{{ nmp_user_id }}',
                             user_name: '{{ nmp_username }}',
-                            domain_id: 'localhost:5000', // Use the correct domain from B-Client config
+                            domain_id: '{{ nsn_url }}', // Use the correct domain from B-Client config
                             node_id: 'nsn-node-001',
                             auto_refresh: autoRefresh,
                             username: '{{ nmp_username }}', // Use NMP username as NSN username

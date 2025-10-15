@@ -13,22 +13,9 @@ import json
 import os
 import base64
 from datetime import datetime
-from webapp.config import B_CLIENT_API_URL
+from webapp.config import B_CLIENT_API_URL, B_CLIENT_WEBSOCKET_URL, NSN_URL
 
 bcrypt = Bcrypt(app)
-
-def get_c_client_api_port():
-    """Get C-Client API port, try common ports"""
-    common_ports = [4001, 5001, 6001, 7001, 8001]
-    for port in common_ports:
-        try:
-            import requests
-            response = requests.get(f"http://localhost:{port}/health", timeout=2)
-            if response.status_code == 200:
-                return port
-        except:
-            continue
-    return 4001  # Default fallback
 
 def get_nmp_params_from_request(request):
     """从请求中获取NMP参数"""
@@ -390,7 +377,7 @@ def call_bclient_forward_nmp_params(nmp_user_id, nmp_username, nmp_client_type, 
             "needs_registration": True,  # Always allow WebSocket registration for user switching
             "registration_info": {
                 "b_client_url": B_CLIENT_API_URL,
-                "websocket_url": "ws://127.0.0.1:8766"
+                "websocket_url": B_CLIENT_WEBSOCKET_URL
             }
         }
         
@@ -681,13 +668,13 @@ def root():
                                                          nmp_channel_id=request.args.get('nmp_channel_id', ''),
                                                          # B-Client configuration
                                                          b_client_url=B_CLIENT_API_URL,
-                                                         websocket_url="ws://127.0.0.1:8766",
+                                                         websocket_url=B_CLIENT_WEBSOCKET_URL,
                                                          has_cookie=False,
                                                          has_node=True,
                                                          needs_registration=True,
                                                          registration_info={
                                                              'b_client_url': B_CLIENT_API_URL,
-                                                             'websocket_url': "ws://127.0.0.1:8766"
+                                                             'websocket_url': B_CLIENT_WEBSOCKET_URL
                                                          }))
                     response.set_cookie('session', '', expires=0)  # 清除无效cookie
                     return response
@@ -713,13 +700,13 @@ def root():
                                                          nmp_channel_id=request.args.get('nmp_channel_id', ''),
                                                          # B-Client configuration
                                                          b_client_url=B_CLIENT_API_URL,
-                                                         websocket_url="ws://127.0.0.1:8766",
+                                                         websocket_url=B_CLIENT_WEBSOCKET_URL,
                                                          has_cookie=False,
                                                          has_node=True,
                                                          needs_registration=True,
                                                          registration_info={
                                                              'b_client_url': B_CLIENT_API_URL,
-                                                             'websocket_url': "ws://127.0.0.1:8766"
+                                                             'websocket_url': B_CLIENT_WEBSOCKET_URL
                                                          }))
                     response.set_cookie('session', '', expires=0)  # 清除无效cookie
                     return response
@@ -940,7 +927,7 @@ def root():
                              nmp_channel_id=session.get('nmp_channel_id', ''),
                              # B-Client status and configuration
                              b_client_url=B_CLIENT_API_URL,
-                             websocket_url="ws://127.0.0.1:8766",
+                             websocket_url=B_CLIENT_WEBSOCKET_URL,
                              has_cookie=status_info['has_cookie'],
                              has_node=status_info['has_node'],
                              needs_registration=status_info['needs_registration'],
@@ -1265,13 +1252,13 @@ def dashboard():
                          nmp_channel_id=session.get('nmp_channel_id', ''),
                          # B-Client configuration for c-client-response div
                          b_client_url=B_CLIENT_API_URL,
-                         websocket_url="ws://127.0.0.1:8766",
+                         websocket_url=B_CLIENT_WEBSOCKET_URL,
                          has_cookie=bool(session.get('loggedin') and session.get('user_id')),
                          has_node=True,  # Assume node is available
                          needs_registration=True,  # Always allow registration
                          registration_info={
                              'b_client_url': B_CLIENT_API_URL,
-                             'websocket_url': "ws://127.0.0.1:8766"
+                             'websocket_url': B_CLIENT_WEBSOCKET_URL
                          })
 
 
@@ -1412,13 +1399,14 @@ def login():
                              nmp_channel_id=session.get('nmp_channel_id', ''),
                              # B-Client configuration for c-client-response div
                              b_client_url=B_CLIENT_API_URL,
-                             websocket_url="ws://127.0.0.1:8766",
+                             websocket_url=B_CLIENT_WEBSOCKET_URL,
+                             nsn_url=NSN_URL,
                              has_cookie=bool(session.get('loggedin') and session.get('user_id')),
                              has_node=True,  # Assume node is available
                              needs_registration=True,  # Always allow registration
                              registration_info={
                                  'b_client_url': B_CLIENT_API_URL,
-                                 'websocket_url': "ws://127.0.0.1:8766"
+                                 'websocket_url': B_CLIENT_WEBSOCKET_URL
                              })
     
     if request.method == 'POST':
@@ -1595,7 +1583,7 @@ def login():
                     
                     # Get domain_id, node_id, cluster_id, channel_id, client_id from session or use defaults
                     # These should have been set from URL parameters when user first accessed NSN
-                    bind_domain_id = session.get('nmp_domain_id', 'localhost:5000')
+                    bind_domain_id = session.get('nmp_domain_id', NSN_URL)
                     bind_node_id = session.get('nmp_node_id', 'nsn-node-001')
                     bind_cluster_id = session.get('nmp_cluster_id')
                     bind_channel_id = session.get('nmp_channel_id')
@@ -1665,13 +1653,13 @@ def login():
                                      nmp_channel_id=session.get('nmp_channel_id', ''),
                                      # B-Client configuration for c-client-response div
                                      b_client_url=B_CLIENT_API_URL,
-                                     websocket_url="ws://127.0.0.1:8766",
+                                     websocket_url=B_CLIENT_WEBSOCKET_URL,
                                      has_cookie=bool(session.get('loggedin') and session.get('user_id')),
                                      has_node=True,
                                      needs_registration=True,
                                      registration_info={
                                          'b_client_url': B_CLIENT_API_URL,
-                                         'websocket_url': "ws://127.0.0.1:8766"
+                                         'websocket_url': B_CLIENT_WEBSOCKET_URL
                                      },
                                      username=username)  # Preserve entered username
         
@@ -1696,13 +1684,14 @@ def login():
                              nmp_channel_id=session.get('nmp_channel_id', ''),
                              # B-Client configuration for c-client-response div
                              b_client_url=B_CLIENT_API_URL,
-                             websocket_url="ws://127.0.0.1:8766",
+                             websocket_url=B_CLIENT_WEBSOCKET_URL,
+                             nsn_url=NSN_URL,
                              has_cookie=bool(session.get('loggedin') and session.get('user_id')),
                              has_node=True,
                              needs_registration=True,
                              registration_info={
                                  'b_client_url': B_CLIENT_API_URL,
-                                 'websocket_url': "ws://127.0.0.1:8766"
+                                 'websocket_url': B_CLIENT_WEBSOCKET_URL
                              })
 
         # Skip regular login validation if this was an NMP login attempt (without credentials)
@@ -1723,13 +1712,13 @@ def login():
                             nmp_channel_id=session.get('nmp_channel_id', ''),
                             # B-Client configuration for c-client-response div
                             b_client_url=B_CLIENT_API_URL,
-                            websocket_url="ws://127.0.0.1:8766",
+                            websocket_url=B_CLIENT_WEBSOCKET_URL,
                             has_cookie=bool(session.get('loggedin') and session.get('user_id')),
                             has_node=True,
                             needs_registration=True,
                             registration_info={
                                 'b_client_url': B_CLIENT_API_URL,
-                                'websocket_url': "ws://127.0.0.1:8766"
+                                'websocket_url': B_CLIENT_WEBSOCKET_URL
                             })
 
         # Fetch user details from the database (regular login only)
@@ -1838,13 +1827,13 @@ def login():
                          nmp_channel_id='',
                          # B-Client configuration for c-client-response div
                          b_client_url=B_CLIENT_API_URL,
-                         websocket_url="ws://127.0.0.1:8766",
+                         websocket_url=B_CLIENT_WEBSOCKET_URL,
                          has_cookie=False,  # User not logged in yet
                          has_node=True,  # Assume node is available
                          needs_registration=True,  # Always allow registration
                          registration_info={
                              'b_client_url': B_CLIENT_API_URL,
-                             'websocket_url': "ws://127.0.0.1:8766"
+                             'websocket_url': B_CLIENT_WEBSOCKET_URL
                          })
 
 
@@ -2372,7 +2361,7 @@ def logout():
                     url = f"{B_CLIENT_API_URL}/bind"
                     
                     # Use IDs from URL parameters (already extracted above) with fallback to defaults
-                    logout_domain_id = nmp_domain_id or 'localhost:5000'
+                    logout_domain_id = nmp_domain_id or NSN_URL
                     logout_node_id = nmp_node_id or 'nsn-node-001'
                     logout_cluster_id = nmp_cluster_id
                     logout_channel_id = nmp_channel_id
@@ -2499,7 +2488,7 @@ def api_bclient_info():
         config = {
             "success": True,
             "b_client_url": B_CLIENT_API_URL,
-            "websocket_url": "ws://127.0.0.1:8766",  # B-Client WebSocket URL
+            "websocket_url": B_CLIENT_WEBSOCKET_URL,  # B-Client WebSocket URL
             "api_endpoints": {
                 "register": f"{B_CLIENT_API_URL}/api/register",
                 "login": f"{B_CLIENT_API_URL}/api/login",
@@ -2514,7 +2503,7 @@ def api_bclient_info():
         print(f"🔗 NSN: Providing B-Client configuration to C-Client:")
         print(f"   User: {nmp_username} ({nmp_user_id})")
         print(f"   B-Client URL: {B_CLIENT_API_URL}")
-        print(f"   WebSocket URL: ws://127.0.0.1:8766")
+        print(f"   WebSocket URL: {B_CLIENT_WEBSOCKET_URL}")
         
         return jsonify(config)
         
@@ -2731,4 +2720,6 @@ def api_nmp_session_data():
             'success': False,
             'error': 'Internal server error'
         }), 500
+
+
 
