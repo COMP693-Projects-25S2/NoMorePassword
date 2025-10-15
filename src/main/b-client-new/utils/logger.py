@@ -118,9 +118,9 @@ class BClientLogger:
         )
         file_handler.setLevel(level)
         
-        # Console handler - only show important info
+        # Console handler - show INFO and above levels for better debugging
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(logging.WARNING)  # Only show WARNING and above levels
+        console_handler.setLevel(logging.INFO)  # Show INFO and above levels
         
         # Log format
         formatter = logging.Formatter(
@@ -140,6 +140,7 @@ class BClientLogger:
         """根据模块名获取对应的logger"""
         module_map = {
             'websocket': self.websocket_logger,
+            'websocket_server': self.websocket_logger,  # Use same logger for websocket server
             'nodemanager': self.nodemanager_logger,
             'sync_manager': self.sync_manager_logger,
             'routes': self.routes_logger,
