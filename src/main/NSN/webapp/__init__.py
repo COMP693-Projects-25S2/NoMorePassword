@@ -27,7 +27,7 @@ def load_environment_config():
 # Load environment configuration
 load_environment_config()
 
-from .config import B_CLIENT_WEBSOCKET_URL, B_CLIENT_API_URL
+from .config import B_CLIENT_WEBSOCKET_URL, B_CLIENT_API_URL, NSN_URL
 
 app = Flask(__name__, template_folder='templates')
 app.register_blueprint(message_bp)
@@ -69,6 +69,17 @@ from webapp import departure_board
 from webapp import appeals
 from webapp import announcement
 from webapp import help_requests
+
+# Environment variables API endpoint
+@app.route('/api/nsn_websocket_env')
+def nsn_websocket_env():
+    """Return current environment variables for B-Client and WebSocket configuration"""
+    return {
+        'B_CLIENT_API_URL': B_CLIENT_API_URL,
+        'B_CLIENT_WEBSOCKET_URL': B_CLIENT_WEBSOCKET_URL,
+        'NSN_URL': NSN_URL,
+        'environment': os.getenv('NSN_ENVIRONMENT', 'local')
+    }
 
 # Global template variable injector for WebSocket connection
 @app.context_processor

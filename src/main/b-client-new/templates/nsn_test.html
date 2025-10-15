@@ -44,6 +44,14 @@
         </div>
         <div id="session-result" class="result-box"></div>
     </div>
+
+    <div class="test-section">
+        <h2>NSN Environment Variables</h2>
+        <div class="test-form">
+            <button id="env-check-btn" class="test-button">Check NSN Environment</button>
+        </div>
+        <div id="env-result" class="result-box"></div>
+    </div>
 </div>
 {% endblock %}
 
@@ -94,6 +102,10 @@
 
             document.getElementById('session-test-btn').addEventListener('click', () => {
                 this.testSession();
+            });
+
+            document.getElementById('env-check-btn').addEventListener('click', () => {
+                this.checkNSNEnvironment();
             });
         }
 
@@ -172,6 +184,31 @@
                 this.showResult('session-result', JSON.stringify(data, null, 2), data.success ? 'success' : 'error');
             } catch (error) {
                 this.showResult('session-result', `Error: ${error.message}`, 'error');
+            }
+        }
+
+        async checkNSNEnvironment() {
+            try {
+                // Get NSN URL from B-Client configuration
+                const configResponse = await fetch(`${this.apiBase}/api/config`);
+                const config = await configResponse.json();
+                const nsnUrl = config.api?.nsn_url || 'http://localhost:5000';
+
+                // Call NSN environment API
+                const response = await fetch(`${nsnUrl}/api/nsn_websocket_env`);
+                const data = await response.json();
+
+                const formattedResult = {
+                    'NSN Server': nsnUrl,
+                    'Environment': data.environment,
+                    'B_CLIENT_API_URL': data.B_CLIENT_API_URL,
+                    'B_CLIENT_WEBSOCKET_URL': data.B_CLIENT_WEBSOCKET_URL,
+                    'NSN_URL': data.NSN_URL
+                };
+
+                this.showResult('env-result', JSON.stringify(formattedResult, null, 2), 'success');
+            } catch (error) {
+                this.showResult('env-result', `Error: ${error.message}`, 'error');
             }
         }
 
