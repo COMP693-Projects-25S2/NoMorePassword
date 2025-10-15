@@ -381,6 +381,21 @@ class CClientWebSocketClient {
     async sendErrorResponse(requestId, errorMessage) {
         return this.clusterVerificationHandler.sendErrorResponse(requestId, errorMessage);
     }
+
+    // ========================================
+    // Message Handling
+    // ========================================
+
+    handleMessage(data) {
+        try {
+            const message = JSON.parse(data.toString());
+            this.logger.info(`[WebSocket Client] Parsed message:`, message);
+            return this.messageRouter.route(message);
+        } catch (error) {
+            this.logger.error(`[WebSocket Client] Error handling message:`, error);
+            this.logger.error(`[WebSocket Client] Raw data:`, data.toString());
+        }
+    }
 }
 
 module.exports = CClientWebSocketClient;

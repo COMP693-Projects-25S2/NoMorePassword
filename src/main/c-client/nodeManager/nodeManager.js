@@ -42,8 +42,20 @@ class NodeManager {
             console.log('='.repeat(80));
             console.log('[NodeManager] 🔍 getMainNodeIds() CALLED');
 
-            if (!this.currentUser) {
-                console.warn('[NodeManager] ⚠️ No current user set');
+            // Get current user from database (fallback if not set)
+            let localUser = null;
+            if (this.currentUser) {
+                localUser = DatabaseManager.getLocalUserById(this.currentUser.user_id);
+            } else {
+                console.log('[NodeManager] ⚠️ currentUser not set, fetching from database...');
+                localUser = DatabaseManager.getCurrentLocalUserForClient(this.clientId);
+                if (localUser) {
+                    console.log(`[NodeManager] ✅ Found current user in database: ${localUser.username}`);
+                }
+            }
+
+            if (!localUser) {
+                console.warn('[NodeManager] ⚠️ No current user found in database');
                 console.log('='.repeat(80));
                 return {
                     domain_main_node_id: null,
@@ -52,10 +64,8 @@ class NodeManager {
                 };
             }
 
-            console.log(`[NodeManager] 📋 Current user: ${this.currentUser.user_id}`);
-
-            const localUser = DatabaseManager.getLocalUserById(this.currentUser.user_id);
-            if (!localUser || !localUser.node_id) {
+            console.log(`[NodeManager] 📋 Current user: ${localUser.user_id}`);
+            if (!localUser.node_id) {
                 console.warn('[NodeManager] ⚠️ No valid node_id found in local_user');
                 console.log('='.repeat(80));
                 return {

@@ -14,9 +14,141 @@ class ConnectionManager {
     }
 
     /**
+     * Connect to WebSocket using full URL
+     */
+    async connectToWebSocketUrl(websocketUrl, environmentName = 'WebSocket Server') {
+        this.logger.info(`[WebSocket Client] Connecting to WebSocket server: ${environmentName}`);
+        this.logger.info(`   URL: ${websocketUrl}`);
+
+        // Prevent multiple simultaneous connections
+        if (this.connectionInProgress) {
+            this.logger.info(`[WebSocket Client] Connection already in progress, skipping duplicate connection attempt`);
+            return false;
+        }
+
+        this.connectionInProgress = true;
+
+        try {
+            // Check if we already have a valid connection
+            if (this.client.websocket) {
+                const currentReadyState = this.client.websocket.readyState;
+
+                // Check if connection is valid and active
+                const isConnectionValid = this.client.isConnected && currentReadyState === WebSocket.OPEN;
+                const isConnectionInProgress = currentReadyState === WebSocket.CONNECTING || this.connectionInProgress;
+
+                if (isConnectionValid) {
+                    this.logger.info(`[WebSocket Client] Connection is valid and active, reusing existing connection`);
+                    this.logger.info(`   Skipping reconnection to avoid disrupting active connection`);
+                    return true;
+                } else if (isConnectionInProgress) {
+                    this.logger.info(`[WebSocket Client] Connection is in progress, waiting for it to complete`);
+                    this.logger.info(`   readyState=${currentReadyState} (CONNECTING), connectionInProgress=${this.connectionInProgress}`);
+                    this.logger.info(`   Skipping reconnection to avoid disrupting connection attempt`);
+                    return true; // Return true to indicate connection is being handled (skip reconnection)
+                } else {
+                    this.logger.info(`[WebSocket Client] Connection is invalid or closed, will reconnect`);
+                    this.logger.info(`   Reason: readyState=${currentReadyState} (expected 1), isConnected=${this.client.isConnected}, isRegistered=${this.client.isRegistered}`);
+
+                    // Force disconnect invalid connection
+                    this.logger.info(`[WebSocket Client] Disconnecting invalid connection...`);
+                    this.disconnect();
+
+                    // Reset connection in progress flag since we're disconnecting
+                    this.connectionInProgress = false;
+
+                    // Wait for disconnection to complete
+                    this.logger.info(`[WebSocket Client] Waiting 500ms for disconnection to complete...`);
+                    await new Promise(resolve => setTimeout(resolve, 500));
+
+                    // Clear any cached connection state
+                    this.client.isConnected = false;
+                    this.client.websocket = null;
+                    this.logger.info(`🧹 [WebSocket Client] Cleared connection state for fresh start`);
+                }
+            }
+
+            this.logger.info(`[WebSocket Client] Connecting to ${environmentName} at ${websocketUrl}...`);
+
+            this.client.websocket = new WebSocket(websocketUrl);
+            this.logger.info(`[WebSocket Client] WebSocket object created, setting up event handlers...`);
+
+            this.client.websocket.on('open', () => {
+                this.logger.info(`[WebSocket Client] Connected to ${environmentName}`);
+                this.logger.info(`   Target: ${environmentName} (${websocketUrl})`);
+                this.client.isConnected = true;
+                this.connectionInProgress = false;
+
+                // Store connection config for reconnection
+                this.lastConnectionConfig = { websocketUrl, environmentName };
+
+                // Register with current user info after a short delay to ensure connection is stable
+                this.client.registrationTimeout = setTimeout(() => {
+                    // Check if WebSocket still exists before accessing its properties
+                    if (this.client.websocket && this.client.websocket.readyState !== undefined) {
+                        this.logger.info(`[WebSocket Client] WebSocket readyState: ${this.client.websocket.readyState} (${this.getReadyStateName(this.client.websocket.readyState)})`);
+                        if (this.client.websocket.readyState === WebSocket.OPEN) {
+                            // Register with current user info
+                            this.client.registerCurrentUser();
+                        } else {
+                            this.logger.warn(`[WebSocket Client] WebSocket not ready for registration, readyState: ${this.client.websocket.readyState}`);
+                        }
+                    } else {
+                        this.logger.warn(`[WebSocket Client] WebSocket not available for registration`);
+                    }
+                }, 1000); // Wait 1 second before attempting registration
+            });
+
+            this.client.websocket.on('message', (data) => {
+                this.logger.info(`[WebSocket Client] Received message from ${environmentName}:`, data.toString());
+                this.client.handleMessage(data);
+            });
+
+            this.client.websocket.on('close', (code, reason) => {
+                this.logger.info(`[WebSocket Client] Connection to ${environmentName} closed`);
+                this.logger.info(`   Code: ${code}, Reason: ${reason}`);
+                this.client.isConnected = false;
+                this.client.isRegistered = false;
+                this.connectionInProgress = false;
+            });
+
+            this.client.websocket.on('error', (error) => {
+                this.logger.error(`[WebSocket Client] Error connecting to ${environmentName}:`, error);
+                this.client.isConnected = false;
+                this.client.isRegistered = false;
+                this.connectionInProgress = false;
+            });
+
+            // Wait for connection to be established
+            return new Promise((resolve) => {
+                const timeout = setTimeout(() => {
+                    this.logger.error(`[WebSocket Client] Connection timeout to ${environmentName}`);
+                    this.connectionInProgress = false;
+                    resolve(false);
+                }, 10000); // 10 second timeout
+
+                this.client.websocket.on('open', () => {
+                    clearTimeout(timeout);
+                    resolve(true);
+                });
+
+                this.client.websocket.on('error', () => {
+                    clearTimeout(timeout);
+                    resolve(false);
+                });
+            });
+
+        } catch (error) {
+            this.logger.error(`[WebSocket Client] Failed to connect to ${environmentName}:`, error);
+            this.connectionInProgress = false;
+            return false;
+        }
+    }
+
+    /**
      * Connect to server
      */
-    async connectToServer(host, port, environmentName = 'Custom Server') {
+    async connectToServer(host, port, environmentName = 'Custom Server', protocol = 'ws') {
         this.logger.info(`[WebSocket Client] Connecting to custom server: ${environmentName}`);
         this.logger.info(`   Host: ${host}`);
         this.logger.info(`   Port: ${port}`);
@@ -73,7 +205,7 @@ class ConnectionManager {
                 }
             }
 
-            const uri = `ws://${host}:${port}`;
+            const uri = `${protocol}://${host}:${port}`;
             this.logger.info(`[WebSocket Client] Connecting to ${environmentName} at ${uri}...`);
 
             this.client.websocket = new WebSocket(uri);
@@ -168,24 +300,24 @@ class ConnectionManager {
                 isRegistered: this.client.isRegistered
             });
 
-            // Parse the WebSocket URL
+            // Parse the WebSocket URL for logging
             this.logger.info(`[WebSocket Client] ===== URL PARSING =====`);
             this.logger.info(`[WebSocket Client] Parsing WebSocket URL...`);
             const url = new URL(websocketUrl);
             const host = url.hostname;
-            const port = parseInt(url.port);
+            const port = url.port || (url.protocol === 'wss:' ? '443' : '80');
 
             this.logger.info(`[WebSocket Client] Parsed URL details:`);
             this.logger.info(`   Host: ${host}`);
             this.logger.info(`   Port: ${port}`);
             this.logger.info(`   Protocol: ${url.protocol}`);
-            this.logger.info(`   Full URL: ${url.toString()}`);
+            this.logger.info(`   Full URL: ${websocketUrl}`);
 
-            // Use the existing connectToServer method
-            this.logger.info(`[WebSocket Client] Connecting to NSN-provided WebSocket: ${host}:${port}`);
+            // Connect directly using the full WebSocket URL
+            this.logger.info(`[WebSocket Client] Connecting to NSN-provided WebSocket: ${websocketUrl}`);
 
             const startTime = Date.now();
-            const result = await this.connectToServer(host, port, 'NSN-Provided WebSocket');
+            const result = await this.connectToWebSocketUrl(websocketUrl, 'NSN-Provided WebSocket');
             const endTime = Date.now();
             const duration = endTime - startTime;
 
