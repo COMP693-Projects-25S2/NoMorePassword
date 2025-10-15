@@ -23,8 +23,8 @@
       },
       "websocket": {
         "enabled": true,
-        "server_host": "127.0.0.1",
-        "server_port": 8766
+        "server_host": "0.0.0.0",
+        "server_port": 3000
       }
     }
   },
