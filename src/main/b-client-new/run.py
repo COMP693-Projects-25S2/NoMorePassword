@@ -61,12 +61,15 @@ def main():
     
     logger.info(f"🌐 Server will start on http://{host}:{port}")
     logger.info(f"🔧 Debug mode: {debug}")
-    print("📱 Access the application at:")
-    print(f"   - Main page: http://localhost:{port}")
-    print(f"   - Dashboard: http://localhost:{port}/dashboard")
-    print(f"   - History: http://localhost:{port}/history")
-    print(f"   - API Health: http://localhost:{port}/api/health")
-    print("\n" + "="*60)
+    
+    # Only print access URLs in local development
+    if environment == 'local':
+        print("📱 Access the application at:")
+        print(f"   - Main page: http://localhost:{port}")
+        print(f"   - Dashboard: http://localhost:{port}/dashboard")
+        print(f"   - History: http://localhost:{port}/history")
+        print(f"   - API Health: http://localhost:{port}/api/health")
+        print("\n" + "="*60)
     
     try:
         app.run(host=host, port=port, debug=debug)

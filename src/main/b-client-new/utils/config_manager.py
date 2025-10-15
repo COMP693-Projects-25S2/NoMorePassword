@@ -80,7 +80,24 @@ class ConfigManager:
         import os
         current_env = os.environ.get('B_CLIENT_ENVIRONMENT') or self._config.get('current_environment', 'local')
         
-        # Get target websites
+        # Check for environment variable overrides first
+        nsn_url = os.environ.get('NSN_PRODUCTION_URL')
+        nsn_host = os.environ.get('NSN_PRODUCTION_HOST')
+        nsn_port = os.environ.get('NSN_PRODUCTION_PORT')
+        
+        if current_env == 'production' and nsn_url:
+            # Use environment variable configuration for production
+            return {
+                'base_url': nsn_url,
+                'name': 'NSN Production Server',
+                'api_endpoints': {
+                    'session_data': f"{nsn_url}/api/nmp-session-data",
+                    'signup': f"{nsn_url}/signup",
+                    'login': f"{nsn_url}/login"
+                }
+            }
+        
+        # Fall back to config file
         target_websites = self._config.get('targetWebsites', {})
         
         # Determine which website to use based on environment
