@@ -1,29 +1,32 @@
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
-from datetime import datetime, timedelta
-import os
-import json
-import sqlite3
-import requests
-import re
-import time
-import random
-import string
+# Standard library imports
 import asyncio
+import builtins
+import json
+import logging
+import os
+import random
+import re
 import secrets
 import socket
-import logging
-import traceback
-import builtins
+import sqlite3
+import string
 import threading
-from werkzeug.security import generate_password_hash, check_password_hash
+import time
+import traceback
+from datetime import datetime, timedelta
 
-# Import websockets
+# Third-party imports
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from werkzeug.security import generate_password_hash, check_password_hash
+import requests
+
+# Optional third-party imports
 try:
     import websockets
 except ImportError:
     websockets = None
 
-# Import logging system
+# Local application imports
 from utils.logger import get_bclient_logger, setup_print_redirect
 from utils.config_manager import get_nsn_url, get_nsn_host, get_nsn_port
 

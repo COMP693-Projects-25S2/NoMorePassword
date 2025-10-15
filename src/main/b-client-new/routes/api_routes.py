@@ -2,14 +2,18 @@
 API Routes
 Handles basic API endpoints for B-Client
 """
-from flask import Blueprint, request, jsonify
-from datetime import datetime
-import os
-import json
-import sys
-import asyncio
 
-# Import logging system
+# Standard library imports
+import asyncio
+import json
+import os
+import sys
+from datetime import datetime
+
+# Third-party imports
+from flask import Blueprint, request, jsonify
+
+# Local application imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from utils.logger import get_bclient_logger
 
@@ -115,8 +119,7 @@ def get_config():
             "current_environment": current_env,
             "api": api_config,
             "websocket": websocket_config,
-            "network": config_manager.get_config().get('network', {}),
-            "targetWebsites": config_manager.get_config().get('targetWebsites', {})
+            "network": config_manager.get_config().get('network', {})
         }
         
         return jsonify(config)
@@ -299,7 +302,7 @@ def set_environment():
         environment = data.get('environment', 'local')
         
         # Validate environment value
-        valid_environments = ['local', 'test', 'production']
+        valid_environments = ['local', 'production']
         if environment not in valid_environments:
             return jsonify({'error': f'Invalid environment. Must be one of: {", ".join(valid_environments)}'}), 400
         

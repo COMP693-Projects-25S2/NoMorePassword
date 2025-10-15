@@ -2,11 +2,15 @@
 B-Client API Routes
 Handles B-Client specific API endpoints
 """
-from flask import Blueprint, request, jsonify
-import os
+
+# Standard library imports
 import json
-import time
+import os
 import socket
+import time
+
+# Third-party imports
+from flask import Blueprint, request, jsonify
 
 # Create blueprint for B-Client API routes
 b_client_api_routes = Blueprint('b_client_api_routes', __name__)

@@ -280,22 +280,17 @@
             let website;
             const currentEnv = environment.environment || 'local';
 
-            // Choose website based on current environment
-            // Use the API configuration instead of hardcoded environment checks
+            // Use the API configuration directly
             if (config.api && config.api.nsn_url) {
                 const nsnUrl = config.api.nsn_url;
-                // Find matching website configuration
-                for (const [domain, websiteConfig] of Object.entries(config.targetWebsites)) {
-                    if (websiteConfig.homeUrl === nsnUrl) {
-                        website = websiteConfig;
-                        break;
-                    }
-                }
-            }
+                const currentEnv = environment.environment || 'local';
 
-            // Fallback to first available website if no match found
-            if (!website) {
-                website = Object.values(config.targetWebsites)[0];
+                // Create website object from API configuration
+                website = {
+                    name: `NSN ${currentEnv.charAt(0).toUpperCase() + currentEnv.slice(1)} Environment`,
+                    homeUrl: nsnUrl,
+                    realTitle: `NSN ${currentEnv.charAt(0).toUpperCase() + currentEnv.slice(1)} Server`
+                };
             }
 
             if (website) {

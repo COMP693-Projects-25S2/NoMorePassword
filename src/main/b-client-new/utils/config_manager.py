@@ -2,6 +2,8 @@
 Configuration Manager
 Manages application configuration from config.json
 """
+
+# Standard library imports
 import json
 import os
 from typing import Dict, Any, Optional
@@ -33,41 +35,43 @@ class ConfigManager:
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default configuration"""
         return {
+            "current_environment": "local",
+            "environments": {
+                "local": {
+                    "name": "本地开发环境",
+                    "api": {
+                        "nsn_url": "http://localhost:5000",
+                        "nsn_host": "localhost",
+                        "nsn_port": 5000
+                    },
+                    "websocket": {
+                        "enabled": True,
+                        "server_host": "127.0.0.1",
+                        "server_port": 8766
+                    }
+                },
+                "production": {
+                    "name": "生产环境",
+                    "api": {
+                        "nsn_url": "https://comp693nsnproject.pythonanywhere.com",
+                        "nsn_host": "comp693nsnproject.pythonanywhere.com",
+                        "nsn_port": 443
+                    },
+                    "websocket": {
+                        "enabled": True,
+                        "server_host": "127.0.0.1",
+                        "server_port": 8766
+                    }
+                }
+            },
             "network": {
                 "use_public_ip": False,
                 "public_ip": "121.74.37.6",
                 "local_ip": "127.0.0.1"
             },
-            "api": {
-                "nsn_host": "localhost",
-                "nsn_port": 5000,
-                "nsn_url": "http://localhost:5000",
-                "c_client_port_range": {
-                    "min": 3001,
-                    "max": 6000
-                }
-            },
-            "targetWebsites": {
-                "localhost:5000": {
-                    "name": "Local Development",
-                    "homeUrl": "http://localhost:5000",
-                    "realTitle": "NSN Local Development",
-                    "images": {
-                        "favicon": "/static/favicon.ico",
-                        "logo": "/static/logo.png"
-                    }
-                },
-                "comp693nsnproject.pythonanywhere.com": {
-                    "name": "NSN Production",
-                    "homeUrl": "https://comp693nsnproject.pythonanywhere.com",
-                    "realTitle": "NSN Production Server",
-                    "images": {
-                        "favicon": "/static/favicon.ico",
-                        "logo": "/static/logo.png"
-                    }
-                }
-            },
-            "current_environment": "local"
+            "default": {
+                "autoRefreshIntervalMinutes": 30
+            }
         }
     
     def get_config(self) -> Dict[str, Any]:
@@ -102,34 +106,14 @@ class ConfigManager:
         env_config = environments.get(current_env, environments.get('local', {}))
         api_config = env_config.get('api', {})
         
-        # Fall back to legacy config if new structure not available
+        # Ensure we have API configuration
         if not api_config:
-            # Fall back to old targetWebsites structure
-            target_websites = self._config.get('targetWebsites', {})
-            
-            # Determine which website to use based on environment
-            if current_env == 'production':
-                nsn_key = 'comp693nsnproject.pythonanywhere.com'
-            elif current_env == 'test':
-                nsn_key = 'test.nsn.local'
-            else:
-                nsn_key = 'localhost:5000'
-            
-            # Get the website configuration
-            website_config = target_websites.get(nsn_key, target_websites.get('localhost:5000', {}))
-            
-            return {
-                'base_url': website_config.get('homeUrl', 'http://localhost:5000'),
-                'name': website_config.get('name', 'NSN Local Development'),
-                'api_endpoints': {
-                    'session_data': f"{website_config.get('homeUrl', 'http://localhost:5000')}/api/nmp-session-data",
-                    'signup': f"{website_config.get('homeUrl', 'http://localhost:5000')}/signup",
-                    'login': f"{website_config.get('homeUrl', 'http://localhost:5000')}/login"
-                }
-            }
+            raise ValueError(f"No API configuration found for environment: {current_env}")
         
         # Use new environment-specific configuration
-        base_url = api_config.get('nsn_url', 'http://localhost:5000')
+        base_url = api_config.get('nsn_url')
+        if not base_url:
+            raise ValueError(f"No nsn_url found in API configuration for environment: {current_env}")
         return {
             'base_url': base_url,
             'name': f"NSN {current_env.title()} Environment",
@@ -150,15 +134,9 @@ class ConfigManager:
         env_config = environments.get(current_env, environments.get('local', {}))
         api_config = env_config.get('api', {})
         
-        # Fall back to legacy config if new structure not available
+        # Ensure we have API configuration
         if not api_config:
-            # Fall back to old api config
-            return self._config.get('api', {
-                'nsn_host': 'localhost',
-                'nsn_port': 5000,
-                'nsn_url': 'http://localhost:5000',
-                'c_client_port_range': {'min': 3001, 'max': 6000}
-            })
+            raise ValueError(f"No API configuration found for environment: {current_env}")
         
         return api_config
     
@@ -172,16 +150,9 @@ class ConfigManager:
         env_config = environments.get(current_env, environments.get('local', {}))
         websocket_config = env_config.get('websocket', {})
         
-        # Fall back to legacy config if new structure not available
+        # Ensure we have WebSocket configuration
         if not websocket_config:
-            # Fall back to old websocket config
-            return self._config.get('c_client_websocket', {
-                'enabled': True,
-                'server_host': '127.0.0.1',
-                'server_port': 8766,
-                'auto_reconnect': True,
-                'reconnect_interval': 30
-            })
+            raise ValueError(f"No WebSocket configuration found for environment: {current_env}")
         
         return websocket_config
 
