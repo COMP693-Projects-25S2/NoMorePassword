@@ -1629,7 +1629,7 @@ def login():
                         bind_data['client_id'] = bind_client_id
                     
                     print(f"🔗 NSN: Sending bind request to B-Client: {bind_data}")
-                    bclient_response = requests.post('http://localhost:3000/bind', json=bind_data, timeout=30)
+                    bclient_response = requests.post(f'{B_CLIENT_API_URL}/bind', json=bind_data, timeout=30)
                     print(f"🔗 NSN: B-Client response status: {bclient_response.status_code}")
                     print(f"🔗 NSN: B-Client response: {bclient_response.text}")
                     
