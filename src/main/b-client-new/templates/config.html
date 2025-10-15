@@ -34,7 +34,7 @@
                     <span class="env-icon">🌐</span>
                     <div class="env-text">
                         <div>Production</div>
-                        <div class="env-description">comp639nsn.pythonanywhere.com</div>
+                        <div class="env-description">comp693nsnproject.pythonanywhere.com</div>
                     </div>
                 </button>
             </div>
@@ -61,10 +61,19 @@
 {% block extra_scripts %}
 <script>
     // Initialize environment selection
-    document.addEventListener('DOMContentLoaded', () => {
-        // Get current environment from localStorage or default to local
-        const currentEnv = localStorage.getItem('bclient-environment') || 'local';
-        updateEnvironmentUI(currentEnv);
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            // Get current environment from server
+            const response = await fetch('/api/config/environment');
+            const data = await response.json();
+            const currentEnv = data.environment || 'local';
+            updateEnvironmentUI(currentEnv);
+        } catch (error) {
+            console.error('Error loading environment:', error);
+            // Fallback to localStorage or default
+            const currentEnv = localStorage.getItem('bclient-environment') || 'local';
+            updateEnvironmentUI(currentEnv);
+        }
     });
 
     // Environment button event listeners
@@ -93,7 +102,8 @@
 
             if (response.ok) {
                 console.log(`Environment configuration saved: ${env}`);
-                Utils.showNotification('success', `Environment switched to ${env}`);
+                const envName = env === 'local' ? 'Local Development (localhost:5000)' : 'Production (comp693nsnproject.pythonanywhere.com)';
+                Utils.showNotification('success', `Environment switched to ${envName}. Please restart B-Client for changes to take effect.`);
             } else {
                 console.error('Failed to save environment configuration');
                 Utils.showNotification('error', 'Failed to save environment configuration');

@@ -9,7 +9,7 @@ class UrlParameterInjector {
         // Target websites that should receive user parameters
         // Note: Now injecting parameters to ALL websites for universal tracking
         this.targetWebsites = [
-            'comp639nsn.pythonanywhere.com',
+            'comp693nsnproject.pythonanywhere.com',
             'localhost', // All localhost websites (will match any port)
             '127.0.0.1', // All 127.0.0.1 websites (will match any port)
             // Add more specific targets as needed, but by default inject to all
@@ -342,7 +342,7 @@ class UrlParameterInjector {
             const urlObj = new URL(url);
             const hostname = urlObj.hostname;
             return hostname === 'localhost' && urlObj.port === '5000' ||
-                hostname === 'comp639nsn.pythonanywhere.com';
+                hostname === 'comp693nsnproject.pythonanywhere.com';
         } catch (error) {
             return false;
         }

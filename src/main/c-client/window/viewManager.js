@@ -410,7 +410,7 @@ class ViewManager {
             // Fallback to hardcoded NSN URLs for backward compatibility
             const isNSNUrl = urlObj.hostname === 'localhost' && urlObj.port === '5000' ||
                 urlObj.hostname === '127.0.0.1' && urlObj.port === '5000' ||
-                urlObj.hostname === 'comp639nsn.pythonanywhere.com';
+                urlObj.hostname === 'comp693nsnproject.pythonanywhere.com';
             console.log(`🔍 ViewManager: isRegisteredWebsiteUrl - Is NSN URL (fallback):`, isNSNUrl);
             console.log(`🔍 ViewManager: isRegisteredWebsiteUrl - Hostname:`, urlObj.hostname);
             console.log(`🔍 ViewManager: isRegisteredWebsiteUrl - Port:`, urlObj.port);

@@ -48,6 +48,17 @@ def main():
     port = int(os.environ.get('PORT', 3000))
     debug = os.environ.get('DEBUG', 'False').lower() == 'true'
     
+    # Get environment from environment variable or config file
+    from utils.config_manager import ConfigManager
+    config_manager = ConfigManager()
+    environment = os.environ.get('B_CLIENT_ENVIRONMENT') or config_manager.get_config().get('current_environment', 'local')
+    
+    logger.info(f"🌍 Environment: {environment}")
+    if environment == 'production':
+        logger.info("🚀 Running in PRODUCTION mode - connecting to comp693nsnproject.pythonanywhere.com")
+    else:
+        logger.info("🔧 Running in LOCAL mode - connecting to localhost:5000")
+    
     logger.info(f"🌐 Server will start on http://{host}:{port}")
     logger.info(f"🔧 Debug mode: {debug}")
     print("📱 Access the application at:")

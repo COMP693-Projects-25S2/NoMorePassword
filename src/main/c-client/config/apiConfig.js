@@ -50,11 +50,11 @@ const config = {
         },
         // Production NSN server
         production: {
-            url: configData?.nmp_cooperative_website?.production?.url || 'https://comp639nsn.pythonanywhere.com',
-            host: configData?.nmp_cooperative_website?.production?.host || 'comp639nsn.pythonanywhere.com',
+            url: configData?.nmp_cooperative_website?.production?.url || 'https://comp693nsnproject.pythonanywhere.com',
+            host: configData?.nmp_cooperative_website?.production?.host || 'comp693nsnproject.pythonanywhere.com',
             port: configData?.nmp_cooperative_website?.production?.port || 443,
             name: configData?.nmp_cooperative_website?.production?.name || 'NSN (Production)',
-            domain: 'comp639nsn.pythonanywhere.com'
+            domain: 'comp693nsnproject.pythonanywhere.com'
         }
     },
 

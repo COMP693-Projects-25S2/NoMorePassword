@@ -211,9 +211,9 @@ def get_config():
                             "logo": "/static/logo.png"
                         }
                     },
-                    "comp639nsn.pythonanywhere.com": {
+                    "comp693nsnproject.pythonanywhere.com": {
                         "name": "NSN Production",
-                        "homeUrl": "https://comp639nsn.pythonanywhere.com",
+                        "homeUrl": "https://comp693nsnproject.pythonanywhere.com",
                         "realTitle": "NSN Production Server",
                         "images": {
                             "favicon": "/static/favicon.ico",

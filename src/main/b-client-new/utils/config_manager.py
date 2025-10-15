@@ -57,9 +57,9 @@ class ConfigManager:
                         "logo": "/static/logo.png"
                     }
                 },
-                "comp639nsn.pythonanywhere.com": {
+                "comp693nsnproject.pythonanywhere.com": {
                     "name": "NSN Production",
-                    "homeUrl": "https://comp639nsn.pythonanywhere.com",
+                    "homeUrl": "https://comp693nsnproject.pythonanywhere.com",
                     "realTitle": "NSN Production Server",
                     "images": {
                         "favicon": "/static/favicon.ico",
@@ -76,7 +76,9 @@ class ConfigManager:
     
     def get_nsn_config(self) -> Dict[str, Any]:
         """Get NSN configuration based on current environment"""
-        current_env = self._config.get('current_environment', 'local')
+        # Check environment variable first, then config file
+        import os
+        current_env = os.environ.get('B_CLIENT_ENVIRONMENT') or self._config.get('current_environment', 'local')
         
         # Get target websites
         target_websites = self._config.get('targetWebsites', {})
@@ -84,7 +86,7 @@ class ConfigManager:
         # Determine which website to use based on environment
         if current_env == 'production':
             # Use production NSN
-            nsn_key = 'comp639nsn.pythonanywhere.com'
+            nsn_key = 'comp693nsnproject.pythonanywhere.com'
         else:
             # Use local development NSN
             nsn_key = 'localhost:5000'

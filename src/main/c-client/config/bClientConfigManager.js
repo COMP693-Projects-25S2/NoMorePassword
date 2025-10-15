@@ -40,7 +40,7 @@ class BClientConfigManager {
                 },
                 production: {
                     name: "Production B-Client",
-                    host: "comp639nsn.pythonanywhere.com",
+                    host: "comp693nsnproject.pythonanywhere.com",
                     port: 8766,
                     description: "Connect to production B-Client server"
                 }

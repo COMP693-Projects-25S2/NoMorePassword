@@ -32,9 +32,9 @@
     },
     "production": {
       "name": "Production NSN",
-      "host": "nsn.example.com",
+      "host": "comp693nsnproject.pythonanywhere.com",
       "port": 443,
-      "url": "https://nsn.example.com",
+      "url": "https://comp693nsnproject.pythonanywhere.com",
       "description": "Production NSN website"
     }
   }
