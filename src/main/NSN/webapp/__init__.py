@@ -1,7 +1,32 @@
+import os
 from flask import Flask, render_template, session, redirect, url_for, request
 from webapp import connect
 from webapp import db
 from .private_message import message_bp
+
+# Load environment configuration from config.env file
+def load_environment_config():
+    """Load environment configuration from config.env file"""
+    env_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.env')
+    if os.path.exists(env_file):
+        print(f"Loading environment configuration from {env_file}")
+        with open(env_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    if '=' in line:
+                        key, value = line.split('=', 1)
+                        os.environ[key] = value
+                        if key == 'B_CLIENT_API_URL':
+                            print(f"B-Client URL set to: {value}")
+                        elif key == 'NSN_ENVIRONMENT':
+                            print(f"NSN Environment set to: {value}")
+    else:
+        print("No config.env file found, using default configuration")
+
+# Load environment configuration
+load_environment_config()
+
 from .config import B_CLIENT_WEBSOCKET_URL, B_CLIENT_API_URL
 
 app = Flask(__name__, template_folder='templates')
