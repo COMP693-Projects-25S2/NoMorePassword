@@ -17,13 +17,8 @@ def b_client_info():
     """Return B-Client configuration information for C-Client connections"""
     try:
         # Get current environment
-        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.json')
-        if os.path.exists(config_path):
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-            environment = config.get('current_environment', 'local')
-        else:
-            environment = 'local'
+        from utils.config_manager import get_current_environment
+        environment = get_current_environment()
         
         # Get B-Client WebSocket server configuration
         websocket_config = {

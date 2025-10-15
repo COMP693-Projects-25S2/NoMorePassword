@@ -102,54 +102,26 @@ def get_stats():
 @api_routes.route('/api/config')
 def get_config():
     try:
-        # Load configuration from config.json if exists
-        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.json')
-        if os.path.exists(config_path):
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-        else:
-            # Default configuration
-            config = {
-                "network": {
-                    "use_public_ip": False,
-                    "public_ip": "121.74.37.6",
-                    "local_ip": "127.0.0.1"
-                },
-                "api": {
-                    "nsn_port": 5000,
-                    "c_client_port_range": {
-                        "min": 3001,
-                        "max": 6000
-                    }
-                },
-                "targetWebsites": {
-                    "localhost:5000": {
-                        "name": "Local Development",
-                        "homeUrl": "http://localhost:5000",
-                        "realTitle": "NSN Local Development",
-                        "images": {
-                            "favicon": "/static/favicon.ico",
-                            "logo": "/static/logo.png"
-                        }
-                    },
-                    "comp693nsnproject.pythonanywhere.com": {
-                        "name": "NSN Production",
-                        "homeUrl": "https://comp693nsnproject.pythonanywhere.com",
-                        "realTitle": "NSN Production Server",
-                        "images": {
-                            "favicon": "/static/favicon.ico",
-                            "logo": "/static/logo.png"
-                        }
-                    }
-                },
-                "default": {
-                    "autoRefreshIntervalMinutes": 30
-                }
-            }
+        # Use the new config manager to get current environment's configuration
+        from utils.config_manager import get_config_manager, get_current_api_config, get_current_websocket_config, get_current_environment
+        
+        config_manager = get_config_manager()
+        current_env = get_current_environment()
+        api_config = get_current_api_config()
+        websocket_config = get_current_websocket_config()
+        
+        # Return current environment's configuration
+        config = {
+            "current_environment": current_env,
+            "api": api_config,
+            "websocket": websocket_config,
+            "network": config_manager.get_config().get('network', {}),
+            "targetWebsites": config_manager.get_config().get('targetWebsites', {})
+        }
         
         return jsonify(config)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f'Configuration error: {str(e)}'}), 500
 
 
 @api_routes.route('/api/cookies', methods=['GET'])
@@ -326,6 +298,11 @@ def set_environment():
         data = request.get_json()
         environment = data.get('environment', 'local')
         
+        # Validate environment value
+        valid_environments = ['local', 'test', 'production']
+        if environment not in valid_environments:
+            return jsonify({'error': f'Invalid environment. Must be one of: {", ".join(valid_environments)}'}), 400
+        
         # Save environment to config file
         config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.json')
         if os.path.exists(config_path):
@@ -347,14 +324,8 @@ def set_environment():
 @api_routes.route('/api/config/environment', methods=['GET'])
 def get_environment():
     try:
-        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.json')
-        if os.path.exists(config_path):
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-            environment = config.get('current_environment', 'local')
-        else:
-            environment = 'local'
-        
+        from utils.config_manager import get_current_environment
+        environment = get_current_environment()
         return jsonify({'environment': environment})
     except Exception as e:
         return jsonify({'error': str(e)}), 500

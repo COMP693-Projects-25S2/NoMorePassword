@@ -281,11 +281,21 @@
             const currentEnv = environment.environment || 'local';
 
             // Choose website based on current environment
-            if (currentEnv === 'local') {
-                website = config.targetWebsites['localhost:5000'] ||
-                    config.targetWebsites['127.0.0.1:5000'];
-            } else {
-                website = config.targetWebsites['comp693nsnproject.pythonanywhere.com'];
+            // Use the API configuration instead of hardcoded environment checks
+            if (config.api && config.api.nsn_url) {
+                const nsnUrl = config.api.nsn_url;
+                // Find matching website configuration
+                for (const [domain, websiteConfig] of Object.entries(config.targetWebsites)) {
+                    if (websiteConfig.homeUrl === nsnUrl) {
+                        website = websiteConfig;
+                        break;
+                    }
+                }
+            }
+
+            // Fallback to first available website if no match found
+            if (!website) {
+                website = Object.values(config.targetWebsites)[0];
             }
 
             if (website) {

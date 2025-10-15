@@ -4,6 +4,62 @@
     "public_ip": "121.74.37.6",
     "local_ip": "127.0.0.1"
   },
+  "environments": {
+    "local": {
+      "api": {
+        "nsn_host": "localhost",
+        "nsn_port": 5000,
+        "nsn_url": "http://localhost:5000",
+        "c_client_port_range": {
+          "min": 3001,
+          "max": 6000
+        }
+      },
+      "websocket": {
+        "enabled": true,
+        "server_host": "127.0.0.1",
+        "server_port": 8766,
+        "auto_reconnect": true,
+        "reconnect_interval": 30
+      }
+    },
+    "test": {
+      "api": {
+        "nsn_host": "test.nsn.local",
+        "nsn_port": 5000,
+        "nsn_url": "http://test.nsn.local:5000",
+        "c_client_port_range": {
+          "min": 3001,
+          "max": 6000
+        }
+      },
+      "websocket": {
+        "enabled": true,
+        "server_host": "127.0.0.1",
+        "server_port": 8766,
+        "auto_reconnect": true,
+        "reconnect_interval": 30
+      }
+    },
+    "production": {
+      "api": {
+        "nsn_host": "comp693nsnproject.pythonanywhere.com",
+        "nsn_port": 443,
+        "nsn_url": "https://comp693nsnproject.pythonanywhere.com",
+        "c_client_port_range": {
+          "min": 3001,
+          "max": 6000
+        }
+      },
+      "websocket": {
+        "enabled": true,
+        "server_host": "127.0.0.1",
+        "server_port": 8766,
+        "auto_reconnect": true,
+        "reconnect_interval": 30
+      }
+    }
+  },
   "api": {
     "nsn_host": "localhost",
     "nsn_port": 5000,
@@ -31,14 +87,16 @@
         "favicon": "/static/favicon.ico",
         "logo": "/static/logo.png"
       }
+    },
+    "test.nsn.local": {
+      "name": "NSN Test Environment",
+      "homeUrl": "http://test.nsn.local:5000",
+      "realTitle": "NSN Test Server",
+      "images": {
+        "favicon": "/static/favicon.ico",
+        "logo": "/static/logo.png"
+      }
     }
-  },
-  "c_client_websocket": {
-    "enabled": true,
-    "server_host": "127.0.0.1",
-    "server_port": 8766,
-    "auto_reconnect": true,
-    "reconnect_interval": 30
   },
   "default": {
     "autoRefreshIntervalMinutes": 30
@@ -52,5 +110,5 @@
     "current_environment": "Environment setting: 'local' for development, 'production' for production",
     "targetWebsites": "Configuration for different NSN environments"
   },
-  "current_environment": "production"
+  "current_environment": "local"
 }

@@ -20,7 +20,7 @@
         <div class="option-group">
             <div class="option-label">Environment</div>
             <div class="option-description">
-                Choose between local development or production NSN website.
+                Choose between local development, test environment, or production NSN website.
             </div>
             <div class="env-options">
                 <button class="env-button" id="localEnv" data-env="local">
@@ -28,6 +28,13 @@
                     <div class="env-text">
                         <div>Local Development</div>
                         <div class="env-description">localhost:5000</div>
+                    </div>
+                </button>
+                <button class="env-button" id="testEnv" data-env="test">
+                    <span class="env-icon">🧪</span>
+                    <div class="env-text">
+                        <div>Test Environment</div>
+                        <div class="env-description">test.nsn.local:5000</div>
                     </div>
                 </button>
                 <button class="env-button" id="productionEnv" data-env="production">
@@ -81,6 +88,10 @@
         setEnvironment('local');
     });
 
+    document.getElementById('testEnv').addEventListener('click', () => {
+        setEnvironment('test');
+    });
+
     document.getElementById('productionEnv').addEventListener('click', () => {
         setEnvironment('production');
     });
@@ -102,7 +113,14 @@
 
             if (response.ok) {
                 console.log(`Environment configuration saved: ${env}`);
-                const envName = env === 'local' ? 'Local Development (localhost:5000)' : 'Production (comp693nsnproject.pythonanywhere.com)';
+                let envName;
+                if (env === 'local') {
+                    envName = 'Local Development (localhost:5000)';
+                } else if (env === 'test') {
+                    envName = 'Test Environment (test.nsn.local:5000)';
+                } else {
+                    envName = 'Production (comp693nsnproject.pythonanywhere.com)';
+                }
                 Utils.showNotification('success', `Environment switched to ${envName}. Please restart B-Client for changes to take effect.`);
             } else {
                 console.error('Failed to save environment configuration');
@@ -116,15 +134,19 @@
 
     function updateEnvironmentUI(env) {
         const localBtn = document.getElementById('localEnv');
+        const testBtn = document.getElementById('testEnv');
         const productionBtn = document.getElementById('productionEnv');
 
         // Remove active class from all buttons
         localBtn.classList.remove('active');
+        testBtn.classList.remove('active');
         productionBtn.classList.remove('active');
 
         // Add active class to selected button
         if (env === 'local') {
             localBtn.classList.add('active');
+        } else if (env === 'test') {
+            testBtn.classList.add('active');
         } else {
             productionBtn.classList.add('active');
         }

@@ -28,25 +28,9 @@ class NSNClient:
     
     def get_nsn_url(self):
         """Get NSN URL based on current environment"""
-        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.json')
-        if os.path.exists(config_path):
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-            environment = config.get('current_environment', 'local')
-            
-            # Get target websites configuration
-            target_websites = config.get('targetWebsites', {})
-            
-            # Find the website config for current environment
-            for domain, website_config in target_websites.items():
-                if (environment == 'local' and 'localhost' in domain) or \
-                   (environment == 'production' and 'localhost' not in domain):
-                    home_url = website_config.get('homeUrl', 'http://localhost:5000')
-                    # Remove trailing slash for consistency
-                    return home_url.rstrip('/')
-        
-        # Fallback
-        return get_nsn_url()
+        # Use the config manager instead of directly reading config file
+        from utils.config_manager import get_nsn_base_url
+        return get_nsn_base_url()
     
     def query_user_info(self, username):
         """Query user information from NSN"""

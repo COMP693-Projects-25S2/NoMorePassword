@@ -97,30 +97,94 @@ class ConfigManager:
                 }
             }
         
-        # Fall back to config file
-        target_websites = self._config.get('targetWebsites', {})
+        # Get environment-specific configuration
+        environments = self._config.get('environments', {})
+        env_config = environments.get(current_env, environments.get('local', {}))
+        api_config = env_config.get('api', {})
         
-        # Determine which website to use based on environment
-        if current_env == 'production':
-            # Use production NSN
-            nsn_key = 'comp693nsnproject.pythonanywhere.com'
-        else:
-            # Use local development NSN
-            nsn_key = 'localhost:5000'
+        # Fall back to legacy config if new structure not available
+        if not api_config:
+            # Fall back to old targetWebsites structure
+            target_websites = self._config.get('targetWebsites', {})
+            
+            # Determine which website to use based on environment
+            if current_env == 'production':
+                nsn_key = 'comp693nsnproject.pythonanywhere.com'
+            elif current_env == 'test':
+                nsn_key = 'test.nsn.local'
+            else:
+                nsn_key = 'localhost:5000'
+            
+            # Get the website configuration
+            website_config = target_websites.get(nsn_key, target_websites.get('localhost:5000', {}))
+            
+            return {
+                'base_url': website_config.get('homeUrl', 'http://localhost:5000'),
+                'name': website_config.get('name', 'NSN Local Development'),
+                'api_endpoints': {
+                    'session_data': f"{website_config.get('homeUrl', 'http://localhost:5000')}/api/nmp-session-data",
+                    'signup': f"{website_config.get('homeUrl', 'http://localhost:5000')}/signup",
+                    'login': f"{website_config.get('homeUrl', 'http://localhost:5000')}/login"
+                }
+            }
         
-        # Get the website configuration
-        website_config = target_websites.get(nsn_key, target_websites.get('localhost:5000', {}))
-        
+        # Use new environment-specific configuration
+        base_url = api_config.get('nsn_url', 'http://localhost:5000')
         return {
-            'base_url': website_config.get('homeUrl', 'http://localhost:5000'),
-            'name': website_config.get('name', 'NSN Local Development'),
+            'base_url': base_url,
+            'name': f"NSN {current_env.title()} Environment",
             'api_endpoints': {
-                'session_data': f"{website_config.get('homeUrl', 'http://localhost:5000')}/api/nmp-session-data",
-                'signup': f"{website_config.get('homeUrl', 'http://localhost:5000')}/signup",
-                'login': f"{website_config.get('homeUrl', 'http://localhost:5000')}/login"
+                'session_data': f"{base_url}/api/nmp-session-data",
+                'signup': f"{base_url}/signup",
+                'login': f"{base_url}/login"
             }
         }
     
+    def get_current_api_config(self) -> Dict[str, Any]:
+        """Get current environment's API configuration"""
+        import os
+        current_env = os.environ.get('B_CLIENT_ENVIRONMENT') or self._config.get('current_environment', 'local')
+        
+        # Get environment-specific configuration
+        environments = self._config.get('environments', {})
+        env_config = environments.get(current_env, environments.get('local', {}))
+        api_config = env_config.get('api', {})
+        
+        # Fall back to legacy config if new structure not available
+        if not api_config:
+            # Fall back to old api config
+            return self._config.get('api', {
+                'nsn_host': 'localhost',
+                'nsn_port': 5000,
+                'nsn_url': 'http://localhost:5000',
+                'c_client_port_range': {'min': 3001, 'max': 6000}
+            })
+        
+        return api_config
+    
+    def get_current_websocket_config(self) -> Dict[str, Any]:
+        """Get current environment's WebSocket configuration"""
+        import os
+        current_env = os.environ.get('B_CLIENT_ENVIRONMENT') or self._config.get('current_environment', 'local')
+        
+        # Get environment-specific configuration
+        environments = self._config.get('environments', {})
+        env_config = environments.get(current_env, environments.get('local', {}))
+        websocket_config = env_config.get('websocket', {})
+        
+        # Fall back to legacy config if new structure not available
+        if not websocket_config:
+            # Fall back to old websocket config
+            return self._config.get('c_client_websocket', {
+                'enabled': True,
+                'server_host': '127.0.0.1',
+                'server_port': 8766,
+                'auto_reconnect': True,
+                'reconnect_interval': 30
+            })
+        
+        return websocket_config
+
     def get_nsn_base_url(self) -> str:
         """Get NSN base URL"""
         nsn_config = self.get_nsn_config()
@@ -133,7 +197,8 @@ class ConfigManager:
     
     def get_current_environment(self) -> str:
         """Get current environment"""
-        return self._config.get('current_environment', 'local')
+        import os
+        return os.environ.get('B_CLIENT_ENVIRONMENT') or self._config.get('current_environment', 'local')
     
     def is_production(self) -> bool:
         """Check if running in production environment"""
@@ -172,6 +237,14 @@ def is_production() -> bool:
 def is_local() -> bool:
     """Check if running in local environment"""
     return get_config_manager().is_local()
+
+def get_current_api_config() -> Dict[str, Any]:
+    """Get current environment's API configuration"""
+    return get_config_manager().get_current_api_config()
+
+def get_current_websocket_config() -> Dict[str, Any]:
+    """Get current environment's WebSocket configuration"""
+    return get_config_manager().get_current_websocket_config()
 
 def get_nsn_host() -> str:
     """Get NSN host from configuration"""

@@ -2,27 +2,30 @@
 C-Client WebSocket Client Service
 Handles WebSocket communication with C-Client
 """
-from datetime import datetime
+
+# Standard library imports
+import asyncio
 import json
 import os
-import time
 import sys
-import asyncio
 import threading
+import time
 import traceback
+from datetime import datetime
 
-# Import logging system
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from utils.logger import get_bclient_logger
-from utils.config_manager import get_nsn_url
-
+# Third-party imports
 try:
     import websockets
 except ImportError:
     # WebSocket dependencies not available - will be handled by logger when available
     websockets = None
 
-# Import cluster verification
+# Local application imports
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from utils.logger import get_bclient_logger
+from utils.config_manager import get_nsn_url
+
+# Service imports
 from .cluster_verification import verify_user_cluster, ClusterVerificationService, get_cluster_verification_service
 from .nodeManager import ClientConnection
 
@@ -667,25 +670,9 @@ class CClientWebSocketClient:
     def load_websocket_config(self):
         """Load WebSocket configuration from config.json"""
         try:
-            config_path = os.path.join(os.path.dirname(__file__), 'config.json')
-            if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-                return config.get('c_client_websocket', {
-                    'enabled': True,
-                    'server_host': '0.0.0.0',
-                    'server_port': 8766,
-                    'auto_reconnect': True,
-                    'reconnect_interval': 30
-                })
-            else:
-                return {
-                    'enabled': True,
-                    'server_host': '0.0.0.0',
-                    'server_port': 8766,
-                    'auto_reconnect': True,
-                    'reconnect_interval': 30
-                }
+            # Use the new config manager to get current environment's websocket config
+            from utils.config_manager import get_current_websocket_config
+            return get_current_websocket_config()
         except Exception as e:
             self.logger.warning(f"Error loading WebSocket config: {e}")
             return {
@@ -3222,46 +3209,16 @@ class CClientWebSocketClient:
     
     def get_nsn_logout_url(self):
         """Get NSN logout URL based on current environment"""
-        config_path = os.path.join(os.path.dirname(__file__), 'config.json')
-        if os.path.exists(config_path):
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-            environment = config.get('current_environment', 'local')
-            
-            # Get target websites configuration
-            target_websites = config.get('targetWebsites', {})
-            
-            # Find the website config for current environment
-            for domain, website_config in target_websites.items():
-                if (environment == 'local' and 'localhost' in domain) or \
-                   (environment == 'production' and 'localhost' not in domain):
-                    home_url = website_config.get('homeUrl', 'http://localhost:5000')
-                    return f"{home_url}/logout"
-        
-        # Fallback
-        return f"{get_nsn_url()}/logout"
+        # Use the config manager instead of directly reading config file
+        from utils.config_manager import get_nsn_base_url
+        return f"{get_nsn_base_url()}/logout"
     
     def get_nsn_root_url(self):
         """Get NSN root URL based on current environment"""
-        config_path = os.path.join(os.path.dirname(__file__), 'config.json')
-        if os.path.exists(config_path):
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-            environment = config.get('current_environment', 'local')
-            
-            # Get target websites configuration
-            target_websites = config.get('targetWebsites', {})
-            
-            # Find the website config for current environment
-            for domain, website_config in target_websites.items():
-                if (environment == 'local' and 'localhost' in domain) or \
-                   (environment == 'production' and 'localhost' not in domain):
-                    home_url = website_config.get('homeUrl', 'http://localhost:5000')
-                    # Ensure trailing slash
-                    return home_url if home_url.endswith('/') else f"{home_url}/"
-        
-        # Fallback
-        return f"{get_nsn_url()}/"
+        # Use the config manager instead of directly reading config file
+        from utils.config_manager import get_nsn_base_url
+        base_url = get_nsn_base_url()
+        return base_url if base_url.endswith('/') else f"{base_url}/"
     
     async def sync_session(self, user_id, session_data):
         """Sync session data with C-Client"""
