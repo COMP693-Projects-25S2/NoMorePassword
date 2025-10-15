@@ -39,7 +39,9 @@ class ConfigManager:
                 "local_ip": "127.0.0.1"
             },
             "api": {
+                "nsn_host": "localhost",
                 "nsn_port": 5000,
+                "nsn_url": "http://localhost:5000",
                 "c_client_port_range": {
                     "min": 3001,
                     "max": 6000
@@ -151,3 +153,18 @@ def is_production() -> bool:
 def is_local() -> bool:
     """Check if running in local environment"""
     return get_config_manager().is_local()
+
+def get_nsn_host() -> str:
+    """Get NSN host from configuration"""
+    config = get_config_manager().get_config()
+    return config.get('api', {}).get('nsn_host', 'localhost')
+
+def get_nsn_port() -> int:
+    """Get NSN port from configuration"""
+    config = get_config_manager().get_config()
+    return config.get('api', {}).get('nsn_port', 5000)
+
+def get_nsn_url() -> str:
+    """Get NSN URL from configuration"""
+    config = get_config_manager().get_config()
+    return config.get('api', {}).get('nsn_url', 'http://localhost:5000')

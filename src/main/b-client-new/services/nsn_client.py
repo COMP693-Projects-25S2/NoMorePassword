@@ -15,6 +15,7 @@ import traceback
 # Import logging system
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.logger import get_bclient_logger
+from utils.config_manager import get_nsn_url
 
 
 class NSNClient:
@@ -45,7 +46,7 @@ class NSNClient:
                     return home_url.rstrip('/')
         
         # Fallback
-        return 'http://localhost:5000'
+        return get_nsn_url()
     
     def query_user_info(self, username):
         """Query user information from NSN"""

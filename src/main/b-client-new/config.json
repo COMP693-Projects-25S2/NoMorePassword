@@ -5,7 +5,9 @@
     "local_ip": "127.0.0.1"
   },
   "api": {
+    "nsn_host": "localhost",
     "nsn_port": 5000,
+    "nsn_url": "http://localhost:5000",
     "c_client_port_range": {
       "min": 3001,
       "max": 6000

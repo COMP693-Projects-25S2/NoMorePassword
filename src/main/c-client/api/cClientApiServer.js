@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const net = require('net');
+const apiConfig = require('../config/apiConfig');
 
 class CClientApiServer {
     constructor(port = null, mainWindow = null) {
@@ -350,7 +351,7 @@ class CClientApiServer {
                     request_type: 1, // bind to NMP
                     user_id: user_id,
                     user_name: username,
-                    domain_id: 'localhost:5000',
+                    domain_id: `${apiConfig.getNsnHost()}:${apiConfig.getNsnPort()}`,
                     node_id: 'nsn-node-001',
                     auto_refresh: true,
                     account: username,

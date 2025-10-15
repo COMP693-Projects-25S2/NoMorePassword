@@ -1,6 +1,8 @@
 /**
  * Session Manager - Handle session related operations
  */
+const apiConfig = require('../config/apiConfig');
+
 class SessionManager {
     constructor(viewManager) {
         this.viewManager = viewManager;
@@ -79,7 +81,7 @@ class SessionManager {
                         if (this.viewManager.isNSNUrl(currentURL)) {
                             // Direct navigation to logout URL instead of JavaScript execution
                             console.log('🔓 Navigating to NSN logout URL...');
-                            await view.webContents.loadURL('http://localhost:5000/logout');
+                            await view.webContents.loadURL(`${apiConfig.getNsnUrl()}/logout`);
                         }
                     } catch (error) {
                         console.error(`❌ Error executing logout script for view ${id}:`, error);
@@ -176,7 +178,7 @@ class SessionManager {
             const hasNSNViews = Object.values(views).some(view => {
                 if (view && view.webContents && !view.webContents.isDestroyed()) {
                     const url = view.webContents.getURL();
-                    return url.includes('localhost:5000') || url.includes('127.0.0.1:5000');
+                    return url.includes(apiConfig.getNsnHost()) || url.includes(`127.0.0.1:${apiConfig.getNsnPort()}`);
                 }
                 return false;
             });
@@ -187,9 +189,9 @@ class SessionManager {
                     if (view && view.webContents && !view.webContents.isDestroyed()) {
                         try {
                             const url = view.webContents.getURL();
-                            if (url.includes('localhost:5000') || url.includes('127.0.0.1:5000')) {
+                            if (url.includes(apiConfig.getNsnHost()) || url.includes(`127.0.0.1:${apiConfig.getNsnPort()}`)) {
                                 console.log(`🔓 Logging out NSN view ${id}...`);
-                                await view.webContents.loadURL('http://localhost:5000/logout');
+                                await view.webContents.loadURL(`${apiConfig.getNsnUrl()}/logout`);
                             }
                         } catch (error) {
                             console.error(`❌ Error executing logout script for view ${id}:`, error);

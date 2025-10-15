@@ -1,4 +1,23 @@
 // C-Client API Configuration
+const fs = require('fs');
+const path = require('path');
+
+// Load configuration from config.json
+function loadConfig() {
+    try {
+        const configPath = path.join(__dirname, '../config.json');
+        if (fs.existsSync(configPath)) {
+            const configData = fs.readFileSync(configPath, 'utf8');
+            return JSON.parse(configData);
+        }
+    } catch (error) {
+        console.warn('Failed to load config.json, using defaults:', error.message);
+    }
+    return null;
+}
+
+const configData = loadConfig();
+
 const config = {
     // Current environment configuration
     currentEnvironment: process.env.C_CLIENT_ENVIRONMENT || 'local', // 'local' or 'production'
@@ -19,18 +38,22 @@ const config = {
         }
     },
 
-    // NSN website configurations
+    // NSN website configurations - loaded from config.json
     nsnWebsites: {
         // Local development NSN server
         local: {
-            url: 'http://localhost:5000',
-            name: 'NSN (Local Development)',
+            url: configData?.nmp_cooperative_website?.local?.url || 'http://localhost:5000',
+            host: configData?.nmp_cooperative_website?.local?.host || 'localhost',
+            port: configData?.nmp_cooperative_website?.local?.port || 5000,
+            name: configData?.nmp_cooperative_website?.local?.name || 'NSN (Local Development)',
             domain: 'localhost:5000'
         },
         // Production NSN server
         production: {
-            url: 'https://comp639nsn.pythonanywhere.com',
-            name: 'NSN (Production)',
+            url: configData?.nmp_cooperative_website?.production?.url || 'https://comp639nsn.pythonanywhere.com',
+            host: configData?.nmp_cooperative_website?.production?.host || 'comp639nsn.pythonanywhere.com',
+            port: configData?.nmp_cooperative_website?.production?.port || 443,
+            name: configData?.nmp_cooperative_website?.production?.name || 'NSN (Production)',
             domain: 'comp639nsn.pythonanywhere.com'
         }
     },
@@ -57,6 +80,24 @@ const config = {
             return true;
         }
         return false;
+    },
+
+    // Get NSN host
+    getNsnHost: function () {
+        const currentNsn = this.getCurrentNsnWebsite();
+        return currentNsn.host || 'localhost';
+    },
+
+    // Get NSN port
+    getNsnPort: function () {
+        const currentNsn = this.getCurrentNsnWebsite();
+        return currentNsn.port || 5000;
+    },
+
+    // Get NSN URL
+    getNsnUrl: function () {
+        const currentNsn = this.getCurrentNsnWebsite();
+        return currentNsn.url || 'http://localhost:5000';
     }
 };
 

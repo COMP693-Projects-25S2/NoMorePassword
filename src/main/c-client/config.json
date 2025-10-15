@@ -25,11 +25,15 @@
     "current": "local",
     "local": {
       "name": "Local NSN",
+      "host": "localhost",
+      "port": 5000,
       "url": "http://localhost:5000",
       "description": "Local development NSN website"
     },
     "production": {
       "name": "Production NSN",
+      "host": "nsn.example.com",
+      "port": 443,
       "url": "https://nsn.example.com",
       "description": "Production NSN website"
     }

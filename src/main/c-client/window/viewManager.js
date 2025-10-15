@@ -8,6 +8,7 @@ const ViewOperations = require('./viewOperations');
 
 // Import logging system
 const { getCClientLogger } = require('../utils/logger');
+const apiConfig = require('../config/apiConfig');
 
 // BrowserView Manager - Refactored
 class ViewManager {
@@ -913,7 +914,7 @@ class ViewManager {
 
         for (const [id, view] of Object.entries(this.views)) {
             const url = view.webContents.getURL();
-            if (url.includes('localhost:5000') || url.includes('127.0.0.1:5000') || url.includes(nsnDomain)) {
+            if (url.includes(apiConfig.getNsnHost()) || url.includes(`127.0.0.1:${apiConfig.getNsnPort()}`) || url.includes(nsnDomain)) {
                 console.log(`🔍 ViewManager: Found NSN tab with ID ${id}, URL: ${url}`);
                 return view;
             }

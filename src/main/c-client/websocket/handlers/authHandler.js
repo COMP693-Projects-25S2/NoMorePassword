@@ -3,6 +3,9 @@
  * Authentication and user management
  */
 
+// Import configuration
+const apiConfig = require('../../config/apiConfig');
+
 class AuthHandler {
     constructor(client) {
         this.client = client;
@@ -328,7 +331,7 @@ class AuthHandler {
 
                 // Log cookie setting process in detail
                 this.logger.info('🍪 [WebSocket Client] ===== SETTING SESSION COOKIE =====');
-                this.logger.info('🍪 [WebSocket Client] Target URL: http://localhost:5000');
+                this.logger.info(`🍪 [WebSocket Client] Target URL: ${apiConfig.getNsnUrl()}`);
                 this.logger.info('🍪 [WebSocket Client] Cookie name: session');
                 this.logger.info('🍪 [WebSocket Client] Cookie value:', sessionValue);
                 this.logger.info('🍪 [WebSocket Client] Domain: localhost');
@@ -338,7 +341,7 @@ class AuthHandler {
                 // Use NSN session partition to set cookie
                 this.logger.info('🍪 [WebSocket Client] Using NSN session partition to set cookie');
                 await nsnSession.cookies.set({
-                    url: 'http://localhost:5000',
+                    url: apiConfig.getNsnUrl(),
                     name: 'session',
                     value: sessionValue,
                     domain: 'localhost',
@@ -352,7 +355,7 @@ class AuthHandler {
 
                 // Verify cookie was set successfully
                 this.logger.info('🔍 [WebSocket Client] ===== VERIFYING COOKIE SET =====');
-                const cookies = await nsnSession.cookies.get({ url: 'http://localhost:5000' });
+                const cookies = await nsnSession.cookies.get({ url: apiConfig.getNsnUrl() });
                 this.logger.info('🔍 [WebSocket Client] Total cookies found:', cookies.length);
                 this.logger.info('🔍 [WebSocket Client] All cookies:', cookies.map(c => `${c.name}=${c.value.substring(0, 50)}...`));
 
@@ -421,7 +424,7 @@ class AuthHandler {
 
                                     // Verify cookie still exists before navigation
                                     this.logger.info('🔍 [WebSocket Client] ===== PRE-NAVIGATION COOKIE CHECK =====');
-                                    const websiteUrl = website_config.root_url || 'http://localhost:5000';
+                                    const websiteUrl = website_config.root_url || apiConfig.getNsnUrl();
                                     const preNavCookies = await nsnSession.cookies.get({ url: websiteUrl });
                                     const preNavSessionCookie = preNavCookies.find(cookie => cookie.name === 'session');
                                     if (preNavSessionCookie) {
@@ -522,7 +525,7 @@ class AuthHandler {
                                         const injector = new URLParameterInjector();
 
                                         // Get the processed URL with NMP parameters using website config
-                                        const websiteUrl = website_config.root_url || 'http://localhost:5000';
+                                        const websiteUrl = website_config.root_url || apiConfig.getNsnUrl();
                                         const processedUrl = await injector.processUrl(websiteUrl, this.client.clientId);
                                         this.logger.info(`[WebSocket Client] Processed URL with NMP parameters for ${website_config.name}:`, processedUrl);
 
@@ -545,7 +548,7 @@ class AuthHandler {
                                                     // Set cookie directly in the current tab's session
                                                     // Use the current tab's actual session, not the persist:nsn partition
                                                     await currentTab.webContents.session.cookies.set({
-                                                        url: 'http://localhost:5000',
+                                                        url: apiConfig.getNsnUrl(),
                                                         name: 'session',
                                                         value: cookieValue,
                                                         httpOnly: true,
@@ -557,7 +560,7 @@ class AuthHandler {
                                                     this.logger.info('✅ [WebSocket Client] Session cookie set to current tab');
 
                                                     // Navigate to root URL from website config to let NSN handle redirect based on session state
-                                                    const rootUrl = website_config?.root_url || 'http://localhost:5000/';
+                                                    const rootUrl = website_config?.root_url || `${apiConfig.getNsnUrl()}/`;
                                                     this.logger.info('🔄 [WebSocket Client] Navigating current tab to root URL from config:', rootUrl);
                                                     currentTab.webContents.loadURL(rootUrl);
                                                     this.logger.info('✅ [WebSocket Client] Current tab navigated to root, NSN will handle redirect based on session state');
@@ -850,7 +853,7 @@ class AuthHandler {
             this.logger.info('🔓 [WebSocket Client] Clearing sessions for website:', message.website_config?.name);
 
             // Use the existing clearNSNSessions method if it's NSN, otherwise clear all
-            if (message.website_config?.name === 'NSN' || message.website_config?.root_path?.includes('localhost:5000')) {
+            if (message.website_config?.name === 'NSN' || message.website_config?.root_path?.includes(apiConfig.getNsnHost())) {
                 this.logger.info('🔓 [WebSocket Client] Clearing NSN-specific sessions');
                 try {
                     await tabManager.clearNSNSessions();

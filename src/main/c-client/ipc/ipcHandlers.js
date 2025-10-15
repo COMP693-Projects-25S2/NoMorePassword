@@ -1,5 +1,6 @@
 const { ipcMain } = require('electron');
 const NetworkConfigManager = require('../config/networkConfigManager');
+const apiConfig = require('../config/apiConfig');
 
 // Import logging system
 const { getCClientLogger, getSyncLogger } = require('../utils/logger');
@@ -1980,7 +1981,7 @@ class IpcHandlers {
                 // Get cooperative website URL from config
                 const fs = require('fs');
                 const path = require('path');
-                let cooperativeWebsiteUrl = 'http://localhost:5000'; // Default fallback
+                let cooperativeWebsiteUrl = apiConfig.getNsnUrl(); // Default fallback
 
                 try {
                     const configPath = path.join(__dirname, '..', 'config.json');

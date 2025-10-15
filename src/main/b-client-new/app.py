@@ -25,6 +25,7 @@ except ImportError:
 
 # Import logging system
 from utils.logger import get_bclient_logger, setup_print_redirect
+from utils.config_manager import get_nsn_url, get_nsn_host, get_nsn_port
 
 # Set up log redirection immediately (takes effect on module import)
 logger = get_bclient_logger('app')
@@ -525,7 +526,7 @@ class NSNClient:
                     return home_url.rstrip('/')
         
         # Fallback
-        return 'http://localhost:5000'
+        return get_nsn_url()
     
     def query_user_info(self, username):
         """Query user information from NSN"""
@@ -1486,7 +1487,7 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                         
                         # Add website config info
                         # Get NSN root URL from environment configuration
-                        nsn_root_url = c_client_ws.get_nsn_root_url() if hasattr(c_client_ws, 'get_nsn_root_url') else 'http://localhost:5000'
+                        nsn_root_url = c_client_ws.get_nsn_root_url() if hasattr(c_client_ws, 'get_nsn_root_url') else get_nsn_url()
                         website_config = {
                             'root_path': website_root_path or nsn_root_url,
                             'name': website_name or 'NSN',

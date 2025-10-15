@@ -3,6 +3,7 @@ const path = require('path');
 
 // Import logging system
 const { getCClientLogger } = require('../utils/logger');
+const apiConfig = require('../config/apiConfig');
 
 /**
  * Unified Tab-BrowserView Manager
@@ -1415,7 +1416,7 @@ class TabManager {
                             webContents.once('did-finish-load', handleLogoutNavigationSuccess);
 
                             // Perform logout navigation with timeout
-                            const logoutPromise = webContents.loadURL('http://localhost:5000/logout');
+                            const logoutPromise = webContents.loadURL(`${apiConfig.getNsnUrl()}/logout`);
                             const timeoutPromise = new Promise((_, reject) => {
                                 setTimeout(() => reject(new Error('Logout navigation timeout')), 5000); // 5 second timeout
                             });
@@ -1668,7 +1669,7 @@ class TabManager {
      */
     isNSNUrl(url) {
         if (!url) return false;
-        return url.includes('localhost:5000') || url.includes('127.0.0.1:5000');
+        return url.includes(apiConfig.getNsnHost()) || url.includes(`127.0.0.1:${apiConfig.getNsnPort()}`);
     }
 
     /**

@@ -14,6 +14,7 @@ import traceback
 # Import logging system
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from utils.logger import get_bclient_logger
+from utils.config_manager import get_nsn_url
 
 try:
     import websockets
@@ -3238,7 +3239,7 @@ class CClientWebSocketClient:
                     return f"{home_url}/logout"
         
         # Fallback
-        return 'http://localhost:5000/logout'
+        return f"{get_nsn_url()}/logout"
     
     def get_nsn_root_url(self):
         """Get NSN root URL based on current environment"""
@@ -3260,7 +3261,7 @@ class CClientWebSocketClient:
                     return home_url if home_url.endswith('/') else f"{home_url}/"
         
         # Fallback
-        return 'http://localhost:5000/'
+        return f"{get_nsn_url()}/"
     
     async def sync_session(self, user_id, session_data):
         """Sync session data with C-Client"""

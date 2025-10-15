@@ -2273,7 +2273,7 @@ class ElectronApp {
                         const apiConfig = require('./config/apiConfig');
                         const nsnConfig = apiConfig.getCurrentNsnWebsite();
                         const nsnDomain = nsnConfig.domain;
-                        const nsnUrl = nsnConfig.url || 'http://localhost:5000';
+                        const nsnUrl = nsnConfig.url || apiConfig.getNsnUrl();
 
                         if (currentUrl && (currentUrl.includes(nsnUrl) || currentUrl.includes(nsnDomain))) {
                             console.log(`🔓 C-Client: Navigating to NSN homepage for view ${viewId}`);
