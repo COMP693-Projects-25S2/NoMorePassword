@@ -1,20 +1,11 @@
-"""
-NSN Web Application Configuration
-"""
-import os
+# NSN Environment Configuration
+# Environment: local, production
+NSN_ENVIRONMENT='local'
 
-# Environment configuration
-ENVIRONMENT = os.environ.get('NSN_ENVIRONMENT', 'local')
+# B-Client API URL
+# Local development
+B_CLIENT_API_URL='https://nomorepassword.onrender.com'
 
-# B-Client API configuration based on environment
-if ENVIRONMENT == 'production':
-    # Production environment - to be configured
-    B_CLIENT_API_URL = os.environ.get('B_CLIENT_API_URL', '')
-    if not B_CLIENT_API_URL:
-        raise ValueError("B_CLIENT_API_URL must be set in production environment")
-else:
-    # Local development environment
-    B_CLIENT_API_URL = os.environ.get('B_CLIENT_API_URL', 'http://localhost:3000')
-
-print(f"NSN: Environment: {ENVIRONMENT}")
-print(f"NSN: B-Client API URL: {B_CLIENT_API_URL}")
+# Production configuration (uncomment and set when deploying)
+# NSN_ENVIRONMENT='production'
+# B_CLIENT_API_URL='https://nomorepassword.onrender.com'
