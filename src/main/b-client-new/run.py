@@ -6,7 +6,7 @@ Enterprise-level client for NoMorePassword Backend Service
 
 import os
 import sys
-from app import app
+from app import app, socketio
 from services.models import db
 
 # Import logging system
@@ -72,7 +72,9 @@ def main():
         print("\n" + "="*60)
     
     try:
-        app.run(host=host, port=port, debug=debug)
+        # Use SocketIO instead of Flask's run method
+        logger.info("🌐 Starting Flask-SocketIO server...")
+        socketio.run(app, host=host, port=port, debug=debug)
     except KeyboardInterrupt:
         logger.info("\n👋 B-Client Flask Application stopped")
     except Exception as e:

@@ -448,6 +448,9 @@ def _handle_existing_cookie_check(nmp_user_id, nmp_username, channel_id=None, no
                 c_client_ws.send_session_if_appropriate(nmp_user_id, websocket_connection, is_reregistration=False)
             )
             
+            # Also send via Socket.IO if available
+            _send_socketio_session_if_available(nmp_user_id, existing_cookie.cookie, node_id, channel_id)
+            
             loop.close()
             
             if send_result:
@@ -844,3 +847,28 @@ def bind():
         logger.error(f"Bind API error: {e}")
         traceback.print_exc()
         return _return_error_response(str(e), 500)
+
+
+def _send_socketio_session_if_available(nmp_user_id, cookie, node_id, channel_id):
+    """Send session data via Socket.IO if available"""
+    try:
+        from app import socketio
+        
+        # Create session data
+        session_data = {
+            'nmp_user_id': nmp_user_id,
+            'cookie': cookie,
+            'node_id': node_id,
+            'channel_id': channel_id,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        # Send to user-specific room
+        room_name = f"user_{nmp_user_id}"
+        socketio.emit('session_data', session_data, room=room_name)
+        
+        logger.info(f"✅ Session data sent via Socket.IO to room: {room_name}")
+        
+    except Exception as e:
+        logger.warning(f"Socket.IO session send failed: {e}")
+        # Don't fail the entire request if Socket.IO fails

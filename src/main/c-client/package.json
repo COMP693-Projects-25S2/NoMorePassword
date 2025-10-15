@@ -1,0 +1,25 @@
+{
+  "name": "c-client",
+  "version": "1.0.0",
+  "description": "C-Client for NoMorePassword",
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "nmp",
+    "client",
+    "websocket",
+    "socketio"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "socket.io-client": "^4.7.5",
+    "ws": "^8.14.2",
+    "better-sqlite3": "^12.2.0",
+    "uuid": "^10.0.0"
+  }
+}

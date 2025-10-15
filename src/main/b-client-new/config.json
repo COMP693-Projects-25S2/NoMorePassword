@@ -1,5 +1,5 @@
 {
-  "current_environment": "production",
+  "current_environment": "local",
   "environments": {
     "local": {
       "name": "本地开发环境",
@@ -10,8 +10,7 @@
       },
       "websocket": {
         "enabled": true,
-        "server_host": "127.0.0.1",
-        "server_port": 8766
+        "use_socketio": true
       }
     },
     "production": {
@@ -23,15 +22,9 @@
       },
       "websocket": {
         "enabled": true,
-        "server_host": "127.0.0.1",
-        "server_port": 8766
+        "use_socketio": true
       }
     }
-  },
-  "network": {
-    "use_public_ip": false,
-    "public_ip": "121.74.37.6",
-    "local_ip": "127.0.0.1"
   },
   "default": {
     "autoRefreshIntervalMinutes": 30

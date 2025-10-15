@@ -3,6 +3,9 @@ const WebSocket = require('ws');
 // Import logging system
 const { getCClientLogger, getSyncLogger } = require('../utils/logger');
 
+// Import Socket.IO client
+const SocketIOClient = require('./socketioClient');
+
 // Import all handlers
 const ConnectionManager = require('./handlers/connectionManager');
 const MessageRouter = require('./handlers/messageRouter');
@@ -31,6 +34,9 @@ class CClientWebSocketClient {
         this.reconnectTimer = null;
         this.mainWindow = null;
         this.electronApp = null;
+
+        // Socket.IO client
+        this.socketioClient = new SocketIOClient(this);
 
         // Additional properties used by handlers
         this.userSessionCache = {};
@@ -395,6 +401,104 @@ class CClientWebSocketClient {
             this.logger.error(`[WebSocket Client] Error handling message:`, error);
             this.logger.error(`[WebSocket Client] Raw data:`, data.toString());
         }
+    }
+
+    // ========================================
+    // Socket.IO Connection Methods
+    // ========================================
+
+    /**
+     * Connect to Socket.IO server
+     * @param {string} serverUrl - Server URL
+     * @param {string} environmentName - Environment name
+     * @returns {Promise<boolean>} - Connection success
+     */
+    async connectToSocketIO(serverUrl, environmentName = 'Socket.IO Server') {
+        try {
+            this.logger.info(`[WebSocket Client] ===== CONNECTING TO SOCKET.IO SERVER =====`);
+            this.logger.info(`[WebSocket Client] Server URL: ${serverUrl}`);
+            this.logger.info(`[WebSocket Client] Environment: ${environmentName}`);
+
+            const result = await this.socketioClient.connectToSocketIO(serverUrl, environmentName);
+
+            if (result) {
+                this.isConnected = true;
+                this.logger.info(`[WebSocket Client] ✅ Connected to Socket.IO server`);
+                return true;
+            } else {
+                this.logger.error(`[WebSocket Client] ❌ Failed to connect to Socket.IO server`);
+                return false;
+            }
+        } catch (error) {
+            this.logger.error(`[WebSocket Client] ❌ Error connecting to Socket.IO server:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Register with Socket.IO server
+     * @param {Object} registrationData - Registration data
+     * @returns {boolean} - Registration success
+     */
+    registerWithSocketIO(registrationData) {
+        try {
+            this.logger.info(`[WebSocket Client] Registering with Socket.IO server:`, registrationData);
+            return this.socketioClient.register(registrationData);
+        } catch (error) {
+            this.logger.error(`[WebSocket Client] Error registering with Socket.IO server:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Send message via Socket.IO
+     * @param {Object} messageData - Message data
+     * @returns {boolean} - Send success
+     */
+    sendSocketIOMessage(messageData) {
+        try {
+            this.logger.info(`[WebSocket Client] Sending Socket.IO message:`, messageData);
+            return this.socketioClient.send(messageData);
+        } catch (error) {
+            this.logger.error(`[WebSocket Client] Error sending Socket.IO message:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Send bind request via Socket.IO
+     * @param {Object} bindData - Bind data
+     * @returns {boolean} - Send success
+     */
+    bindWithSocketIO(bindData) {
+        try {
+            this.logger.info(`[WebSocket Client] Sending Socket.IO bind request:`, bindData);
+            return this.socketioClient.bind(bindData);
+        } catch (error) {
+            this.logger.error(`[WebSocket Client] Error sending Socket.IO bind request:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Disconnect from Socket.IO server
+     */
+    disconnectSocketIO() {
+        try {
+            this.logger.info(`[WebSocket Client] Disconnecting from Socket.IO server`);
+            this.socketioClient.disconnect();
+            this.isConnected = false;
+        } catch (error) {
+            this.logger.error(`[WebSocket Client] Error disconnecting from Socket.IO server:`, error);
+        }
+    }
+
+    /**
+     * Get Socket.IO connection status
+     * @returns {Object} - Connection status
+     */
+    getSocketIOStatus() {
+        return this.socketioClient.getStatus();
     }
 }
 

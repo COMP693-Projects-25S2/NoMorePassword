@@ -51,6 +51,12 @@ def start_websocket_server():
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+            # Check if we should use Socket.IO instead of native WebSocket
+            use_socketio = c_client_ws.config.get('use_socketio', False)
+            if use_socketio:
+                logger.info("Socket.IO mode enabled, skipping native WebSocket server")
+                return
+            
             # B-Client as server, use configured address and port
             host = c_client_ws.config.get('server_host', '0.0.0.0')
             port = c_client_ws.config.get('server_port', 8766)

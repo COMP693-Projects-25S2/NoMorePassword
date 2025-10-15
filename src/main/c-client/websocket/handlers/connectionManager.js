@@ -587,6 +587,107 @@ class ConnectionManager {
             default: return 'UNKNOWN';
         }
     }
+
+    // ========================================
+    // Socket.IO Connection Methods
+    // ========================================
+
+    /**
+     * Connect to Socket.IO server
+     * @param {string} serverUrl - Server URL
+     * @param {string} environmentName - Environment name
+     * @returns {Promise<boolean>} - Connection success
+     */
+    async connectToSocketIO(serverUrl, environmentName = 'Socket.IO Server') {
+        try {
+            this.logger.info(`[WebSocket Client] ===== CONNECTING TO SOCKET.IO SERVER =====`);
+            this.logger.info(`[WebSocket Client] Server URL: ${serverUrl}`);
+            this.logger.info(`[WebSocket Client] Environment: ${environmentName}`);
+
+            // Prevent multiple simultaneous connections
+            if (this.connectionInProgress) {
+                this.logger.info(`[WebSocket Client] Connection already in progress, skipping duplicate connection attempt`);
+                return false;
+            }
+
+            this.connectionInProgress = true;
+
+            const result = await this.client.connectToSocketIO(serverUrl, environmentName);
+
+            if (result) {
+                this.logger.info(`[WebSocket Client] ✅ Connected to Socket.IO server`);
+                this.lastConnectionConfig = {
+                    serverUrl: serverUrl,
+                    environmentName: environmentName,
+                    connectionType: 'socketio'
+                };
+                return true;
+            } else {
+                this.logger.error(`[WebSocket Client] ❌ Failed to connect to Socket.IO server`);
+                return false;
+            }
+        } catch (error) {
+            this.logger.error(`[WebSocket Client] ❌ Error connecting to Socket.IO server:`, error);
+            return false;
+        } finally {
+            this.connectionInProgress = false;
+        }
+    }
+
+    /**
+     * Connect to NSN-provided Socket.IO server
+     * @param {string} websocketUrl - WebSocket URL from NSN
+     * @returns {Promise<boolean>} - Connection success
+     */
+    async connectToNSNProvidedSocketIO(websocketUrl) {
+        try {
+            this.logger.info(`[WebSocket Client] ===== CONNECTING TO NSN-PROVIDED SOCKET.IO =====`);
+            this.logger.info(`[WebSocket Client] WebSocket URL: ${websocketUrl}`);
+
+            // Parse the WebSocket URL for logging
+            this.logger.info(`[WebSocket Client] ===== URL PARSING =====`);
+            this.logger.info(`[WebSocket Client] Parsing WebSocket URL...`);
+            const url = new URL(websocketUrl);
+            const host = url.hostname;
+            const port = url.port || (url.protocol === 'wss:' ? '443' : '80');
+
+            this.logger.info(`[WebSocket Client] Parsed URL details:`);
+            this.logger.info(`   Host: ${host}`);
+            this.logger.info(`   Port: ${port}`);
+            this.logger.info(`   Protocol: ${url.protocol}`);
+            this.logger.info(`   Full URL: ${websocketUrl}`);
+
+            // Connect using Socket.IO
+            this.logger.info(`[WebSocket Client] Connecting to NSN-provided Socket.IO: ${websocketUrl}`);
+
+            const startTime = Date.now();
+            const result = await this.connectToSocketIO(websocketUrl, 'NSN-Provided Socket.IO');
+            const endTime = Date.now();
+            const duration = endTime - startTime;
+
+            if (result) {
+                this.logger.info(`[WebSocket Client] Connected to NSN Socket.IO in ${duration}ms`);
+                // Store websocket URL for reconnection
+                if (!this.lastConnectionConfig) {
+                    this.lastConnectionConfig = {};
+                }
+                this.lastConnectionConfig.websocketUrl = websocketUrl;
+            } else {
+                this.logger.error(`[WebSocket Client] Failed to connect to NSN Socket.IO`);
+                this.logger.error(`[WebSocket Client] WebSocket URL: ${websocketUrl}`);
+                this.logger.error(`[WebSocket Client] Connection time: ${duration}ms`);
+                this.logger.error(`[WebSocket Client] Auto-registration cannot proceed`);
+            }
+
+            return result;
+        } catch (error) {
+            this.logger.error('❌ [WebSocket Client] ===== ERROR CONNECTING TO NSN SOCKET.IO =====');
+            this.logger.error('❌ [WebSocket Client] Error connecting to NSN-provided Socket.IO:', error);
+            return false;
+        } finally {
+            this.connectionInProgress = false;
+        }
+    }
 }
 
 module.exports = ConnectionManager;

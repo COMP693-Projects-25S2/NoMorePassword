@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 
 # Third-party imports
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask_socketio import SocketIO, emit, join_room, leave_room, disconnect
 from werkzeug.security import generate_password_hash, check_password_hash
 import requests
 
@@ -98,6 +99,9 @@ app.config['SECRET_KEY'] = 'b-client-enterprise-secret-key'
 # Use standard SQLite database
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///b_client_secure.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Initialize SocketIO
+socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True)
 
 # Initialize database
 init_db(app)
@@ -1633,6 +1637,114 @@ logger.info("✅ Security code cleanup task scheduled (runs every 15 minutes)")
 logger.info("=" * 80)
 
 
+# SocketIO Event Handlers
+@socketio.on('connect')
+def handle_connect():
+    """Handle client connection"""
+    logger.info(f"Client connected: {request.sid}")
+    emit('status', {'message': 'Connected to B-Client WebSocket server'})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle client disconnection"""
+    logger.info(f"Client disconnected: {request.sid}")
+
+@socketio.on('register')
+def handle_register(data):
+    """Handle client registration"""
+    try:
+        logger.info(f"Registration request from {request.sid}: {data}")
+        
+        # Extract registration data
+        client_id = data.get('client_id')
+        user_id = data.get('user_id')
+        username = data.get('username')
+        node_id = data.get('node_id')
+        domain_id = data.get('domain_id')
+        cluster_id = data.get('cluster_id')
+        channel_id = data.get('channel_id')
+        
+        # Store connection info
+        session['client_id'] = client_id
+        session['user_id'] = user_id
+        session['username'] = username
+        session['node_id'] = node_id
+        session['domain_id'] = domain_id
+        session['cluster_id'] = cluster_id
+        session['channel_id'] = channel_id
+        
+        # Join user-specific room
+        if user_id:
+            join_room(f"user_{user_id}")
+            join_room(f"node_{node_id}")
+        
+        # Send registration success
+        emit('registration_success', {
+            'client_id': client_id,
+            'user_id': user_id,
+            'username': username,
+            'message': 'Registration successful'
+        })
+        
+        logger.info(f"Registration successful for user {username} ({user_id})")
+        
+    except Exception as e:
+        logger.error(f"Registration error: {e}")
+        emit('error', {'message': f'Registration failed: {str(e)}'})
+
+@socketio.on('message')
+def handle_message(data):
+    """Handle incoming messages"""
+    try:
+        logger.info(f"Message from {request.sid}: {data}")
+        
+        # Echo the message back
+        emit('message', {
+            'from': 'server',
+            'message': f"Echo: {data.get('message', '')}",
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Message handling error: {e}")
+        emit('error', {'message': f'Message handling failed: {str(e)}'})
+
+@socketio.on('bind')
+def handle_bind(data):
+    """Handle bind requests from NSN"""
+    try:
+        logger.info(f"Bind request from {request.sid}: {data}")
+        
+        # Process bind request (similar to existing bind logic)
+        nsn_user_id = data.get('nsn_user_id')
+        nsn_username = data.get('nsn_username')
+        domain_id = data.get('domain_id')
+        node_id = data.get('node_id')
+        channel_id = data.get('channel_id')
+        client_id = data.get('client_id')
+        request_type = data.get('request_type', 0)
+        
+        # Store session info
+        session['nsn_user_id'] = nsn_user_id
+        session['nsn_username'] = nsn_username
+        
+        # Send bind success
+        emit('bind_success', {
+            'nsn_user_id': nsn_user_id,
+            'nsn_username': nsn_username,
+            'domain_id': domain_id,
+            'node_id': node_id,
+            'channel_id': channel_id,
+            'client_id': client_id,
+            'message': 'Bind successful'
+        })
+        
+        logger.info(f"Bind successful for user {nsn_username} ({nsn_user_id})")
+        
+    except Exception as e:
+        logger.error(f"Bind error: {e}")
+        emit('error', {'message': f'Bind failed: {str(e)}'})
+
 if __name__ == '__main__':
     logger.info("B-Client application starting...")
     
@@ -1640,9 +1752,10 @@ if __name__ == '__main__':
         db.create_all()
         logger.info("Database initialized successfully")
     
-    logger.info("Starting Flask server on 0.0.0.0:3000")
+    logger.info("Starting Flask-SocketIO server on 0.0.0.0:3000")
     
     # Configure Flask log level to reduce console output
     logging.getLogger('werkzeug').setLevel(logging.WARNING)
     
-    app.run(debug=True, host='0.0.0.0', port=3000)
+    # Use SocketIO instead of Flask's run method
+    socketio.run(app, debug=True, host='0.0.0.0', port=3000)
