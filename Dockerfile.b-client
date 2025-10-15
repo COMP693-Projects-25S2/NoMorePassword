@@ -1,4 +1,6 @@
-# Use Python 3.10 slim image
+# Dockerfile for B-Client deployment on Render.com
+# This Dockerfile is specifically for deploying only the B-Client component
+
 FROM python:3.10-slim
 
 # Set working directory
@@ -10,14 +12,11 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
-COPY requirements.txt .
+# Copy only the B-Client directory
+COPY src/main/b-client-new/ .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy only B-Client application code
-COPY . .
 
 # Create instance directory for SQLite database
 RUN mkdir -p instance
