@@ -181,57 +181,6 @@ def get_stats():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/config')
-def get_config():
-    try:
-        # Load configuration from config.json if exists
-        config_path = os.path.join(os.path.dirname(__file__), 'config.json')
-        if os.path.exists(config_path):
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-        else:
-            # Default configuration
-            config = {
-                "network": {
-                    "use_public_ip": False,
-                    "public_ip": "121.74.37.6",
-                    "local_ip": "127.0.0.1"
-                },
-                "api": {
-                    "nsn_port": 5000,
-                    "c_client_port_range": {
-                        "min": 3001,
-                        "max": 6000
-                    }
-                },
-                "targetWebsites": {
-                    "localhost:5000": {
-                        "name": "Local Development",
-                        "homeUrl": "http://localhost:5000",
-                        "realTitle": "NSN Local Development",
-                        "images": {
-                            "favicon": "/static/favicon.ico",
-                            "logo": "/static/logo.png"
-                        }
-                    },
-                    "comp693nsnproject.pythonanywhere.com": {
-                        "name": "NSN Production",
-                        "homeUrl": "https://comp693nsnproject.pythonanywhere.com",
-                        "realTitle": "NSN Production Server",
-                        "images": {
-                            "favicon": "/static/favicon.ico",
-                            "logo": "/static/logo.png"
-                        }
-                    }
-                },
-                "default": {
-                    "autoRefreshIntervalMinutes": 30
-                }
-            }
-        
-        return jsonify(config)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/cookies', methods=['GET'])
 def get_cookies():
