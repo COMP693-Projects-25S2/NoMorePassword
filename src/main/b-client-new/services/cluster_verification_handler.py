@@ -2,12 +2,12 @@
 Cluster Verification WebSocket Handler
 Handles WebSocket messages for cluster verification process
 """
-import json
 import asyncio
-import sys
-import os
-from typing import Dict, Optional
 import datetime
+import json
+import os
+import sys
+from typing import Dict, Optional
 
 # Import logging system
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -43,12 +43,12 @@ class ClusterVerificationHandler:
             logger.info(f"===== OTHER NODE RECEIVED CLUSTER VERIFICATION QUERY =====")
             logger.info(f"Query action: {message.get('action')}")
             logger.info(f"Channel ID: {message.get('channel_id')}")
-            logger.info(f"Min batch size: {message.get('min_batch_size', 5)}")
+            logger.info(f"Min batch size: {message.get('min_batch_size', 3)}")
             logger.info(f"Timestamp: {message.get('timestamp')}")
             
             action = message.get('action')
             channel_id = message.get('channel_id')
-            min_batch_size = message.get('min_batch_size', 5)
+            min_batch_size = message.get('min_batch_size', 3)
             
             if action == 'get_valid_batch':
                 logger.info(f"===== OTHER NODE PROCESSING GET_VALID_BATCH QUERY =====")

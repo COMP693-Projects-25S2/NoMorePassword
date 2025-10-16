@@ -5,9 +5,11 @@ Manages user activity history synchronization between C-clients
 
 import asyncio
 import json
+import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from uuid import uuid4
+from urllib.parse import urlparse
 
 # Import logging system
 import sys
@@ -19,22 +21,128 @@ from utils.logger import get_bclient_logger
 class SyncManager:
     """B-Client Sync Manager for user activity synchronization"""
     
-    def __init__(self, websocket_client, node_manager):
+    def __init__(self, websocket_client, node_manager, config_manager=None):
         """
         Initialize Sync Manager
         
         Args:
             websocket_client: WebSocket client instance for communication
             node_manager: NodeManager instance for connection management
+            config_manager: ConfigManager instance for URL filtering configuration
         """
         self.websocket_client = websocket_client
         self.node_manager = node_manager
+        self.config_manager = config_manager
         self.logger = get_bclient_logger('sync_manager')
         
         # Track pending batches for feedback
         self.pending_batches: Dict[str, Dict] = {}
         
+        # Load URL filtering configuration
+        self.url_filtering_config = self._load_url_filtering_config()
+        
         self.logger.info("SyncManager initialized")
+        self.logger.info(f"URL filtering enabled: {self.url_filtering_config.get('enabled', False)}")
+        if self.url_filtering_config.get('enabled', False):
+            self.logger.info(f"Allowed domains: {self.url_filtering_config.get('allowed_domains', [])}")
+            self.logger.info(f"Allowed patterns: {self.url_filtering_config.get('allowed_patterns', [])}")
+    
+    def _load_url_filtering_config(self) -> Dict:
+        """Load URL filtering configuration from config manager"""
+        try:
+            if self.config_manager:
+                config = self.config_manager.get_config()
+                return config.get('url_filtering', {
+                    'enabled': False,
+                    'allowed_domains': [],
+                    'allowed_patterns': []
+                })
+            else:
+                # Fallback configuration
+                return {
+                    'enabled': True,
+                    'allowed_domains': [
+                        'comp693nsnproject.pythonanywhere.com',
+                        'localhost:5000',
+                        '127.0.0.1:5000'
+                    ],
+                    'allowed_patterns': [
+                        'https://comp693nsnproject.pythonanywhere.com/*',
+                        'http://localhost:5000/*',
+                        'http://127.0.0.1:5000/*'
+                    ]
+                }
+        except Exception as e:
+            self.logger.error(f"Error loading URL filtering config: {e}")
+            return {'enabled': False, 'allowed_domains': [], 'allowed_patterns': []}
+    
+    def _filter_activities_by_url(self, activities: List[Dict]) -> List[Dict]:
+        """
+        Filter activities based on URL patterns
+        
+        Args:
+            activities: List of activity dictionaries
+            
+        Returns:
+            Filtered list of activities that match allowed URL patterns
+        """
+        if not self.url_filtering_config.get('enabled', False):
+            self.logger.debug("URL filtering disabled, returning all activities")
+            return activities
+        
+        allowed_domains = self.url_filtering_config.get('allowed_domains', [])
+        allowed_patterns = self.url_filtering_config.get('allowed_patterns', [])
+        
+        filtered_activities = []
+        filtered_count = 0
+        
+        self.logger.info(f"🔍 [URL Filter] Filtering {len(activities)} activities")
+        self.logger.info(f"🔍 [URL Filter] Allowed domains: {allowed_domains}")
+        self.logger.info(f"🔍 [URL Filter] Allowed patterns: {allowed_patterns}")
+        
+        for activity in activities:
+            url = activity.get('url', '')
+            if not url:
+                self.logger.debug(f"🔍 [URL Filter] Activity has no URL, skipping: {activity.get('title', 'No title')}")
+                continue
+            
+            # Check if URL matches any allowed domain or pattern
+            is_allowed = False
+            
+            # Check domain matching
+            try:
+                parsed_url = urlparse(url)
+                domain = parsed_url.netloc
+                
+                for allowed_domain in allowed_domains:
+                    if domain == allowed_domain or domain.endswith('.' + allowed_domain):
+                        is_allowed = True
+                        self.logger.debug(f"🔍 [URL Filter] ✅ Domain match: {url} matches {allowed_domain}")
+                        break
+            except Exception as e:
+                self.logger.debug(f"🔍 [URL Filter] Error parsing URL {url}: {e}")
+            
+            # Check pattern matching
+            if not is_allowed:
+                for pattern in allowed_patterns:
+                    # Convert pattern to regex
+                    regex_pattern = pattern.replace('*', '.*')
+                    if re.match(regex_pattern, url):
+                        is_allowed = True
+                        self.logger.debug(f"🔍 [URL Filter] ✅ Pattern match: {url} matches {pattern}")
+                        break
+            
+            if is_allowed:
+                filtered_activities.append(activity)
+                self.logger.debug(f"🔍 [URL Filter] ✅ Allowed: {url}")
+            else:
+                filtered_count += 1
+                self.logger.debug(f"🔍 [URL Filter] ❌ Filtered out: {url}")
+        
+        self.logger.info(f"🔍 [URL Filter] Filtering result: {len(filtered_activities)}/{len(activities)} activities allowed")
+        self.logger.info(f"🔍 [URL Filter] Filtered out {filtered_count} activities")
+        
+        return filtered_activities
     
     async def handle_user_activities_batch(self, websocket, batch_data: Dict) -> None:
         """
@@ -65,6 +173,26 @@ class SyncManager:
                     self.logger.info(f"   Activity {i+1}: {activity.get('title', 'No title')} - {activity.get('url', 'No URL')}")
                 if len(activities) > 3:
                     self.logger.info(f"   ... and {len(activities) - 3} more activities")
+            
+            # Apply URL filtering before forwarding
+            self.logger.info(f"🔍 [SyncManager] ===== APPLYING URL FILTERING =====")
+            filtered_activities = self._filter_activities_by_url(activities)
+            
+            if not filtered_activities:
+                self.logger.info(f"🔍 [SyncManager] ===== NO ACTIVITIES PASSED FILTER =====")
+                self.logger.info(f"🔍 [SyncManager] All {len(activities)} activities were filtered out")
+                self.logger.info(f"🔍 [SyncManager] Skipping batch forwarding")
+                
+                # Send feedback to sender about filtering
+                await self._send_batch_feedback(websocket, batch_id, True, f"Batch received but {len(activities)} activities filtered out by URL filter")
+                return
+            
+            # Update batch data with filtered activities
+            batch_data['sync_data'] = filtered_activities
+            self.logger.info(f"🔍 [SyncManager] ===== URL FILTERING COMPLETED =====")
+            self.logger.info(f"🔍 [SyncManager] Original activities: {len(activities)}")
+            self.logger.info(f"🔍 [SyncManager] Filtered activities: {len(filtered_activities)}")
+            self.logger.info(f"🔍 [SyncManager] Activities filtered out: {len(activities) - len(filtered_activities)}")
             
             # Store batch info for feedback tracking
             self.pending_batches[batch_id] = {

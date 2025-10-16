@@ -3,11 +3,11 @@ Sync Data Queries Service
 Handles database queries for sync_data table in cluster verification
 """
 import json
-import sys
 import os
+import sys
 from datetime import datetime, timedelta
-from urllib.parse import urlparse
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 # Import logging system
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -26,7 +26,7 @@ class SyncDataQueries:
     
     def __init__(self, database):
         self.db = database
-        self.min_batch_size = 5  # Minimum batch size for verification
+        self.min_batch_size = 3  # Minimum batch size for verification
     
     def get_valid_batches(self, channel_id: str, min_batch_size: int = None) -> List[Dict]:
         """
@@ -34,7 +34,7 @@ class SyncDataQueries:
         
         Args:
             channel_id: Channel ID to filter by
-            min_batch_size: Minimum batch size (default: 5)
+            min_batch_size: Minimum batch size (default: 3)
             
         Returns:
             List of valid batch data
@@ -272,7 +272,7 @@ def init_sync_data_queries(database):
     logger.info("Sync data queries service initialized")
 
 
-def get_valid_batches_for_channel(channel_id: str, min_batch_size: int = 5) -> List[Dict]:
+def get_valid_batches_for_channel(channel_id: str, min_batch_size: int = 3) -> List[Dict]:
     """Get valid batches for a channel"""
     if not sync_data_queries:
         logger.error("Sync data queries service not initialized")

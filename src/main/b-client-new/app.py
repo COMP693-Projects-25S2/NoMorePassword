@@ -1567,7 +1567,9 @@ logger.info(f"   c_client_ws.node_manager = {c_client_ws.node_manager}")
 
 # Reinitialize SyncManager with updated NodeManager
 logger.info("Reinitializing SyncManager with updated NodeManager...")
-sync_manager = SyncManager(c_client_ws, node_manager)
+from utils.config_manager import get_config_manager
+config_manager = get_config_manager()
+sync_manager = SyncManager(c_client_ws, node_manager, config_manager)
 logger.info(f"SyncManager reinitialized: {sync_manager}")
 
 # Inject SyncManager into WebSocket client

@@ -2,11 +2,11 @@
 Cluster Verification Service
 Handles cluster verification logic for C-Client authentication
 """
-import json
 import asyncio
-import time
-import sys
+import json
 import os
+import sys
+import time
 import traceback
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
@@ -26,7 +26,7 @@ class ClusterVerificationService:
         self.websocket_client = websocket_client
         self.db = database
         self.verification_timeout = 30  # 30 seconds timeout for verification
-        self.min_batch_size = 5  # Minimum batch size for verification
+        self.min_batch_size = 3  # Minimum batch size for verification
         
         # Response storage for async communication
         self.pending_responses = {}  # Store responses by node_id
