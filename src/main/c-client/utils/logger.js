@@ -27,7 +27,8 @@ class CClientLogger {
             history: path.join(this.logDir, `cclient_history_${startTime}.log`),
             ipc: path.join(this.logDir, `cclient_ipc_${startTime}.log`),
             app: path.join(this.logDir, `cclient_app_${startTime}.log`),
-            security_code: path.join(this.logDir, `cclient_security_code_${startTime}.log`)
+            security_code: path.join(this.logDir, `cclient_security_code_${startTime}.log`),
+            cluster_verification: path.join(this.logDir, `cclient_cluster_verification_${startTime}.log`) // Cluster verification log file
         };
 
         // Log levels

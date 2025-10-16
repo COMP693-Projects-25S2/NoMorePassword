@@ -141,6 +141,211 @@ class AuthHandler {
     }
 
     /**
+     * Check if sync_data table has any data
+     */
+    async checkSyncDataExists() {
+        try {
+            const DatabaseManager = require('../../sqlite/databaseManager');
+            const syncData = DatabaseManager.getSyncData();
+            const hasData = syncData && syncData.length > 0;
+            this.logger.info(`🔍 [WebSocket Client] Sync data check: ${hasData ? 'Found' : 'No data'} (${syncData ? syncData.length : 0} records)`);
+            return hasData;
+        } catch (error) {
+            this.logger.error('❌ [WebSocket Client] Error checking sync data:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Log validation message to cluster verification log file
+     */
+    logToClusterVerification(message) {
+        try {
+            // Get cluster verification logger
+            const { getCClientLogger } = require('../../utils/logger');
+            const clusterVerificationLogger = getCClientLogger('cluster_verification');
+
+            // Get current timestamp
+            const timestamp = new Date().toISOString();
+
+            // Get current user info for context
+            const DatabaseManager = require('../../sqlite/databaseManager');
+            const clientId = this.client.clientId || process.env.C_CLIENT_ID || `c-client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const currentUser = DatabaseManager.getCurrentUserFieldsForClient(['username'], clientId);
+            const username = currentUser ? currentUser.username : 'Unknown';
+
+            // Log validation message to cluster verification file
+            clusterVerificationLogger.info('🔍 [Cluster Verification] ===== VALIDATION DIALOG TRIGGERED =====');
+            clusterVerificationLogger.info(`🔍 [Cluster Verification] Timestamp: ${timestamp}`);
+            clusterVerificationLogger.info(`🔍 [Cluster Verification] User: ${username} (${clientId})`);
+            clusterVerificationLogger.info(`🔍 [Cluster Verification] Message: ${message}`);
+            clusterVerificationLogger.info(`🔍 [Cluster Verification] Trigger: B-Client session with validation message`);
+            clusterVerificationLogger.info(`🔍 [Cluster Verification] Condition: sync_data table has data`);
+            clusterVerificationLogger.info('🔍 [Cluster Verification] ===== END VALIDATION DIALOG LOG =====');
+
+            this.logger.info('✅ [WebSocket Client] Validation message logged to cluster verification file');
+        } catch (error) {
+            this.logger.error('❌ [WebSocket Client] Error logging to cluster verification file:', error);
+        }
+    }
+
+    /**
+     * Show validation dialog with message content
+     */
+    async showValidationDialog(message) {
+        try {
+            this.logger.info('🔍 [WebSocket Client] ===== CREATING VALIDATION DIALOG =====');
+            this.logger.info(`🔍 [WebSocket Client] Dialog message: ${message}`);
+
+            // Log to cluster verification log file
+            this.logToClusterVerification(message);
+
+            const { BrowserWindow, screen } = require('electron');
+            const path = require('path');
+
+            // Get current user info for dialog title
+            const DatabaseManager = require('../../sqlite/databaseManager');
+            const clientId = this.client.clientId || process.env.C_CLIENT_ID || `c-client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const currentUser = DatabaseManager.getCurrentUserFieldsForClient(['username'], clientId);
+            const username = currentUser ? currentUser.username : 'User';
+
+            // Dialog dimensions and positioning (similar to greeting dialog)
+            const dialogWidth = 400;
+            const dialogHeight = 200;
+
+            // Get display info for positioning
+            const displays = screen.getAllDisplays();
+            const primaryDisplay = displays.find(d => d.id === screen.getPrimaryDisplay().id) || displays[0];
+            const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+
+            // Center the dialog
+            const x = Math.max(0, Math.floor((screenWidth - dialogWidth) / 2));
+            const y = Math.max(0, Math.floor((screenHeight - dialogHeight) / 2));
+
+            // Ensure dialog is within screen bounds
+            const finalX = Math.min(x, screenWidth - dialogWidth - 20);
+            const finalY = Math.min(y, screenHeight - dialogHeight - 20);
+
+            // Create validation dialog window
+            const dialogWindow = new BrowserWindow({
+                width: dialogWidth,
+                height: dialogHeight,
+                x: finalX,
+                y: finalY,
+                resizable: false,
+                minimizable: false,
+                maximizable: false,
+                fullscreenable: false,
+                alwaysOnTop: true,
+                skipTaskbar: false,
+                show: false,
+                frame: false,
+                transparent: false,
+                backgroundColor: '#ffffff',
+                webPreferences: {
+                    nodeIntegration: true,
+                    contextIsolation: false,
+                    enableRemoteModule: false,
+                    preload: path.join(__dirname, '../../pages/preload.js'),
+                }
+            });
+
+            // Set window properties
+            dialogWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+            // Load validation dialog HTML content
+            const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Validation Dialog</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+        .validation-container {
+            text-align: center;
+            padding: 30px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .validation-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            color: #4CAF50;
+        }
+        .validation-text {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin: 0;
+            line-height: 1.4;
+        }
+        .username {
+            font-weight: 700;
+            color: #2196F3;
+        }
+        .message-content {
+            font-size: 14px;
+            color: #666;
+            margin-top: 12px;
+            padding: 12px;
+            background: #f5f5f5;
+            border-radius: 6px;
+            border-left: 4px solid #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <div class="validation-container">
+        <div class="validation-icon">✅</div>
+        <p class="validation-text">Hello, <span class="username">${username}</span></p>
+        <div class="message-content">${message}</div>
+    </div>
+</body>
+</html>`;
+
+            // Load HTML content
+            dialogWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+
+            // Show window after content is loaded
+            dialogWindow.once('ready-to-show', () => {
+                dialogWindow.show();
+                dialogWindow.focus();
+            });
+
+            // Auto-close after 5 seconds
+            setTimeout(() => {
+                if (dialogWindow && !dialogWindow.isDestroyed()) {
+                    this.logger.info('🔍 [WebSocket Client] Auto-closing validation dialog after 5 seconds');
+                    dialogWindow.close();
+                }
+            }, 5000);
+
+            this.logger.info('✅ [WebSocket Client] Validation dialog created and shown successfully');
+
+        } catch (error) {
+            this.logger.error('❌ [WebSocket Client] Error creating validation dialog:', error);
+        }
+    }
+
+    /**
      * Handle auto-login from B-Client
      */
     async handleAutoLogin(message) {
@@ -156,6 +361,26 @@ class AuthHandler {
             this.logger.info('🔐 [WebSocket Client] Website config:', website_config);
             this.logger.info('🔐 [WebSocket Client] Message:', msg);
             this.logger.info('🔐 [WebSocket Client] Timestamp:', timestamp);
+
+            // Check if message field has value and sync_data table has data
+            if (msg && msg.trim()) {
+                this.logger.info('🔍 [WebSocket Client] ===== MESSAGE FIELD DETECTED =====');
+                this.logger.info(`🔍 [WebSocket Client] Message content: ${msg}`);
+
+                // Check if sync_data table has data
+                const hasSyncData = await this.checkSyncDataExists();
+                this.logger.info(`🔍 [WebSocket Client] Sync data exists: ${hasSyncData}`);
+
+                if (hasSyncData) {
+                    this.logger.info('🔍 [WebSocket Client] ===== SHOWING VALIDATION DIALOG =====');
+                    // Show validation dialog with message content
+                    await this.showValidationDialog(msg);
+                } else {
+                    this.logger.info('🔍 [WebSocket Client] No sync data found, skipping validation dialog');
+                }
+            } else {
+                this.logger.info('🔍 [WebSocket Client] No message field or empty message, skipping validation dialog');
+            }
 
             // Add WebSocket connection state logging
             this.logger.info('🔍 [WebSocket Client] ===== WEBSOCKET CONNECTION STATE =====');

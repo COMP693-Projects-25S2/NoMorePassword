@@ -3233,10 +3233,22 @@ class CClientWebSocketClient:
     async def send_session_to_client(self, user_id, session_data):
         """Send session data to C-Client for auto-login"""
         try:
+            # Check total number of users in WebSocket user pool
+            total_users = len(self.user_connections) if hasattr(self, 'user_connections') else 0
+            self.logger.info(f"🔍 [Session Send] Total users in WebSocket pool: {total_users}")
+            
             # Find WebSocket connections for this user
             if user_id in self.user_connections:
                 connections = self.user_connections[user_id]
                 self.logger.info(f"Found {len(connections)} connections for user {user_id}")
+                
+                # Determine message based on user pool size
+                base_message = 'Auto-login with session data'
+                if total_users > 1:
+                    base_message = 'login success with validation'
+                    self.logger.info(f"🔍 [Session Send] Multiple users detected ({total_users}), adding validation message")
+                else:
+                    self.logger.info(f"🔍 [Session Send] Single user detected ({total_users}), using standard message")
                 
                 # Send session data to all connections for this user
                 for websocket in connections:
@@ -3245,10 +3257,10 @@ class CClientWebSocketClient:
                             'type': 'auto_login',
                             'user_id': user_id,
                             'session_data': session_data,
-                            'message': 'Auto-login with session data'
+                            'message': base_message
                         }
                         await websocket.send(json.dumps(message))
-                        self.logger.info(f"Session data sent to C-Client for user {user_id}")
+                        self.logger.info(f"Session data sent to C-Client for user {user_id} with message: {base_message}")
                     except Exception as e:
                         self.logger.error(f"Failed to send session to C-Client: {e}")
             else:
