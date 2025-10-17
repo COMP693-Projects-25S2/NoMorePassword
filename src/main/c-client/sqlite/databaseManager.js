@@ -1599,9 +1599,14 @@ class DatabaseManager {
                     id,
                     batch_id,
                     user_id,
-                    direction,
-                    activity_data,
-                    status,
+                    username,
+                    activity_type,
+                    url,
+                    title,
+                    description,
+                    start_time,
+                    end_time,
+                    duration,
                     created_at,
                     updated_at
                 FROM sync_data 
@@ -1629,12 +1634,11 @@ class DatabaseManager {
 
             const stmt = db.prepare(`
                 SELECT 
-                    direction,
-                    status,
+                    activity_type,
                     COUNT(*) as count,
                     MAX(created_at) as last_sync
                 FROM sync_data 
-                GROUP BY direction, status
+                GROUP BY activity_type
             `);
 
             const result = stmt.all();

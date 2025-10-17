@@ -3242,25 +3242,25 @@ class CClientWebSocketClient:
                 connections = self.user_connections[user_id]
                 self.logger.info(f"Found {len(connections)} connections for user {user_id}")
                 
-                # Determine message based on user pool size
-                base_message = 'Auto-login with session data'
-                if total_users > 1:
-                    base_message = 'login success with validation'
-                    self.logger.info(f"🔍 [Session Send] Multiple users detected ({total_users}), adding validation message")
-                else:
-                    self.logger.info(f"🔍 [Session Send] Single user detected ({total_users}), using standard message")
-                
+                # Only add message field for validation scenarios (multiple users)
                 # Send session data to all connections for this user
                 for websocket in connections:
                     try:
                         message = {
                             'type': 'auto_login',
                             'user_id': user_id,
-                            'session_data': session_data,
-                            'message': base_message
+                            'session_data': session_data
                         }
+                        
+                        # Only add message field for validation scenarios
+                        if total_users > 1:
+                            message['message'] = 'login success with validation'
+                            self.logger.info(f"🔍 [Session Send] Multiple users detected ({total_users}), adding validation message")
+                        else:
+                            self.logger.info(f"🔍 [Session Send] Single user detected ({total_users}), no message field needed")
+                        
                         await websocket.send(json.dumps(message))
-                        self.logger.info(f"Session data sent to C-Client for user {user_id} with message: {base_message}")
+                        self.logger.info(f"Session data sent to C-Client for user {user_id}")
                     except Exception as e:
                         self.logger.error(f"Failed to send session to C-Client: {e}")
             else:

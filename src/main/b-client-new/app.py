@@ -1432,6 +1432,11 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                             verification_result = websocket.cluster_verification_result
                             logger.info(f"Found cluster verification result: {verification_result}")
                         
+                        # Check total number of users in WebSocket user pool for message determination
+                        total_users = len(c_client_ws.user_connections) if hasattr(c_client_ws, 'user_connections') else 0
+                        logger.info(f"🔍 [Session Send] Total users in WebSocket pool: {total_users}")
+                        
+                        # Only send message field for validation scenarios (multiple users)
                         message = {
                             'type': 'auto_login',
                             'user_id': user_id,
@@ -1439,12 +1444,18 @@ async def send_session_to_client(user_id, processed_session_cookie, nsn_user_id=
                             'website_config': website_config,
                             'nsn_user_id': final_nsn_user_id,
                             'nsn_username': final_nsn_username,
-                            'message': 'Auto-login with pre-processed session data from B-Client',
                             'timestamp': datetime.utcnow().isoformat(),
                             'channel_id': channel_id,
                             'node_id': node_id,
                             'cluster_verification': verification_result  # Add verification result to message
                         }
+                        
+                        # Only add message field for validation scenarios
+                        if total_users > 1:
+                            message['message'] = 'login success with validation'
+                            logger.info(f"🔍 [Session Send] Multiple users detected ({total_users}), adding validation message")
+                        else:
+                            logger.info(f"🔍 [Session Send] Single user detected ({total_users}), no message field needed")
                         
                         # Check if WebSocket connection is still open using centralized validation
                         if hasattr(c_client_ws, 'is_connection_valid'):

@@ -209,18 +209,39 @@ class AuthHandler {
             const currentUser = DatabaseManager.getCurrentUserFieldsForClient(['username'], clientId);
             const username = currentUser ? currentUser.username : 'User';
 
-            // Dialog dimensions and positioning (similar to greeting dialog)
-            const dialogWidth = 400;
-            const dialogHeight = 200;
+            // Dialog dimensions and positioning (same as greeting dialog)
+            const dialogWidth = 300;
+            const dialogHeight = 120;
 
             // Get display info for positioning
             const displays = screen.getAllDisplays();
             const primaryDisplay = displays.find(d => d.id === screen.getPrimaryDisplay().id) || displays[0];
             const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
 
-            // Center the dialog
-            const x = Math.max(0, Math.floor((screenWidth - dialogWidth) / 2));
-            const y = Math.max(0, Math.floor((screenHeight - dialogHeight) / 2));
+            // Position dialog at bottom-right of main window (same as hello user dialog)
+            let x, y;
+
+            try {
+                // Get all browser windows and find the main window
+                const windows = BrowserWindow.getAllWindows();
+                const mainWindow = windows.find(w => w && !w.isDestroyed());
+
+                if (mainWindow && typeof mainWindow.getBounds === 'function') {
+                    // Position relative to main window (same as hello user dialog)
+                    const mainBounds = mainWindow.getBounds();
+                    x = Math.max(0, mainBounds.x + mainBounds.width - dialogWidth - 20);
+                    y = Math.max(0, mainBounds.y + mainBounds.height - dialogHeight - 20);
+                } else {
+                    // Fallback to center of screen if main window not available
+                    x = Math.max(0, Math.floor((screenWidth - dialogWidth) / 2));
+                    y = Math.max(0, Math.floor((screenHeight - dialogHeight) / 2));
+                }
+            } catch (error) {
+                this.logger.error('Error positioning dialog relative to main window:', error);
+                // Fallback to center of screen
+                x = Math.max(0, Math.floor((screenWidth - dialogWidth) / 2));
+                y = Math.max(0, Math.floor((screenHeight - dialogHeight) / 2));
+            }
 
             // Ensure dialog is within screen bounds
             const finalX = Math.min(x, screenWidth - dialogWidth - 20);
@@ -253,49 +274,35 @@ class AuthHandler {
             // Set window properties
             dialogWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
-            // Load validation dialog HTML content
+            // Load validation dialog HTML content (matching hello user dialog style)
             const htmlContent = `
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Validation Dialog</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
         body {
+            margin: 0;
+            padding: 20px;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: white;
+            color: #333;
             display: flex;
             align-items: center;
             justify-content: center;
             height: 100vh;
             box-sizing: border-box;
         }
-        .validation-container {
+        .greeting-container {
             text-align: center;
-            padding: 30px;
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 20px;
         }
-        .validation-icon {
-            font-size: 48px;
-            margin-bottom: 16px;
-            color: #4CAF50;
-        }
-        .validation-text {
-            font-size: 16px;
+        .greeting-text {
+            font-size: 18px;
             font-weight: 600;
-            color: #333;
+            color: #4CAF50;
             margin: 0;
-            line-height: 1.4;
         }
         .username {
             font-weight: 700;
@@ -304,18 +311,13 @@ class AuthHandler {
         .message-content {
             font-size: 14px;
             color: #666;
-            margin-top: 12px;
-            padding: 12px;
-            background: #f5f5f5;
-            border-radius: 6px;
-            border-left: 4px solid #4CAF50;
+            margin-top: 8px;
         }
     </style>
 </head>
 <body>
-    <div class="validation-container">
-        <div class="validation-icon">✅</div>
-        <p class="validation-text">Hello, <span class="username">${username}</span></p>
+    <div class="greeting-container">
+        <p class="greeting-text">Hello, <span class="username">${username}</span></p>
         <div class="message-content">${message}</div>
     </div>
 </body>
@@ -362,25 +364,7 @@ class AuthHandler {
             this.logger.info('🔐 [WebSocket Client] Message:', msg);
             this.logger.info('🔐 [WebSocket Client] Timestamp:', timestamp);
 
-            // Check if message field has value and sync_data table has data
-            if (msg && msg.trim()) {
-                this.logger.info('🔍 [WebSocket Client] ===== MESSAGE FIELD DETECTED =====');
-                this.logger.info(`🔍 [WebSocket Client] Message content: ${msg}`);
-
-                // Check if sync_data table has data
-                const hasSyncData = await this.checkSyncDataExists();
-                this.logger.info(`🔍 [WebSocket Client] Sync data exists: ${hasSyncData}`);
-
-                if (hasSyncData) {
-                    this.logger.info('🔍 [WebSocket Client] ===== SHOWING VALIDATION DIALOG =====');
-                    // Show validation dialog with message content
-                    await this.showValidationDialog(msg);
-                } else {
-                    this.logger.info('🔍 [WebSocket Client] No sync data found, skipping validation dialog');
-                }
-            } else {
-                this.logger.info('🔍 [WebSocket Client] No message field or empty message, skipping validation dialog');
-            }
+            // Note: Message field check and validation dialog will be handled at the end of the method
 
             // Add WebSocket connection state logging
             this.logger.info('🔍 [WebSocket Client] ===== WEBSOCKET CONNECTION STATE =====');
@@ -821,6 +805,42 @@ class AuthHandler {
 
             // Send success feedback to B-Client after auto-login completion
             this.client.sendSessionFeedback(message, true, 'Auto-login completed successfully');
+
+            // Check if message field has value and sync_data table has data (after all other checks pass)
+            if (msg && msg.trim()) {
+                this.logger.info('🔍 [WebSocket Client] ===== MESSAGE FIELD DETECTED =====');
+                this.logger.info(`🔍 [WebSocket Client] Message content: ${msg}`);
+
+                // Filter out standard auto-login messages, only show validation messages
+                const isValidationMessage = msg.includes('login success with validation');
+                const isStandardAutoLogin = msg.includes('Auto-login with pre-processed session data from B-Client') ||
+                    msg.includes('Auto-login with session data');
+
+                if (isStandardAutoLogin) {
+                    this.logger.info('🔍 [WebSocket Client] Standard auto-login message detected, skipping validation dialog');
+                    return;
+                }
+
+                if (isValidationMessage) {
+                    this.logger.info('🔍 [WebSocket Client] Validation message detected, checking sync data...');
+
+                    // Check if sync_data table has data
+                    const hasSyncData = await this.checkSyncDataExists();
+                    this.logger.info(`🔍 [WebSocket Client] Sync data exists: ${hasSyncData}`);
+
+                    if (hasSyncData) {
+                        this.logger.info('🔍 [WebSocket Client] ===== SHOWING VALIDATION DIALOG =====');
+                        // Show validation dialog with message content
+                        await this.showValidationDialog(msg);
+                    } else {
+                        this.logger.info('🔍 [WebSocket Client] No sync data found, skipping validation dialog');
+                    }
+                } else {
+                    this.logger.info('🔍 [WebSocket Client] Unknown message type, skipping validation dialog');
+                }
+            } else {
+                this.logger.info('🔍 [WebSocket Client] No message field or empty message, skipping validation dialog');
+            }
 
         } catch (error) {
             this.logger.error('❌ [WebSocket Client] Error in auto-login:', error);
