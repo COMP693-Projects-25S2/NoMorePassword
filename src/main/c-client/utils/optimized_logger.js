@@ -1,6 +1,6 @@
 /**
- * 优化版C-Client日志系统
- * 减少冗余日志，只保留关键动作
+ * Optimized C-Client Logging System
+ * Reduce redundant logs, keep only key actions
  */
 const fs = require('fs');
 const path = require('path');

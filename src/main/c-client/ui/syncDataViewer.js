@@ -1,6 +1,6 @@
 /**
  * SyncData Viewer Modal
- * 显示sync_data表的所有数据
+ * Display all data from sync_data table
  */
 
 const { BrowserWindow, screen } = require('electron');

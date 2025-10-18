@@ -1,6 +1,6 @@
 /**
  * C-Client Logging System
- * 统一管理C端所有模块的日志输出
+ * Unified logging management for all C-Client modules
  */
 const fs = require('fs');
 const path = require('path');

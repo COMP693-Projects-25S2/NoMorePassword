@@ -38,7 +38,7 @@ class ConfigManager:
             "current_environment": "local",
             "environments": {
                 "local": {
-                    "name": "本地开发环境",
+                    "name": "Local Development Environment",
                     "api": {
                         "nsn_url": "http://localhost:5000",
                         "nsn_host": "localhost",
@@ -51,7 +51,7 @@ class ConfigManager:
                     }
                 },
                 "production": {
-                    "name": "生产环境",
+                    "name": "Production Environment",
                     "api": {
                         "nsn_url": "https://comp693nsnproject.pythonanywhere.com",
                         "nsn_host": "comp693nsnproject.pythonanywhere.com",

@@ -44,8 +44,8 @@ if websockets is None:
 
 def safe_close_websocket(websocket, reason="Connection closed"):
     """
-    安全关闭WebSocket连接的通用函数
-    可以在同步和异步上下文中使用
+    Universal function for safely closing WebSocket connections
+    Can be used in both synchronous and asynchronous contexts
     """
     try:
         if hasattr(websocket, 'close'):

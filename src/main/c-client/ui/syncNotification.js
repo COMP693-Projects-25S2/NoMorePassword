@@ -1,6 +1,6 @@
 /**
  * Sync Notification Component
- * 显示同步数据接收提示
+ * Display sync data reception notifications
  */
 
 class SyncNotification {
@@ -11,7 +11,7 @@ class SyncNotification {
     }
 
     /**
-     * 创建通知组件
+     * Create notification component
      */
     createNotification() {
         this.notification = document.createElement('div');
@@ -84,7 +84,7 @@ class SyncNotification {
     }
 
     /**
-     * 添加CSS动画
+     * Add CSS animations
      */
     addAnimations() {
         const style = document.createElement('style');
@@ -135,10 +135,10 @@ class SyncNotification {
     }
 
     /**
-     * 显示同步接收通知
-     * @param {string} username - 发送方用户名
-     * @param {number} activitiesCount - 活动数量
-     * @param {number} duration - 显示时长（毫秒），默认3000ms
+     * Show sync received notification
+     * @param {string} username - Sender username
+     * @param {number} activitiesCount - Number of activities
+     * @param {number} duration - Display duration (milliseconds), default 3000ms
      */
     show(username, activitiesCount = 0, duration = 3000) {
         // Clear previous timer
@@ -175,9 +175,9 @@ class SyncNotification {
     }
 
     /**
-     * 显示同步发送通知
-     * @param {number} activitiesCount - 活动数量
-     * @param {number} duration - 显示时长（毫秒），默认2000ms
+     * Show sync sent notification
+     * @param {number} activitiesCount - Number of activities
+     * @param {number} duration - Display duration (milliseconds), default 2000ms
      */
     showSent(activitiesCount = 0, duration = 2000) {
         // Clear previous timer
@@ -214,9 +214,9 @@ class SyncNotification {
     }
 
     /**
-     * 显示错误通知
-     * @param {string} errorMessage - 错误消息
-     * @param {number} duration - 显示时长（毫秒），默认4000ms
+     * Show error notification
+     * @param {string} errorMessage - Error message
+     * @param {number} duration - Display duration (milliseconds), default 4000ms
      */
     showError(errorMessage, duration = 4000) {
         // Clear previous timer
@@ -253,7 +253,7 @@ class SyncNotification {
     }
 
     /**
-     * 隐藏通知
+     * Hide notification
      */
     hide() {
         if (this.notification) {
@@ -273,7 +273,7 @@ class SyncNotification {
     }
 
     /**
-     * 手动点击关闭
+     * Manual click to close
      */
     addCloseOnClick() {
         this.notification.addEventListener('click', () => {

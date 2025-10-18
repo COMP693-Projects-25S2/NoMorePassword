@@ -3,7 +3,7 @@
 
 class PageContentExtractor {
     /**
-     * 提取NSN页面内容信息
+     * Extract NSN page content information
      */
     static async extractNSNContent(webContents, url) {
         try {
@@ -57,7 +57,7 @@ class PageContentExtractor {
     }
 
     /**
-     * 检测页面类型
+     * Detect page type
      */
     static detectPageType(pathname) {
         if (pathname.includes('/journey/')) return 'journey';
@@ -70,7 +70,7 @@ class PageContentExtractor {
     }
 
     /**
-     * 提取Journey页面信息
+     * Extract Journey page information
      */
     static async extractJourneyContent(webContents) {
         try {
@@ -121,7 +121,7 @@ class PageContentExtractor {
     }
 
     /**
-     * 提取Event页面信息
+     * Extract Event page information
      */
     static async extractEventContent(webContents) {
         try {
@@ -163,7 +163,7 @@ class PageContentExtractor {
     }
 
     /**
-     * 提取Profile页面信息
+     * Extract Profile page information
      */
     static async extractProfileContent(webContents) {
         try {
@@ -198,7 +198,7 @@ class PageContentExtractor {
     }
 
     /**
-     * 提取首页信息
+     * Extract home page information
      */
     static async extractHomeContent(webContents) {
         try {
@@ -236,7 +236,7 @@ class PageContentExtractor {
     }
 
     /**
-     * 提取搜索页面信息
+     * Extract search page information
      */
     static async extractSearchContent(webContents) {
         try {
@@ -268,7 +268,7 @@ class PageContentExtractor {
     }
 
     /**
-     * 提取登录页面信息
+     * Extract login page information
      */
     static async extractLoginContent(webContents) {
         try {
@@ -294,7 +294,7 @@ class PageContentExtractor {
     }
 
     /**
-     * 提取通用页面信息
+     * Extract general page information
      */
     static async extractGeneralContent(webContents) {
         try {

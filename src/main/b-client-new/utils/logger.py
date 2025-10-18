@@ -1,6 +1,6 @@
 """
 B-Client Logging System
-统一管理B端所有模块的日志输出
+Unified logging management for all B-Client modules
 """
 import os
 import logging
@@ -10,7 +10,7 @@ from pathlib import Path
 import sys
 
 class BClientLogger:
-    """B-Client日志管理器"""
+    """B-Client log manager"""
     
     def __init__(self, log_dir="logs"):
         self.log_dir = Path(log_dir)
@@ -36,7 +36,7 @@ class BClientLogger:
         self._setup_loggers()
     
     def _setup_loggers(self):
-        """设置各个模块的logger"""
+        """Setup loggers for each module"""
         # Main application logger
         self.main_logger = self._create_logger(
             'bclient_main',
@@ -101,7 +101,7 @@ class BClientLogger:
         )
     
     def _create_logger(self, name, log_file, level=logging.INFO):
-        """创建logger实例"""
+        """Create logger instance"""
         logger = logging.getLogger(name)
         logger.setLevel(level)
         
@@ -137,7 +137,7 @@ class BClientLogger:
         return logger
     
     def get_logger(self, module_name):
-        """根据模块名获取对应的logger"""
+        """Get corresponding logger based on module name"""
         module_map = {
             'websocket': self.websocket_logger,
             'websocket_server': self.websocket_logger,  # Use same logger for websocket server
@@ -153,7 +153,7 @@ class BClientLogger:
         return module_map.get(module_name, self.main_logger)
     
     def log_startup_info(self):
-        """记录启动信息"""
+        """Log startup information"""
         self.main_logger.info("=" * 60)
         self.main_logger.info(f"B-Client Starting at {datetime.now()}")
         self.main_logger.info(f"Log files created:")
@@ -172,12 +172,12 @@ class BClientLogger:
 bclient_logger = BClientLogger()
 
 def get_bclient_logger(module_name):
-    """获取B端模块logger的便捷函数"""
+    """Convenience function to get B-Client module logger"""
     return bclient_logger.get_logger(module_name)
 
 # Override print function to also log print output
 class PrintToLogger:
-    """将print输出重定向到日志"""
+    """Redirect print output to logs"""
     
     def __init__(self, logger):
         self.logger = logger
@@ -194,6 +194,6 @@ class PrintToLogger:
 
 # Replace print function
 def setup_print_redirect(module_name):
-    """设置print重定向到日志"""
+    """Setup print redirection to logs"""
     logger = get_bclient_logger(module_name)
     return PrintToLogger(logger)
