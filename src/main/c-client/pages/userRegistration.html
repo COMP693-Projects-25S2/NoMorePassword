@@ -223,7 +223,11 @@
                 // Submit username
                 ipcRenderer.invoke('submit-username', username).then(result => {
                     console.log('Submit result:', result);
-                    if (!result.success) {
+                    if (result.success) {
+                        console.log('✅ User registration successful, closing dialog');
+                        // Close the registration dialog on success
+                        window.close();
+                    } else {
                         showError(result.error || 'Failed to submit username');
                     }
                 }).catch(error => {

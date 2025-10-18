@@ -165,6 +165,14 @@ class ConnectionManager {
 
         this.connectionInProgress = true;
 
+        // Set a timeout to reset connectionInProgress flag if connection takes too long
+        const connectionTimeout = setTimeout(() => {
+            if (this.connectionInProgress) {
+                this.logger.warn(`[WebSocket Client] Connection timeout - resetting connectionInProgress flag`);
+                this.connectionInProgress = false;
+            }
+        }, 15000); // 15 second timeout
+
         try {
             // Smart connection handling: only disconnect if connection is invalid
             if (this.client.websocket) {
@@ -216,6 +224,7 @@ class ConnectionManager {
             this.logger.info(`[WebSocket Client] WebSocket object created, setting up event handlers...`);
 
             this.client.websocket.on('open', () => {
+                clearTimeout(connectionTimeout); // Clear the connection timeout
                 this.logger.info(`[WebSocket Client] Connected to ${environmentName}`);
                 this.logger.info(`   Target: ${environmentName} (${host}:${port})`);
                 this.client.isConnected = true;
@@ -254,6 +263,7 @@ class ConnectionManager {
             });
 
             this.client.websocket.on('close', (code, reason) => {
+                clearTimeout(connectionTimeout); // Clear the connection timeout
                 this.logger.info(`[WebSocket Client] ===== WEBSOCKET CONNECTION CLOSED =====`);
                 this.logger.info(`[WebSocket Client] Connection closed`);
                 this.logger.info(`   Code: ${code}`);
@@ -272,6 +282,7 @@ class ConnectionManager {
             });
 
             this.client.websocket.on('error', (error) => {
+                clearTimeout(connectionTimeout); // Clear the connection timeout
                 this.logger.info(`[WebSocket Client] Connection error:`, error);
                 this.logger.info(`   Target: ${environmentName} (${host}:${port})`);
                 this.client.isConnected = false;
@@ -280,7 +291,9 @@ class ConnectionManager {
 
             return true;
         } catch (error) {
+            clearTimeout(connectionTimeout); // Clear the connection timeout
             this.logger.error(`[WebSocket Client] Failed to connect to ${environmentName}:`, error);
+            this.connectionInProgress = false;
             return false;
         } finally {
             // Always reset connection in progress flag

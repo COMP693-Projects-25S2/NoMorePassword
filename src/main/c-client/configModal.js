@@ -386,15 +386,17 @@ class ConfigModal {
                             code: result.security_code
                         });
                     } else {
-                        // Show error with clickable link in custom dialog
+                        // Show error with clickable links in custom dialog
                         const errorMessage = result.error || 'Failed to get security code';
-                        const websiteUrl = result.cooperativeWebsiteUrl;
+                        const localUrl = result.localUrl;
+                        const productionUrl = result.productionUrl;
                         
-                        if (websiteUrl) {
-                            // Use IPC to open custom error dialog
+                        if (localUrl && productionUrl) {
+                            // Use IPC to open custom error dialog with both URLs
                             await ipcRenderer.invoke('show-error-dialog', {
                                 message: errorMessage,
-                                url: websiteUrl
+                                localUrl: localUrl,
+                                productionUrl: productionUrl
                             });
                         } else {
                             alert(errorMessage);

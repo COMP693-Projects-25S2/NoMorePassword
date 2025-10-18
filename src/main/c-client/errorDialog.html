@@ -127,7 +127,14 @@
             </div>
 
             <div class="url-container">
-                <a href="#" class="url-link" id="websiteLink">http://localhost:5000</a>
+                <div style="margin-bottom: 12px;">
+                    <div style="font-size: 14px; color: #666; margin-bottom: 8px;">Local Development:</div>
+                    <a href="#" class="url-link" id="localLink">http://localhost:5000</a>
+                </div>
+                <div>
+                    <div style="font-size: 14px; color: #666; margin-bottom: 8px;">Production:</div>
+                    <a href="#" class="url-link" id="productionLink">https://comp693nsnproject.pythonanywhere.com</a>
+                </div>
             </div>
         </div>
 
@@ -139,26 +146,42 @@
     <script>
         const { ipcRenderer } = require('electron');
 
-        // Get error message and URL from query parameters
+        // Get error message and URLs from query parameters
         const urlParams = new URLSearchParams(window.location.search);
         const errorMessage = decodeURIComponent(urlParams.get('message') || 'Please connect to cooperative websites first');
-        const websiteUrl = decodeURIComponent(urlParams.get('url') || 'http://localhost:5000');
+        const localUrl = decodeURIComponent(urlParams.get('localUrl') || 'http://localhost:5000');
+        const productionUrl = decodeURIComponent(urlParams.get('productionUrl') || 'https://comp693nsnproject.pythonanywhere.com');
 
         // Update UI
         document.getElementById('errorMessage').textContent = errorMessage;
-        const linkElement = document.getElementById('websiteLink');
-        linkElement.textContent = websiteUrl;
-        linkElement.href = websiteUrl;
+        const localLinkElement = document.getElementById('localLink');
+        const productionLinkElement = document.getElementById('productionLink');
 
-        // Handle link click - create new tab with URL (same as renderer.js createTab)
-        linkElement.addEventListener('click', async (e) => {
+        localLinkElement.textContent = localUrl;
+        localLinkElement.href = localUrl;
+        productionLinkElement.textContent = productionUrl;
+        productionLinkElement.href = productionUrl;
+
+        // Handle local link click
+        localLinkElement.addEventListener('click', async (e) => {
             e.preventDefault();
-            console.log('Creating new tab with URL:', websiteUrl);
+            console.log('Creating new tab with local URL:', localUrl);
+            await createTabWithUrl(localUrl);
+        });
 
+        // Handle production link click
+        productionLinkElement.addEventListener('click', async (e) => {
+            e.preventDefault();
+            console.log('Creating new tab with production URL:', productionUrl);
+            await createTabWithUrl(productionUrl);
+        });
+
+        // Helper function to create tab with URL
+        async function createTabWithUrl(url) {
             try {
                 // Create new tab with URL (same as renderer.js when no current tab)
                 // IPC handler will automatically inject NMP parameters
-                const result = await ipcRenderer.invoke('create-tab', websiteUrl);
+                const result = await ipcRenderer.invoke('create-tab', url);
                 if (result && result.success) {
                     console.log('✅ Tab created successfully:', result.id);
                     // Close the error dialog after creating tab
@@ -171,7 +194,7 @@
                 console.error('Error creating tab:', error);
                 alert('Error: ' + error.message);
             }
-        });
+        }
 
         // Handle close button
         document.getElementById('closeBtn').addEventListener('click', () => {

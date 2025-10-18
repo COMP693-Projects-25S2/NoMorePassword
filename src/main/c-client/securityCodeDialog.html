@@ -241,6 +241,13 @@
             }
         });
 
+        // Listen for new device login completion event
+        ipcRenderer.on('new-device-login-complete', (event, data) => {
+            console.log('🔐 Security Code Dialog: New device login completed, auto-closing dialog');
+            console.log('🔐 Security Code Dialog: User data:', data);
+            window.close();
+        });
+
         // Auto-select code on click
         document.getElementById('securityCode').addEventListener('click', function () {
             const range = document.createRange();

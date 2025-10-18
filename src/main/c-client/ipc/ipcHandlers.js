@@ -1978,29 +1978,11 @@ class IpcHandlers {
 
                 securityLogger.info('📱 IPC: Request security code for another device login');
 
-                // Get cooperative website URL from config
-                const fs = require('fs');
-                const path = require('path');
-                let cooperativeWebsiteUrl = apiConfig.getNsnUrl(); // Default fallback
+                // Define both local and production URLs
+                const localUrl = 'http://localhost:5000';
+                const productionUrl = 'https://comp693nsnproject.pythonanywhere.com';
 
-                try {
-                    const configPath = path.join(__dirname, '..', 'config.json');
-                    if (fs.existsSync(configPath)) {
-                        const configData = fs.readFileSync(configPath, 'utf8');
-                        const config = JSON.parse(configData);
-
-                        if (config.nmp_cooperative_website) {
-                            const currentEnv = config.nmp_cooperative_website.current || 'local';
-                            const envConfig = config.nmp_cooperative_website[currentEnv];
-                            if (envConfig && envConfig.url) {
-                                cooperativeWebsiteUrl = envConfig.url;
-                                securityLogger.info(`📱 IPC: Using cooperative website URL from config: ${cooperativeWebsiteUrl}`);
-                            }
-                        }
-                    }
-                } catch (configError) {
-                    securityLogger.warn(`📱 IPC: Failed to load config, using default URL: ${configError.message}`);
-                }
+                securityLogger.info(`📱 IPC: Available URLs - Local: ${localUrl}, Production: ${productionUrl}`);
 
                 // Step 1: Check if WebSocket is connected
                 if (!this.webSocketClient || !this.webSocketClient.isConnected) {
@@ -2008,7 +1990,8 @@ class IpcHandlers {
                     return {
                         success: false,
                         error: 'Please connect to cooperative websites first',
-                        cooperativeWebsiteUrl: cooperativeWebsiteUrl
+                        localUrl: localUrl,
+                        productionUrl: productionUrl
                     };
                 }
 
@@ -2019,7 +2002,9 @@ class IpcHandlers {
                     securityLogger.warn('📱 IPC: No current user found');
                     return {
                         success: false,
-                        error: 'No user is currently logged in'
+                        error: 'No user is currently logged in',
+                        localUrl: localUrl,
+                        productionUrl: productionUrl
                     };
                 }
 
@@ -2030,7 +2015,8 @@ class IpcHandlers {
                     return {
                         success: false,
                         error: 'Please connect to cooperative websites first',
-                        cooperativeWebsiteUrl: cooperativeWebsiteUrl
+                        localUrl: localUrl,
+                        productionUrl: productionUrl
                     };
                 }
 
@@ -2061,7 +2047,7 @@ class IpcHandlers {
             }
         });
 
-        // Show error dialog with clickable URL
+        // Show error dialog with clickable URLs
         this.safeRegisterHandler('show-error-dialog', async (event, options) => {
             try {
                 const { BrowserWindow } = require('electron');
@@ -2069,7 +2055,7 @@ class IpcHandlers {
 
                 const errorDialog = new BrowserWindow({
                     width: 500,
-                    height: 350,
+                    height: 400,
                     modal: true,
                     parent: this.mainWindow,
                     resizable: false,
@@ -2082,13 +2068,15 @@ class IpcHandlers {
                 });
 
                 const encodedMessage = encodeURIComponent(options.message || 'An error occurred');
-                const encodedUrl = encodeURIComponent(options.url || '');
+                const encodedLocalUrl = encodeURIComponent(options.localUrl || 'http://localhost:5000');
+                const encodedProductionUrl = encodeURIComponent(options.productionUrl || 'https://comp693nsnproject.pythonanywhere.com');
                 const dialogPath = path.join(__dirname, '..', 'errorDialog.html');
 
                 await errorDialog.loadFile(dialogPath, {
                     query: {
                         message: encodedMessage,
-                        url: encodedUrl
+                        localUrl: encodedLocalUrl,
+                        productionUrl: encodedProductionUrl
                     }
                 });
 
@@ -2459,6 +2447,32 @@ class IpcHandlers {
 
                 securityLogger.info('✅ [IPC Handlers] ===== NEW DEVICE LOGIN COMPLETE =====');
                 securityLogger.info('✅ [IPC Handlers] User switch operation completed successfully');
+
+                // Step 6: Notify security code dialog to close
+                securityLogger.info('🔐 [IPC Handlers] Step 6: Notifying security code dialog to close...');
+                try {
+                    // Send event to all windows to close security code dialogs
+                    const { BrowserWindow } = require('electron');
+                    const allWindows = BrowserWindow.getAllWindows();
+
+                    for (const window of allWindows) {
+                        if (window.webContents && !window.isDestroyed()) {
+                            try {
+                                window.webContents.send('new-device-login-complete', {
+                                    user_id: user_id,
+                                    username: username,
+                                    timestamp: Date.now()
+                                });
+                                securityLogger.info(`🔐 [IPC Handlers] Sent close event to window ${window.id}`);
+                            } catch (sendError) {
+                                securityLogger.warn(`⚠️ [IPC Handlers] Failed to send event to window ${window.id}:`, sendError.message);
+                            }
+                        }
+                    }
+                    securityLogger.info('✅ [IPC Handlers] Security code dialog close notification sent');
+                } catch (notifyError) {
+                    securityLogger.error('❌ [IPC Handlers] Error notifying security code dialog:', notifyError);
+                }
 
             } catch (error) {
                 const { getCClientLogger } = require('../utils/logger');
