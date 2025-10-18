@@ -3,8 +3,21 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const FileUtils = require('../utils/fileUtils');
 
-// Database file path - use secure.db from sqlite folder
-const dbPath = path.join(__dirname, 'secure.db');
+// Database file path - use exe file directory for independent instances
+const { app } = require('electron');
+const os = require('os');
+
+// Get exe file directory for independent database instances
+let exeDir;
+if (app && app.isPackaged) {
+    // For packaged Electron app, use the app directory
+    exeDir = path.dirname(process.execPath);
+} else {
+    // For development or unpackaged app, use the current working directory
+    exeDir = process.cwd();
+}
+
+const dbPath = path.join(exeDir, 'secure.db');
 
 // Check if directory exists
 const dbDir = path.dirname(dbPath);

@@ -724,11 +724,27 @@ class TabManager {
         try {
             const electronMainWindow = this.getElectronMainWindow();
 
-            if (electronMainWindow && typeof electronMainWindow.addBrowserView === 'function') {
+            if (!electronMainWindow) {
+                this.logger.error(`❌ TabManager: Main window not available for showing BrowserView`);
+                return false;
+            }
+
+            if (electronMainWindow.isDestroyed()) {
+                this.logger.error(`❌ TabManager: Main window is destroyed, cannot show BrowserView`);
+                return false;
+            }
+
+            if (typeof electronMainWindow.addBrowserView === 'function') {
                 electronMainWindow.addBrowserView(browserView);
+                this.logger.info(`✅ TabManager: BrowserView added to main window`);
+                return true;
+            } else {
+                this.logger.error(`❌ TabManager: Main window does not support addBrowserView`);
+                return false;
             }
         } catch (error) {
             this.logger.error(`❌ TabManager: Error showing BrowserView:`, error);
+            return false;
         }
     }
 

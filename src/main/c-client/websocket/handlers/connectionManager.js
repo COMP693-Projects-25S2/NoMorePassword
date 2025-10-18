@@ -73,51 +73,10 @@ class ConnectionManager {
             this.client.websocket = new WebSocket(websocketUrl);
             this.logger.info(`[WebSocket Client] WebSocket object created, setting up event handlers...`);
 
-            this.client.websocket.on('open', () => {
-                this.logger.info(`[WebSocket Client] Connected to ${environmentName}`);
-                this.logger.info(`   Target: ${environmentName} (${websocketUrl})`);
-                this.client.isConnected = true;
-                this.connectionInProgress = false;
-
-                // Store connection config for reconnection
-                this.lastConnectionConfig = { websocketUrl, environmentName };
-
-                // Register with current user info after a short delay to ensure connection is stable
-                this.client.registrationTimeout = setTimeout(() => {
-                    // Check if WebSocket still exists before accessing its properties
-                    if (this.client.websocket && this.client.websocket.readyState !== undefined) {
-                        this.logger.info(`[WebSocket Client] WebSocket readyState: ${this.client.websocket.readyState} (${this.getReadyStateName(this.client.websocket.readyState)})`);
-                        if (this.client.websocket.readyState === WebSocket.OPEN) {
-                            // Register with current user info
-                            this.client.registerCurrentUser();
-                        } else {
-                            this.logger.warn(`[WebSocket Client] WebSocket not ready for registration, readyState: ${this.client.websocket.readyState}`);
-                        }
-                    } else {
-                        this.logger.warn(`[WebSocket Client] WebSocket not available for registration`);
-                    }
-                }, 1000); // Wait 1 second before attempting registration
-            });
-
-            this.client.websocket.on('message', (data) => {
-                this.logger.info(`[WebSocket Client] Received message from ${environmentName}:`, data.toString());
-                this.client.handleMessage(data);
-            });
-
-            this.client.websocket.on('close', (code, reason) => {
-                this.logger.info(`[WebSocket Client] Connection to ${environmentName} closed`);
-                this.logger.info(`   Code: ${code}, Reason: ${reason}`);
-                this.client.isConnected = false;
-                this.client.isRegistered = false;
-                this.connectionInProgress = false;
-            });
-
-            this.client.websocket.on('error', (error) => {
-                this.logger.error(`[WebSocket Client] Error connecting to ${environmentName}:`, error);
-                this.client.isConnected = false;
-                this.client.isRegistered = false;
-                this.connectionInProgress = false;
-            });
+            // Remove existing event listeners to prevent memory leaks
+            if (this.client.websocket) {
+                this.client.websocket.removeAllListeners();
+            }
 
             // Wait for connection to be established
             return new Promise((resolve) => {
@@ -127,13 +86,58 @@ class ConnectionManager {
                     resolve(false);
                 }, 10000); // 10 second timeout
 
+                const startTime = Date.now();
+
                 this.client.websocket.on('open', () => {
                     clearTimeout(timeout);
+                    this.logger.info(`[WebSocket Client] Connected to ${environmentName}`);
+                    this.logger.info(`   Target: ${environmentName} (${websocketUrl})`);
+                    this.client.isConnected = true;
+                    this.connectionInProgress = false;
+
+                    // Store connection config for reconnection
+                    this.lastConnectionConfig = { websocketUrl, environmentName };
+
+                    // Register with current user info after a short delay to ensure connection is stable
+                    this.client.registrationTimeout = setTimeout(() => {
+                        // Check if WebSocket still exists before accessing its properties
+                        if (this.client.websocket && this.client.websocket.readyState !== undefined) {
+                            this.logger.info(`[WebSocket Client] WebSocket readyState: ${this.client.websocket.readyState} (${this.getReadyStateName(this.client.websocket.readyState)})`);
+                            if (this.client.websocket.readyState === WebSocket.OPEN) {
+                                // Register with current user info
+                                this.client.registerCurrentUser();
+                            } else {
+                                this.logger.warn(`[WebSocket Client] WebSocket not ready for registration, readyState: ${this.client.websocket.readyState}`);
+                            }
+                        } else {
+                            this.logger.warn(`[WebSocket Client] WebSocket not available for registration`);
+                        }
+                    }, 1000); // Wait 1 second before attempting registration
+
                     resolve(true);
                 });
 
-                this.client.websocket.on('error', () => {
+                this.client.websocket.on('message', (data) => {
+                    this.logger.info(`[WebSocket Client] Received message from ${environmentName}:`, data.toString());
+                    this.client.handleMessage(data);
+                });
+
+                this.client.websocket.on('close', (code, reason) => {
+                    this.logger.info(`[WebSocket Client] Connection to ${environmentName} closed`);
+                    this.logger.info(`   Code: ${code}, Reason: ${reason}`);
+                    this.client.isConnected = false;
+                    this.client.isRegistered = false;
+                    this.connectionInProgress = false;
+                });
+
+                this.client.websocket.on('error', (error) => {
                     clearTimeout(timeout);
+                    this.logger.error(`[WebSocket Client] Error connecting to ${environmentName}:`, error);
+                    this.logger.error(`[WebSocket Client] WebSocket URL: ${websocketUrl}`);
+                    this.logger.error(`[WebSocket Client] Connection time: ${Date.now() - startTime}ms`);
+                    this.client.isConnected = false;
+                    this.client.isRegistered = false;
+                    this.connectionInProgress = false;
                     resolve(false);
                 });
             });

@@ -1575,10 +1575,14 @@ class IpcHandlers {
                         console.log(`   Client ID: ${this.webSocketClient.clientId}`);
 
                         if (this.webSocketClient.isConnected) {
-                            console.log(`🔄 C-Client IPC: Disconnecting WebSocket connection for user switch...`);
-                            // Disconnect WebSocket connection when switching users
-                            this.webSocketClient.disconnect();
-                            console.log(`✅ C-Client IPC: WebSocket connection disconnected for user switch`);
+                            console.log(`🔄 C-Client IPC: Disconnecting and reconnecting WebSocket for user switch...`);
+                            // Disconnect and reconnect WebSocket connection when switching users
+                            const reconnectResult = await this.webSocketClient.disconnectAndReconnectForUserSwitch();
+                            if (reconnectResult) {
+                                console.log(`✅ C-Client IPC: WebSocket reconnected successfully for user switch`);
+                            } else {
+                                console.log(`⚠️ C-Client IPC: WebSocket reconnection failed for user switch, will connect when needed`);
+                            }
                         } else {
                             console.log(`ℹ️ C-Client IPC: No active WebSocket connection during user switch`);
                             console.log(`🔌 C-Client IPC: WebSocket will connect when user accesses NSN page`);

@@ -6,7 +6,21 @@ const fs = require('fs');
 const path = require('path');
 
 class CClientLogger {
-    constructor(logDir = 'logs') {
+    constructor(logDir = null) {
+        // Use exe file directory for independent log instances
+        if (!logDir) {
+            const { app } = require('electron');
+            let exeDir;
+            if (app && app.isPackaged) {
+                // For packaged Electron app, use the app directory
+                exeDir = path.dirname(process.execPath);
+            } else {
+                // For development or unpackaged app, use the current working directory
+                exeDir = process.cwd();
+            }
+            logDir = path.join(exeDir, 'logs');
+        }
+
         this.logDir = path.resolve(logDir);
         this.ensureLogDir();
 
