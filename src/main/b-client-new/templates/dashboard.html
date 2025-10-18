@@ -237,43 +237,55 @@
 
         async loadDashboardData() {
             try {
+                console.log('Loading dashboard data...');
                 const [stats, config, environment] = await Promise.all([
                     this.fetchStats(),
                     this.fetchConfig(),
                     this.fetchEnvironment()
                 ]);
 
+                console.log('Dashboard data loaded:', { stats, config, environment });
                 this.updateWebsiteInfo(config, environment);
                 this.updateStats(stats);
                 this.hideError();
             } catch (error) {
                 console.error('Failed to load dashboard data:', error);
-                this.showError('Failed to load dashboard data');
+                console.error('Error details:', error.message, error.stack);
+                this.showError('Failed to load dashboard data: ' + error.message);
             }
         }
 
         async fetchStats() {
+            console.log('Fetching stats from:', `${this.apiBase}/api/stats`);
             const response = await fetch(`${this.apiBase}/api/stats`);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
-            return await response.json();
+            const data = await response.json();
+            console.log('Stats response:', data);
+            return data;
         }
 
         async fetchConfig() {
+            console.log('Fetching config from:', `${this.apiBase}/api/config`);
             const response = await fetch(`${this.apiBase}/api/config`);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
-            return await response.json();
+            const data = await response.json();
+            console.log('Config response:', data);
+            return data;
         }
 
         async fetchEnvironment() {
+            console.log('Fetching environment from:', `${this.apiBase}/api/config/environment`);
             const response = await fetch(`${this.apiBase}/api/config/environment`);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
-            return await response.json();
+            const data = await response.json();
+            console.log('Environment response:', data);
+            return data;
         }
 
         updateWebsiteInfo(config, environment) {
@@ -302,7 +314,7 @@
                 this.updateWebsiteIcon(website.images);
             }
 
-            const interval = config.default.autoRefreshIntervalMinutes;
+            const interval = config.default?.autoRefreshIntervalMinutes || 30;
             document.getElementById('refreshInfo').textContent = `Auto-refresh: Every ${interval} minutes (${currentEnv} environment)`;
         }
 

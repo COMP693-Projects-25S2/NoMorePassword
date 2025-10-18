@@ -119,7 +119,10 @@ def get_config():
             "current_environment": current_env,
             "api": api_config,
             "websocket": websocket_config,
-            "network": config_manager.get_config().get('network', {})
+            "network": config_manager.get_config().get('network', {}),
+            "default": {
+                "autoRefreshIntervalMinutes": 30
+            }
         }
         
         return jsonify(config)
