@@ -35,7 +35,7 @@ class ConnectionManager {
 
                 // Check if connection is valid and active
                 const isConnectionValid = this.client.isConnected && currentReadyState === WebSocket.OPEN;
-                const isConnectionInProgress = currentReadyState === WebSocket.CONNECTING || this.connectionInProgress;
+                const isConnectionInProgress = currentReadyState === WebSocket.CONNECTING && this.connectionInProgress;
 
                 if (isConnectionValid) {
                     this.logger.info(`[WebSocket Client] Connection is valid and active, reusing existing connection`);
@@ -176,7 +176,7 @@ class ConnectionManager {
 
                 // Check if connection is valid and active
                 const isConnectionValid = this.client.isConnected && currentReadyState === WebSocket.OPEN;
-                const isConnectionInProgress = currentReadyState === WebSocket.CONNECTING || this.connectionInProgress;
+                const isConnectionInProgress = currentReadyState === WebSocket.CONNECTING && this.connectionInProgress;
 
                 if (isConnectionValid) {
                     this.logger.info(`[WebSocket Client] Connection is valid and active, reusing existing connection`);

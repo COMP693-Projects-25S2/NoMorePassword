@@ -1077,13 +1077,13 @@ class IpcHandlers {
                             console.log(`   Client ID: ${this.webSocketClient.clientId}`);
 
                             if (this.webSocketClient.isConnected) {
-                                console.log(`🔄 C-Client IPC: Re-registering user with updated info after registration...`);
-                                // Re-register instead of disconnecting to maintain session continuity
-                                const reRegisterResult = await this.webSocketClient.reRegisterUser();
-                                if (reRegisterResult) {
-                                    console.log(`✅ C-Client IPC: Successfully re-registered after user registration`);
+                                console.log(`🔄 C-Client IPC: Disconnecting and reconnecting WebSocket for user registration...`);
+                                // Disconnect and reconnect WebSocket connection when registering new user
+                                const reconnectResult = await this.webSocketClient.disconnectAndReconnectForUserSwitch();
+                                if (reconnectResult) {
+                                    console.log(`✅ C-Client IPC: WebSocket reconnected successfully for user registration`);
                                 } else {
-                                    console.warn(`⚠️ C-Client IPC: Failed to re-register after user registration`);
+                                    console.log(`⚠️ C-Client IPC: WebSocket reconnection failed for user registration, will connect when needed`);
                                 }
                             } else {
                                 console.log(`ℹ️ C-Client IPC: No active WebSocket connection after user registration`);
