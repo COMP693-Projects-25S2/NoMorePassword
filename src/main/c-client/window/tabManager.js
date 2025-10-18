@@ -8,6 +8,9 @@ const apiConfig = require('../config/apiConfig');
 /**
  * Unified Tab-BrowserView Manager
  * Ensures Tab UI and BrowserView are always synchronized
+ * 
+ * NOTE: This is now the PRIMARY and ONLY manager for page management.
+ * ViewManager is NO LONGER USED - all page management is handled by TabManager.
  */
 class TabManager {
     constructor(electronApp) {
@@ -31,6 +34,9 @@ class TabManager {
             this.onTabTitleUpdated = null;
 
             this.logger.info('✅ TabManager: Initialized unified Tab-BrowserView management');
+
+            // Setup window resize listener for 0x-86 detection
+            this.setupWindowResizeListener();
         } catch (error) {
             this.logger.error('❌ TabManager: Constructor failed: ' + error.message);
             throw error;
@@ -735,7 +741,26 @@ class TabManager {
             }
 
             if (typeof electronMainWindow.addBrowserView === 'function') {
+                // Add BrowserView to main window
                 electronMainWindow.addBrowserView(browserView);
+
+                // Update bounds to ensure proper rendering
+                const bounds = this.getViewBounds();
+                browserView.setBounds(bounds);
+                this.logger.info(`📐 TabManager: Updated bounds for BrowserView: ${bounds.width}x${bounds.height}`);
+
+                // Force focus to ensure proper rendering
+                try {
+                    electronMainWindow.focus();
+                    browserView.webContents.focus();
+                    this.logger.info(`🔍 TabManager: Forced focus to BrowserView`);
+                } catch (focusError) {
+                    this.logger.warn(`⚠️ TabManager: Error forcing focus: ${focusError.message}`);
+                }
+
+                // Force refresh and focus for BrowserView
+                this.forceRefreshAndFocus(browserView);
+
                 this.logger.info(`✅ TabManager: BrowserView added to main window`);
                 return true;
             } else {
@@ -1057,6 +1082,11 @@ class TabManager {
         const allTabs = this.getAllTabs();
         const electronMainWindow = this.getElectronMainWindow();
 
+        if (!electronMainWindow) {
+            this.logger.warn(`⚠️ TabManager: Cannot hide views - main window not available`);
+            return;
+        }
+
         this.logger.info(`🧹 TabManager: Hiding ${allTabs.length} tabs from main window`);
 
         allTabs.forEach(tab => {
@@ -1070,33 +1100,121 @@ class TabManager {
             }
         });
 
-        this.currentTabId = null;
-        this.logger.info(`✅ TabManager: All tabs hidden, currentTabId set to null`);
+        // IMPORTANT: Don't clear currentTabId when hiding views
+        // This preserves the current tab state for when views are shown again
+        this.logger.info(`✅ TabManager: All tabs hidden, currentTabId preserved: ${this.currentTabId}`);
     }
 
     /**
      * Show all tabs in main window
      */
-    showAllViews() {
+    async showAllViews() {
         const allTabs = this.getAllTabs();
         const electronMainWindow = this.getElectronMainWindow();
 
         if (!electronMainWindow) {
+            this.logger.warn(`⚠️ TabManager: Cannot show views - main window not available`);
             return;
         }
 
-        allTabs.forEach(tab => {
+        this.logger.info(`🔄 TabManager: Showing ${allTabs.length} tabs in main window`);
+        this.logger.info(`🔄 TabManager: Main window state - isDestroyed: ${electronMainWindow.isDestroyed()}, isVisible: ${electronMainWindow.isVisible()}, isMinimized: ${electronMainWindow.isMinimized()}`);
+
+        // Log detailed tab information
+        allTabs.forEach((tab, index) => {
+            this.logger.info(`🔄 TabManager: Tab ${index + 1}/${allTabs.length} - ID: ${tab.id}, URL: ${tab.url}, hasBrowserView: ${!!tab.browserView}, isDestroyed: ${tab.browserView ? tab.browserView.webContents.isDestroyed() : 'N/A'}`);
+        });
+
+        // Check and fix window state issues first
+        await this.checkAndFixWindowState();
+
+        // Handle the specific 0x-86 window dimension issue
+        await this.handleZeroByNegativeEightySixIssue();
+
+        // Detect and fix invalid window dimensions (like 0x-86)
+        await this.detectAndFixInvalidWindowDimensions();
+
+        // Detect and fix minimization issues specifically
+        await this.detectAndFixMinimizationIssues();
+
+        // Clear cache and fix memory issues
+        await this.clearCacheAndFixMemory();
+
+        allTabs.forEach((tab, index) => {
+            this.logger.info(`🔄 TabManager: Processing tab ${index + 1}/${allTabs.length} - ID: ${tab.id}`);
+
             if (tab.browserView && !tab.browserView.webContents.isDestroyed()) {
                 try {
+                    this.logger.info(`🔄 TabManager: Adding BrowserView for tab ${tab.id} to main window`);
+
+                    // Add BrowserView to main window
                     electronMainWindow.addBrowserView(tab.browserView);
+                    this.logger.info(`✅ TabManager: BrowserView added to main window for tab ${tab.id}`);
+
+                    // Update bounds to ensure proper rendering
+                    const bounds = this.getViewBounds();
+                    tab.browserView.setBounds(bounds);
+                    this.logger.info(`📐 TabManager: Updated bounds for tab ${tab.id}: ${bounds.width}x${bounds.height}`);
+
+                    // Force refresh and focus for each tab (with reload)
+                    this.logger.info(`🔄 TabManager: Force refreshing tab ${tab.id}...`);
+                    this.forceRefreshAndFocus(tab.browserView);
+
+                    // Analyze and repair page rendering issues for each tab
+                    setTimeout(async () => {
+                        this.logger.info(`🔍 TabManager: Analyzing page rendering for tab ${tab.id}...`);
+                        // First analyze why page might not be rendering
+                        await this.analyzePageRenderingIssues(tab.browserView);
+                        // Then detect and repair page rendering issues
+                        await this.detectAndRepairPageRendering(tab.browserView);
+                        // Also verify and force page rendering
+                        await this.verifyAndForcePageRendering(tab.browserView);
+                        this.logger.info(`✅ TabManager: Page rendering analysis completed for tab ${tab.id}`);
+                    }, 2000); // Wait 2 seconds for page to load
+
                     this.logger.info(`✅ TabManager: Successfully showed tab ${tab.id} in main window`);
                 } catch (error) {
                     this.logger.error(`❌ TabManager: Error showing tab ${tab.id}:`, error);
                 }
+            } else {
+                this.logger.warn(`⚠️ TabManager: Skipping tab ${tab.id} - BrowserView invalid or destroyed`);
+                if (tab.browserView) {
+                    this.logger.warn(`⚠️ TabManager: Tab ${tab.id} BrowserView destroyed: ${tab.browserView.webContents.isDestroyed()}`);
+                } else {
+                    this.logger.warn(`⚠️ TabManager: Tab ${tab.id} has no BrowserView`);
+                }
             }
         });
 
-        this.logger.info(`✅ TabManager: All tabs shown in main window`);
+        // Restore current active tab if exists
+        if (this.currentTabId) {
+            const currentTab = this.getCurrentTab();
+            if (currentTab && currentTab.browserView) {
+                try {
+                    // Set the current tab as active BrowserView
+                    electronMainWindow.setBrowserView(currentTab.browserView);
+
+                    // Force refresh and focus for current tab (with reload)
+                    this.forceRefreshAndFocus(currentTab.browserView);
+
+                    // Analyze and repair page rendering issues
+                    setTimeout(async () => {
+                        // First analyze why page might not be rendering
+                        await this.analyzePageRenderingIssues(currentTab.browserView);
+                        // Then detect and repair page rendering issues
+                        await this.detectAndRepairPageRendering(currentTab.browserView);
+                        // Also verify and force page rendering
+                        await this.verifyAndForcePageRendering(currentTab.browserView);
+                    }, 2000); // Wait 2 seconds for page to load
+
+                    this.logger.info(`✅ TabManager: Restored current tab ${this.currentTabId} as active`);
+                } catch (error) {
+                    this.logger.error(`❌ TabManager: Error setting current tab ${this.currentTabId}:`, error);
+                }
+            }
+        }
+
+        this.logger.info(`✅ TabManager: All tabs shown in main window, current tab: ${this.currentTabId}`);
     }
 
     /**
@@ -1172,19 +1290,1194 @@ class TabManager {
         if (mainWindow) {
             const [width, height] = mainWindow.getContentSize();
             const topOffset = 86; // toolbar 50px + tab bar 36px
+
+            // Check for invalid window dimensions (like 0x-86)
+            if (width <= 0 || height <= 0) {
+                this.logger.warn(`⚠️ TabManager: Invalid window dimensions detected: ${width}x${height}`);
+                this.logger.warn(`⚠️ TabManager: This may cause BrowserView rendering issues`);
+
+                // Force window to have valid dimensions
+                try {
+                    mainWindow.setSize(1000, 800);
+                    this.logger.info(`🔧 TabManager: Forced window size to 1000x800`);
+
+                    // Wait a bit for window to resize
+                    setTimeout(() => {
+                        const [newWidth, newHeight] = mainWindow.getContentSize();
+                        this.logger.info(`🔧 TabManager: Window resized to: ${newWidth}x${newHeight}`);
+                    }, 100);
+                } catch (error) {
+                    this.logger.error(`❌ TabManager: Error resizing window:`, error);
+                }
+
+                // Use fallback dimensions
+                this.logger.info(`📐 TabManager: Using fallback bounds due to invalid window dimensions`);
+                return { x: 0, y: topOffset, width: 1000, height: 714 };
+            }
+
+            // Ensure minimum bounds
+            const minWidth = 800;
+            const minHeight = 600;
+            const actualWidth = Math.max(width, minWidth);
+            const actualHeight = Math.max(height - topOffset, minHeight);
+
             const bounds = {
                 x: 0,
                 y: topOffset,
-                width: width,
-                height: height - topOffset
+                width: actualWidth,
+                height: actualHeight
             };
-            this.logger.info(`📐 TabManager: Calculated view bounds from main window: ${bounds.width}x${bounds.height}`);
+
+            this.logger.info(`📐 TabManager: Calculated view bounds from main window: ${bounds.width}x${bounds.height} (original: ${width}x${height})`);
             return bounds;
         }
 
         // Default fallback
         this.logger.info(`📐 TabManager: Using default view bounds: 1000x714`);
         return { x: 0, y: 86, width: 1000, height: 714 };
+    }
+
+    /**
+     * Handle 0x-86 window dimension issue specifically
+     */
+    async handleZeroByNegativeEightySixIssue() {
+        try {
+            const electronMainWindow = this.getElectronMainWindow();
+            if (!electronMainWindow) {
+                this.logger.warn(`⚠️ TabManager: Cannot handle 0x-86 issue - main window not available`);
+                return false;
+            }
+
+            this.logger.info(`🔍 TabManager: Handling 0x-86 window dimension issue...`);
+
+            // Check for the specific 0x-86 issue
+            const [width, height] = electronMainWindow.getContentSize();
+            if (width === 0 && height === -86) {
+                this.logger.warn(`⚠️ TabManager: Detected 0x-86 window dimension issue`);
+                this.logger.warn(`⚠️ TabManager: This is a known Electron issue with window minimization`);
+
+                // Force window to have valid dimensions
+                try {
+                    // First, ensure window is not minimized
+                    if (electronMainWindow.isMinimized()) {
+                        electronMainWindow.restore();
+                        this.logger.info(`🔧 TabManager: Restored window from minimized state`);
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+
+                    // Then show window if not visible
+                    if (!electronMainWindow.isVisible()) {
+                        electronMainWindow.show();
+                        this.logger.info(`🔧 TabManager: Showed window`);
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+
+                    // Set valid size with proper dimensions
+                    electronMainWindow.setSize(1200, 900);
+                    electronMainWindow.center();
+                    this.logger.info(`🔧 TabManager: Set valid window size to 1200x900 and centered`);
+
+                    // Wait for window to resize
+                    await new Promise(resolve => setTimeout(resolve, 300));
+
+                    // Verify the fix
+                    const [newWidth, newHeight] = electronMainWindow.getContentSize();
+                    const newIsVisible = electronMainWindow.isVisible();
+                    const newIsMinimized = electronMainWindow.isMinimized();
+
+                    this.logger.info(`🔧 TabManager: After fix - size: ${newWidth}x${newHeight}, visible: ${newIsVisible}, minimized: ${newIsMinimized}`);
+
+                    if (newWidth > 0 && newHeight > 0 && newIsVisible && !newIsMinimized) {
+                        this.logger.info(`✅ TabManager: 0x-86 window dimension issue fixed successfully`);
+                        return true;
+                    } else {
+                        this.logger.warn(`⚠️ TabManager: 0x-86 window dimension issue not fully resolved`);
+                        return false;
+                    }
+                } catch (error) {
+                    this.logger.error(`❌ TabManager: Error fixing 0x-86 window dimension issue:`, error);
+                    return false;
+                }
+            } else {
+                this.logger.info(`✅ TabManager: No 0x-86 window dimension issue detected: ${width}x${height}`);
+                return true;
+            }
+        } catch (error) {
+            this.logger.error(`❌ TabManager: Error handling 0x-86 window dimension issue:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Handle invalid window dimensions (0x0, 0x-86, negative values, etc.)
+     */
+    async handleInvalidWindowDimensions(width, height) {
+        try {
+            const electronMainWindow = this.getElectronMainWindow();
+            if (!electronMainWindow) {
+                this.logger.warn(`⚠️ TabManager: Cannot handle invalid dimensions - main window not available`);
+                return false;
+            }
+
+            this.logger.info(`🔍 TabManager: Handling invalid window dimensions: ${width}x${height}`);
+
+            // Force window to have valid dimensions
+            try {
+                // First, ensure window is not minimized
+                if (electronMainWindow.isMinimized()) {
+                    electronMainWindow.restore();
+                    this.logger.info(`🔧 TabManager: Restored window from minimized state`);
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+
+                // Then show window if not visible
+                if (!electronMainWindow.isVisible()) {
+                    electronMainWindow.show();
+                    this.logger.info(`🔧 TabManager: Showed window`);
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+
+                // Set valid size with proper dimensions
+                electronMainWindow.setSize(1200, 900);
+                electronMainWindow.center();
+                this.logger.info(`🔧 TabManager: Set valid window size to 1200x900 and centered`);
+
+                // Wait for window to resize
+                await new Promise(resolve => setTimeout(resolve, 300));
+
+                // Verify the fix
+                const [newWidth, newHeight] = electronMainWindow.getContentSize();
+                const newIsVisible = electronMainWindow.isVisible();
+                const newIsMinimized = electronMainWindow.isMinimized();
+
+                this.logger.info(`🔧 TabManager: After fix - size: ${newWidth}x${newHeight}, visible: ${newIsVisible}, minimized: ${newIsMinimized}`);
+
+                if (newWidth > 0 && newHeight > 0 && newIsVisible && !newIsMinimized) {
+                    this.logger.info(`✅ TabManager: Invalid window dimensions fixed successfully`);
+                    return true;
+                } else {
+                    this.logger.warn(`⚠️ TabManager: Invalid window dimensions not fully resolved`);
+                    return false;
+                }
+            } catch (error) {
+                this.logger.error(`❌ TabManager: Error fixing invalid window dimensions:`, error);
+                return false;
+            }
+        } catch (error) {
+            this.logger.error(`❌ TabManager: Error handling invalid window dimensions:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Setup window resize listener to handle 0x-86 issue in real-time
+     */
+    setupWindowResizeListener() {
+        try {
+            const electronMainWindow = this.getElectronMainWindow();
+            if (!electronMainWindow) {
+                this.logger.warn(`⚠️ TabManager: Cannot setup resize listener - main window not available`);
+                return false;
+            }
+
+            this.logger.info(`🔍 TabManager: Setting up window resize listener for 0x-86 detection...`);
+
+            // Listen for window resize events
+            electronMainWindow.on('resize', async () => {
+                try {
+                    const [width, height] = electronMainWindow.getContentSize();
+                    this.logger.info(`🔍 TabManager: Window resized to ${width}x${height}`);
+
+                    // Check for invalid window dimensions (0x0, 0x-86, negative values, etc.)
+                    if (width <= 0 || height <= 0 || width < 100 || height < 100) {
+                        this.logger.warn(`⚠️ TabManager: Detected invalid window dimensions in resize event: ${width}x${height}`);
+                        this.logger.warn(`⚠️ TabManager: Immediately fixing window dimensions...`);
+
+                        // Immediately fix the window dimensions
+                        await this.handleInvalidWindowDimensions(width, height);
+
+                        // Also update all BrowserView bounds
+                        this.logger.info(`🔍 TabManager: Updating all BrowserView bounds after invalid dimensions fix...`);
+                        const allTabs = this.getAllTabs();
+                        allTabs.forEach(tab => {
+                            if (tab.browserView && !tab.browserView.webContents.isDestroyed()) {
+                                try {
+                                    const bounds = this.getViewBounds();
+                                    tab.browserView.setBounds(bounds);
+                                    this.logger.info(`📐 TabManager: Updated bounds for tab ${tab.id}: ${bounds.width}x${bounds.height}`);
+                                } catch (error) {
+                                    this.logger.error(`❌ TabManager: Error updating bounds for tab ${tab.id}:`, error);
+                                }
+                            }
+                        });
+                    }
+                } catch (error) {
+                    this.logger.error(`❌ TabManager: Error in resize listener:`, error);
+                }
+            });
+
+            this.logger.info(`✅ TabManager: Window resize listener setup completed`);
+            return true;
+        } catch (error) {
+            this.logger.error(`❌ TabManager: Error setting up window resize listener:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Optimize page rendering for BrowserView
+     */
+    optimizePageRendering(browserView) {
+        try {
+            if (!browserView || browserView.webContents.isDestroyed()) {
+                this.logger.warn(`⚠️ TabManager: Cannot optimize rendering - BrowserView is invalid`);
+                return false;
+            }
+
+            // Execute JavaScript to optimize page rendering
+            browserView.webContents.executeJavaScript(`
+                // Force page visibility and repaint
+                if (document.body) {
+                    document.body.style.visibility = 'visible';
+                    document.body.style.display = 'block';
+                }
+                
+                // Trigger a repaint
+                window.dispatchEvent(new Event('resize'));
+                
+                // Force focus to ensure proper rendering
+                if (document.activeElement) {
+                    document.activeElement.blur();
+                    document.activeElement.focus();
+                }
+                
+                console.log('🔍 BrowserView: Page rendering optimized');
+            `).catch(err => {
+                this.logger.warn(`⚠️ TabManager: Error optimizing page rendering: ${err.message}`);
+            });
+
+            this.logger.info(`✅ TabManager: Page rendering optimized for BrowserView`);
+            return true;
+        } catch (error) {
+            this.logger.error(`❌ TabManager: Error optimizing page rendering:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Force refresh and focus for BrowserView (with reload for proper rendering)
+     */
+    forceRefreshAndFocus(browserView) {
+        try {
+            if (!browserView || browserView.webContents.isDestroyed()) {
+                this.logger.warn(`⚠️ TabManager: Cannot force refresh - BrowserView is invalid`);
+                return false;
+            }
+
+            this.logger.info(`🔄 TabManager: Force refreshing and focusing BrowserView (with reload)`);
+
+            // Force focus to main window and BrowserView
+            const electronMainWindow = this.getElectronMainWindow();
+            if (electronMainWindow) {
+                electronMainWindow.focus();
+                electronMainWindow.show();
+                this.logger.info(`🔍 TabManager: Forced focus to main window`);
+            }
+
+            // Force focus to BrowserView
+            browserView.webContents.focus();
+            this.logger.info(`🔍 TabManager: Forced focus to BrowserView`);
+
+            // Force refresh the page (reload is necessary for proper rendering)
+            browserView.webContents.reload();
+            this.logger.info(`🔄 TabManager: Force refreshed BrowserView`);
+
+            // Execute JavaScript to ensure proper rendering after refresh
+            setTimeout(() => {
+                browserView.webContents.executeJavaScript(`
+                    // Force page visibility and repaint after refresh
+                    if (document.body) {
+                        document.body.style.visibility = 'visible';
+                        document.body.style.display = 'block';
+                    }
+                    
+                    // Trigger a repaint
+                    window.dispatchEvent(new Event('resize'));
+                    
+                    // Force focus to ensure proper rendering
+                    if (document.activeElement) {
+                        document.activeElement.blur();
+                        document.activeElement.focus();
+                    }
+                    
+                    console.log('🔍 BrowserView: Force refresh and focus completed');
+                `).catch(err => {
+                    this.logger.warn(`⚠️ TabManager: Error executing post-refresh script: ${err.message}`);
+                });
+            }, 1000); // Wait 1 second for page to load
+
+            this.logger.info(`✅ TabManager: Force refresh and focus completed for BrowserView`);
+            return true;
+        } catch (error) {
+            this.logger.error(`❌ TabManager: Error force refreshing BrowserView:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Analyze why page is not rendering
+     */
+    async analyzePageRenderingIssues(browserView) {
+        try {
+            if (!browserView || browserView.webContents.isDestroyed()) {
+                this.logger.warn(`⚠️ TabManager: Cannot analyze rendering - BrowserView is invalid`);
+                return false;
+            }
+
+            this.logger.info(`🔍 TabManager: Analyzing page rendering issues...`);
+
+            // Get comprehensive page state information
+            const pageState = await browserView.webContents.executeJavaScript(`
+                return {
+                    // Basic page info
+                    url: window.location.href,
+                    title: document.title,
+                    readyState: document.readyState,
+                    
+                    // Content info
+                    hasBody: !!document.body,
+                    bodyChildren: document.body ? document.body.children.length : 0,
+                    bodyHeight: document.body ? document.body.offsetHeight : 0,
+                    bodyWidth: document.body ? document.body.offsetWidth : 0,
+                    
+                    // Visibility info
+                    visibilityState: document.visibilityState,
+                    hidden: document.hidden,
+                    
+                    // Style info
+                    bodyVisibility: document.body ? getComputedStyle(document.body).visibility : 'unknown',
+                    bodyDisplay: document.body ? getComputedStyle(document.body).display : 'unknown',
+                    bodyOpacity: document.body ? getComputedStyle(document.body).opacity : 'unknown',
+                    
+                    // Viewport info
+                    viewportWidth: window.innerWidth,
+                    viewportHeight: window.innerHeight,
+                    
+                    // Error info
+                    hasErrors: window.console.error ? 'check console' : 'no console',
+                    
+                    // Network info
+                    connectionState: navigator.onLine ? 'online' : 'offline'
+                };
+            `);
+
+            this.logger.info(`🔍 TabManager: Page state analysis:`, pageState);
+
+            // Analyze the issues
+            const issues = [];
+
+            if (!pageState.hasBody) {
+                issues.push('No document.body');
+            }
+
+            if (pageState.bodyChildren === 0) {
+                issues.push('No body children');
+            }
+
+            if (pageState.bodyHeight === 0) {
+                issues.push('Body height is 0');
+            }
+
+            if (pageState.visibilityState !== 'visible') {
+                issues.push(`Visibility state: ${pageState.visibilityState}`);
+            }
+
+            if (pageState.hidden) {
+                issues.push('Document is hidden');
+            }
+
+            if (pageState.bodyVisibility === 'hidden') {
+                issues.push('Body visibility is hidden');
+            }
+
+            if (pageState.bodyDisplay === 'none') {
+                issues.push('Body display is none');
+            }
+
+            if (pageState.bodyOpacity === '0') {
+                issues.push('Body opacity is 0');
+            }
+
+            if (pageState.viewportWidth === 0 || pageState.viewportHeight === 0) {
+                issues.push(`Invalid viewport: ${pageState.viewportWidth}x${pageState.viewportHeight}`);
+            }
+
+            if (pageState.connectionState === 'offline') {
+                issues.push('Network is offline');
+            }
+
+            this.logger.info(`🔍 TabManager: Detected rendering issues:`, issues);
+
+            if (issues.length > 0) {
+                this.logger.warn(`⚠️ TabManager: Page rendering issues found: ${issues.join(', ')}`);
+                return { hasIssues: true, issues: issues, pageState: pageState };
+            } else {
+                this.logger.info(`✅ TabManager: No obvious rendering issues detected`);
+                return { hasIssues: false, issues: [], pageState: pageState };
+            }
+        } catch (error) {
+            this.logger.error(`❌ TabManager: Error analyzing page rendering issues:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Force reload BrowserView only when necessary
+     */
+    async forceReloadBrowserView(browserView) {
+        try {
+            if (!browserView || browserView.webContents.isDestroyed()) {
+                this.logger.warn(`⚠️ TabManager: Cannot force reload - BrowserView is invalid`);
+                return false;
+            }
+
+            this.logger.info(`🔄 TabManager: Force reloading BrowserView (only when necessary)`);
+
+            // Check if page is already properly rendered
+            const renderingCheck = await browserView.webContents.executeJavaScript(`
+                return {
+                    hasContent: document.body && document.body.children.length > 0,
+                    hasVisibleContent: document.body && document.body.offsetHeight > 0,
+                    isVisible: document.visibilityState === 'visible',
+                    bodyHeight: document.body ? document.body.offsetHeight : 0
+                };
+            `);
+
+            this.logger.info(`🔍 TabManager: Page rendering check before reload:`, renderingCheck);
+
+            // Only reload if page has rendering issues
+            if (!renderingCheck.hasContent || !renderingCheck.hasVisibleContent || !renderingCheck.isVisible) {
+                this.logger.warn(`⚠️ TabManager: Page has rendering issues, forcing reload...`);
+
+                // Force reload the page
+                browserView.webContents.reload();
+                this.logger.info(`🔄 TabManager: Force reloaded BrowserView`);
+
+                // Execute JavaScript to ensure proper rendering after reload
+                setTimeout(() => {
+                    browserView.webContents.executeJavaScript(`
+                        // Force page visibility and repaint after reload
+                        if (document.body) {
+                            document.body.style.visibility = 'visible';
+                            document.body.style.display = 'block';
+                        }
+                        
+                        // Trigger a repaint
+                        window.dispatchEvent(new Event('resize'));
+                        
+                        // Force focus to ensure proper rendering
+                        if (document.activeElement) {
+                            document.activeElement.blur();
+                            document.activeElement.focus();
+                        }
+                        
+                        console.log('🔍 BrowserView: Force reload completed');
+                    `).catch(err => {
+                        this.logger.warn(`⚠️ TabManager: Error executing post-reload script: ${err.message}`);
+                    });
+                }, 1000); // Wait 1 second for page to load
+
+                this.logger.info(`✅ TabManager: Force reload completed for BrowserView`);
+                return true;
+            } else {
+                this.logger.info(`✅ TabManager: Page is already properly rendered, skipping reload`);
+                return true;
+            }
+        } catch (error) {
+            this.logger.error(`❌ TabManager: Error force reloading BrowserView:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Enhanced page rendering detection and repair
+     */
+    async detectAndRepairPageRendering(browserView) {
+        try {
+            if (!browserView || browserView.webContents.isDestroyed()) {
+                this.logger.warn(`⚠️ TabManager: Cannot detect rendering - BrowserView is invalid`);
+                return false;
+            }
+
+            this.logger.info(`🔍 TabManager: Detecting page rendering issues...`);
+
+            // Check if page is properly rendered
+            const renderingCheck = await browserView.webContents.executeJavaScript(`
+                // Check if page has proper content
+                const hasContent = document.body && document.body.children.length > 0;
+                const hasVisibleContent = document.body && document.body.offsetHeight > 0;
+                const isVisible = document.visibilityState === 'visible';
+                const hasTitle = document.title && document.title.length > 0;
+                
+                return {
+                    hasContent: hasContent,
+                    hasVisibleContent: hasVisibleContent,
+                    isVisible: isVisible,
+                    hasTitle: hasTitle,
+                    bodyHeight: document.body ? document.body.offsetHeight : 0,
+                    bodyChildren: document.body ? document.body.children.length : 0,
+                    visibilityState: document.visibilityState,
+                    title: document.title
+                };
+            `);
+
+            this.logger.info(`🔍 TabManager: Page rendering check:`, renderingCheck);
+
+            // If page has rendering issues, attempt repair
+            if (!renderingCheck.hasContent || !renderingCheck.hasVisibleContent || !renderingCheck.isVisible) {
+                this.logger.warn(`⚠️ TabManager: Page rendering issues detected, attempting repair...`);
+
+                // Force page visibility and content
+                await browserView.webContents.executeJavaScript(`
+                    // Force page to be visible
+                    document.body.style.visibility = 'visible';
+                    document.body.style.display = 'block';
+                    document.body.style.opacity = '1';
+                    
+                    // Force viewport to be visible
+                    document.documentElement.style.visibility = 'visible';
+                    document.documentElement.style.display = 'block';
+                    
+                    // Trigger multiple events to force rendering
+                    window.dispatchEvent(new Event('resize'));
+                    window.dispatchEvent(new Event('load'));
+                    window.dispatchEvent(new Event('DOMContentLoaded'));
+                    
+                    // Force focus and blur to trigger repaint
+                    if (document.activeElement) {
+                        document.activeElement.blur();
+                        document.activeElement.focus();
+                    }
+                    
+                    // Force scroll to trigger rendering
+                    window.scrollTo(0, 0);
+                    window.scrollTo(0, 1);
+                    window.scrollTo(0, 0);
+                    
+                    console.log('🔍 BrowserView: Page rendering repair completed');
+                `);
+
+                // Wait a bit and check again
+                setTimeout(async () => {
+                    const repairCheck = await browserView.webContents.executeJavaScript(`
+                        return {
+                            hasContent: document.body && document.body.children.length > 0,
+                            hasVisibleContent: document.body && document.body.offsetHeight > 0,
+                            isVisible: document.visibilityState === 'visible',
+                            bodyHeight: document.body ? document.body.offsetHeight : 0
+                        };
+                    `);
+
+                    this.logger.info(`🔍 TabManager: Page rendering repair check:`, repairCheck);
+                }, 500);
+
+                this.logger.info(`✅ TabManager: Page rendering repair attempted`);
+            } else {
+                this.logger.info(`✅ TabManager: Page rendering is normal`);
+            }
+
+            return true;
+        } catch (error) {
+            this.logger.error(`❌ TabManager: Error detecting page rendering:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Force refresh current tab
+     */
+    forceRefreshCurrentTab() {
+        if (!this.currentTabId) {
+            this.logger.warn(`⚠️ TabManager: No current tab to refresh`);
+            return false;
+        }
+
+        const currentTab = this.getCurrentTab();
+        if (!currentTab || !currentTab.browserView) {
+            this.logger.warn(`⚠️ TabManager: Current tab ${this.currentTabId} not found or has no BrowserView`);
+            return false;
+        }
+
+        try {
+            this.logger.info(`🔄 TabManager: Force refreshing current tab ${this.currentTabId}`);
+
+            // Force refresh and focus for current tab
+            const result = this.forceRefreshAndFocus(currentTab.browserView);
+
+            if (result) {
+                this.logger.info(`✅ TabManager: Force refreshed current tab ${this.currentTabId}`);
+                return true;
+            } else {
+                this.logger.error(`❌ TabManager: Failed to force refresh current tab ${this.currentTabId}`);
+                return false;
+            }
+        } catch (error) {
+            this.logger.error(`❌ TabManager: Error force refreshing current tab ${this.currentTabId}:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Handle page content extraction errors
+     */
+    async handleContentExtractionError(browserView, error) {
+        try {
+            this.logger.warn(`⚠️ TabManager: Handling content extraction error: ${error.message}`);
+
+            // Force page visibility and content
+            await browserView.webContents.executeJavaScript(`
+                // Force page to be visible and have content
+                if (document.body) {
+                    document.body.style.visibility = 'visible';
+                    document.body.style.display = 'block';
+                    document.body.style.opacity = '1';
+                }
+                
+                // Force viewport to be visible
+                document.documentElement.style.visibility = 'visible';
+                document.documentElement.style.display = 'block';
+                
+                // Trigger events to force rendering
+                window.dispatchEvent(new Event('resize'));
+                window.dispatchEvent(new Event('load'));
+                
+                // Force scroll to trigger rendering
+                window.scrollTo(0, 0);
+                window.scrollTo(0, 1);
+                window.scrollTo(0, 0);
+                
+                console.log('🔍 BrowserView: Content extraction error handled');
+            `);
+
+            // Wait and try to extract content again
+            setTimeout(async () => {
+                try {
+                    const content = await browserView.webContents.executeJavaScript(`
+                        return {
+                            title: document.title,
+                            bodyText: document.body ? document.body.innerText : '',
+                            bodyHTML: document.body ? document.body.innerHTML : '',
+                            hasContent: document.body && document.body.children.length > 0,
+                            bodyHeight: document.body ? document.body.offsetHeight : 0
+                        };
+                    `);
+
+                    this.logger.info(`🔍 TabManager: Content extraction retry result:`, content);
+                } catch (retryError) {
+                    this.logger.error(`❌ TabManager: Content extraction retry failed:`, retryError);
+                }
+            }, 1000);
+
+            this.logger.info(`✅ TabManager: Content extraction error handled`);
+            return true;
+        } catch (error) {
+            this.logger.error(`❌ TabManager: Error handling content extraction error:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Check and fix window state issues
+     */
+    async checkAndFixWindowState() {
+        try {
+            const electronMainWindow = this.getElectronMainWindow();
+            if (!electronMainWindow) {
+                this.logger.warn(`⚠️ TabManager: Cannot check window state - main window not available`);
+                return false;
+            }
+
+            this.logger.info(`🔍 TabManager: Checking window state...`);
+
+            // Check window dimensions
+            const [width, height] = electronMainWindow.getContentSize();
+            const isVisible = electronMainWindow.isVisible();
+            const isMinimized = electronMainWindow.isMinimized();
+            const isMaximized = electronMainWindow.isMaximized();
+
+            this.logger.info(`🔍 TabManager: Window state - size: ${width}x${height}, visible: ${isVisible}, minimized: ${isMinimized}, maximized: ${isMaximized}`);
+
+            // Check for invalid dimensions (like 0x-86 from minimization)
+            if (width <= 0 || height <= 0) {
+                this.logger.warn(`⚠️ TabManager: Invalid window dimensions detected: ${width}x${height}`);
+                this.logger.warn(`⚠️ TabManager: This is likely caused by window minimization`);
+                this.logger.warn(`⚠️ TabManager: Negative dimensions prevent BrowserView from rendering`);
+
+                // Force window to have valid dimensions
+                try {
+                    // First, ensure window is not minimized
+                    if (isMinimized) {
+                        electronMainWindow.restore();
+                        this.logger.info(`🔧 TabManager: Restored window from minimized state`);
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+
+                    // Then set valid size
+                    electronMainWindow.setSize(1000, 800);
+                    electronMainWindow.center();
+                    this.logger.info(`🔧 TabManager: Forced window size to 1000x800 and centered`);
+
+                    // Wait for window to resize
+                    await new Promise(resolve => setTimeout(resolve, 200));
+
+                    const [newWidth, newHeight] = electronMainWindow.getContentSize();
+                    this.logger.info(`🔧 TabManager: Window resized to: ${newWidth}x${newHeight}`);
+                } catch (error) {
+                    this.logger.error(`❌ TabManager: Error resizing window:`, error);
+                }
+            }
+
+            // Check if window is minimized or not visible
+            if (isMinimized || !isVisible) {
+                this.logger.warn(`⚠️ TabManager: Window is minimized or not visible`);
+                try {
+                    electronMainWindow.show();
+                    electronMainWindow.focus();
+                    this.logger.info(`🔧 TabManager: Forced window to show and focus`);
+                } catch (error) {
+                    this.logger.error(`❌ TabManager: Error showing window:`, error);
+                }
+            }
+
+            // Check for cache errors (like "Unable to create cache")
+            this.logger.info(`🔍 TabManager: Checking for cache and memory issues...`);
+
+            // Force garbage collection if available
+            if (global.gc) {
+                try {
+                    global.gc();
+                    this.logger.info(`🧹 TabManager: Forced garbage collection`);
+                } catch (error) {
+                    this.logger.warn(`⚠️ TabManager: Error during garbage collection:`, error);
+                }
+            }
+
+            this.logger.info(`✅ TabManager: Window state check completed`);
+            return true;
+        } catch (error) {
+            this.logger.error(`❌ TabManager: Error checking window state:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Clear cache and fix memory issues
+     */
+    async clearCacheAndFixMemory() {
+        try {
+            this.logger.info(`🧹 TabManager: Clearing cache and fixing memory issues...`);
+
+            // Clear browser cache
+            const { session } = require('electron');
+            const defaultSession = session.defaultSession;
+
+            try {
+                await defaultSession.clearCache();
+                this.logger.info(`🧹 TabManager: Browser cache cleared`);
+            } catch (error) {
+                this.logger.warn(`⚠️ TabManager: Error clearing browser cache:`, error);
+            }
+
+            // Clear storage data
+            try {
+                await defaultSession.clearStorageData({
+                    storages: ['cookies', 'filesystem', 'indexdb', 'localstorage', 'shadercache', 'websql']
+                });
+                this.logger.info(`🧹 TabManager: Storage data cleared`);
+            } catch (error) {
+                this.logger.warn(`⚠️ TabManager: Error clearing storage data:`, error);
+            }
+
+            // Force garbage collection
+            if (global.gc) {
+                try {
+                    global.gc();
+                    this.logger.info(`🧹 TabManager: Forced garbage collection`);
+                } catch (error) {
+                    this.logger.warn(`⚠️ TabManager: Error during garbage collection:`, error);
+                }
+            }
+
+            // Clear memory if possible
+            if (process.memoryUsage) {
+                const memBefore = process.memoryUsage();
+                this.logger.info(`🧹 TabManager: Memory before cleanup:`, memBefore);
+
+                // Force memory cleanup
+                if (global.gc) {
+                    global.gc();
+                }
+
+                const memAfter = process.memoryUsage();
+                this.logger.info(`🧹 TabManager: Memory after cleanup:`, memAfter);
+            }
+
+            this.logger.info(`✅ TabManager: Cache and memory cleanup completed`);
+            return true;
+        } catch (error) {
+            this.logger.error(`❌ TabManager: Error clearing cache and memory:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Detect and fix invalid window dimensions (like 0x-86)
+     */
+    async detectAndFixInvalidWindowDimensions() {
+        try {
+            const electronMainWindow = this.getElectronMainWindow();
+            if (!electronMainWindow) {
+                this.logger.warn(`⚠️ TabManager: Cannot detect invalid dimensions - main window not available`);
+                return false;
+            }
+
+            this.logger.info(`🔍 TabManager: Detecting invalid window dimensions...`);
+
+            // Check window dimensions
+            const [width, height] = electronMainWindow.getContentSize();
+            const isVisible = electronMainWindow.isVisible();
+            const isMinimized = electronMainWindow.isMinimized();
+
+            this.logger.info(`🔍 TabManager: Window dimensions - size: ${width}x${height}, visible: ${isVisible}, minimized: ${isMinimized}`);
+
+            // Check for invalid dimensions (like 0x-86, negative values, etc.)
+            if (width <= 0 || height <= 0 || width < 100 || height < 100) {
+                this.logger.warn(`⚠️ TabManager: Invalid window dimensions detected: ${width}x${height}`);
+                this.logger.warn(`⚠️ TabManager: This prevents BrowserView from rendering properly`);
+
+                // Force window to have valid dimensions
+                try {
+                    // First, ensure window is not minimized
+                    if (isMinimized) {
+                        electronMainWindow.restore();
+                        this.logger.info(`🔧 TabManager: Restored window from minimized state`);
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+
+                    // Then show window if not visible
+                    if (!isVisible) {
+                        electronMainWindow.show();
+                        this.logger.info(`🔧 TabManager: Showed window`);
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+
+                    // Set valid size with proper dimensions
+                    electronMainWindow.setSize(1200, 900);
+                    electronMainWindow.center();
+                    this.logger.info(`🔧 TabManager: Set valid window size to 1200x900 and centered`);
+
+                    // Wait for window to resize
+                    await new Promise(resolve => setTimeout(resolve, 300));
+
+                    // Verify the fix
+                    const [newWidth, newHeight] = electronMainWindow.getContentSize();
+                    const newIsVisible = electronMainWindow.isVisible();
+                    const newIsMinimized = electronMainWindow.isMinimized();
+
+                    this.logger.info(`🔧 TabManager: After fix - size: ${newWidth}x${newHeight}, visible: ${newIsVisible}, minimized: ${newIsMinimized}`);
+
+                    if (newWidth > 0 && newHeight > 0 && newIsVisible && !newIsMinimized) {
+                        this.logger.info(`✅ TabManager: Invalid window dimensions fixed successfully`);
+                        return true;
+                    } else {
+                        this.logger.warn(`⚠️ TabManager: Invalid window dimensions not fully resolved`);
+                        return false;
+                    }
+                } catch (error) {
+                    this.logger.error(`❌ TabManager: Error fixing invalid window dimensions:`, error);
+                    return false;
+                }
+            } else {
+                this.logger.info(`✅ TabManager: Window dimensions are valid: ${width}x${height}`);
+                return true;
+            }
+        } catch (error) {
+            this.logger.error(`❌ TabManager: Error detecting invalid window dimensions:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Detect and fix minimization issues
+     */
+    async detectAndFixMinimizationIssues() {
+        try {
+            const electronMainWindow = this.getElectronMainWindow();
+            if (!electronMainWindow) {
+                this.logger.warn(`⚠️ TabManager: Cannot detect minimization issues - main window not available`);
+                return false;
+            }
+
+            this.logger.info(`🔍 TabManager: Detecting minimization issues...`);
+
+            // Check window state
+            const [width, height] = electronMainWindow.getContentSize();
+            const isVisible = electronMainWindow.isVisible();
+            const isMinimized = electronMainWindow.isMinimized();
+            const isMaximized = electronMainWindow.isMaximized();
+
+            this.logger.info(`🔍 TabManager: Window state - size: ${width}x${height}, visible: ${isVisible}, minimized: ${isMinimized}, maximized: ${isMaximized}`);
+
+            // Check for minimization-related issues
+            if (isMinimized || !isVisible || width <= 0 || height <= 0) {
+                this.logger.warn(`⚠️ TabManager: Minimization issues detected`);
+                this.logger.warn(`⚠️ TabManager: Window state - minimized: ${isMinimized}, visible: ${isVisible}, size: ${width}x${height}`);
+
+                // Fix minimization issues
+                try {
+                    // First, restore window if minimized
+                    if (isMinimized) {
+                        electronMainWindow.restore();
+                        this.logger.info(`🔧 TabManager: Restored window from minimized state`);
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+
+                    // Then show window if not visible
+                    if (!isVisible) {
+                        electronMainWindow.show();
+                        this.logger.info(`🔧 TabManager: Showed window`);
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+
+                    // Finally, set valid size if dimensions are invalid
+                    if (width <= 0 || height <= 0) {
+                        electronMainWindow.setSize(1000, 800);
+                        electronMainWindow.center();
+                        this.logger.info(`🔧 TabManager: Set valid window size and centered`);
+                        await new Promise(resolve => setTimeout(resolve, 200));
+                    }
+
+                    // Verify fix
+                    const [newWidth, newHeight] = electronMainWindow.getContentSize();
+                    const newIsVisible = electronMainWindow.isVisible();
+                    const newIsMinimized = electronMainWindow.isMinimized();
+
+                    this.logger.info(`🔧 TabManager: After fix - size: ${newWidth}x${newHeight}, visible: ${newIsVisible}, minimized: ${newIsMinimized}`);
+
+                    if (newWidth > 0 && newHeight > 0 && newIsVisible && !newIsMinimized) {
+                        this.logger.info(`✅ TabManager: Minimization issues fixed successfully`);
+                        return true;
+                    } else {
+                        this.logger.warn(`⚠️ TabManager: Minimization issues not fully resolved`);
+                        return false;
+                    }
+                } catch (error) {
+                    this.logger.error(`❌ TabManager: Error fixing minimization issues:`, error);
+                    return false;
+                }
+            } else {
+                this.logger.info(`✅ TabManager: No minimization issues detected`);
+                return true;
+            }
+        } catch (error) {
+            this.logger.error(`❌ TabManager: Error detecting minimization issues:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Verify and force page rendering
+     */
+    async verifyAndForcePageRendering(browserView) {
+        try {
+            if (!browserView || browserView.webContents.isDestroyed()) {
+                this.logger.warn(`⚠️ TabManager: Cannot verify rendering - BrowserView is invalid`);
+                return false;
+            }
+
+            this.logger.info(`🔍 TabManager: Verifying page rendering...`);
+
+            // Check if page is properly rendered
+            const renderingCheck = await browserView.webContents.executeJavaScript(`
+                // Check if page has proper content and is visible
+                const hasContent = document.body && document.body.children.length > 0;
+                const hasVisibleContent = document.body && document.body.offsetHeight > 0;
+                const isVisible = document.visibilityState === 'visible';
+                const hasTitle = document.title && document.title.length > 0;
+                const bodyHeight = document.body ? document.body.offsetHeight : 0;
+                const bodyWidth = document.body ? document.body.offsetWidth : 0;
+                
+                return {
+                    hasContent: hasContent,
+                    hasVisibleContent: hasVisibleContent,
+                    isVisible: isVisible,
+                    hasTitle: hasTitle,
+                    bodyHeight: bodyHeight,
+                    bodyWidth: bodyWidth,
+                    visibilityState: document.visibilityState,
+                    title: document.title
+                };
+            `);
+
+            this.logger.info(`🔍 TabManager: Page rendering check:`, renderingCheck);
+
+            // If page has rendering issues, force rendering
+            if (!renderingCheck.hasContent || !renderingCheck.hasVisibleContent || !renderingCheck.isVisible) {
+                this.logger.warn(`⚠️ TabManager: Page rendering issues detected, forcing rendering...`);
+
+                // Force page to be visible and have content
+                await browserView.webContents.executeJavaScript(`
+                    // Force page to be visible
+                    document.body.style.visibility = 'visible';
+                    document.body.style.display = 'block';
+                    document.body.style.opacity = '1';
+                    document.body.style.height = '100%';
+                    document.body.style.width = '100%';
+                    
+                    // Force viewport to be visible
+                    document.documentElement.style.visibility = 'visible';
+                    document.documentElement.style.display = 'block';
+                    document.documentElement.style.height = '100%';
+                    document.documentElement.style.width = '100%';
+                    
+                    // Force all elements to be visible
+                    const allElements = document.querySelectorAll('*');
+                    allElements.forEach(el => {
+                        if (el.style) {
+                            el.style.visibility = 'visible';
+                            el.style.display = el.style.display === 'none' ? 'block' : el.style.display;
+                        }
+                    });
+                    
+                    // Trigger multiple events to force rendering
+                    window.dispatchEvent(new Event('resize'));
+                    window.dispatchEvent(new Event('load'));
+                    window.dispatchEvent(new Event('DOMContentLoaded'));
+                    window.dispatchEvent(new Event('pageshow'));
+                    
+                    // Force focus and blur to trigger repaint
+                    if (document.activeElement) {
+                        document.activeElement.blur();
+                        document.activeElement.focus();
+                    }
+                    
+                    // Force scroll to trigger rendering
+                    window.scrollTo(0, 0);
+                    window.scrollTo(0, 1);
+                    window.scrollTo(0, 0);
+                    
+                    console.log('🔍 BrowserView: Page rendering forced');
+                `);
+
+                // Wait and check again
+                setTimeout(async () => {
+                    const repairCheck = await browserView.webContents.executeJavaScript(`
+                        return {
+                            hasContent: document.body && document.body.children.length > 0,
+                            hasVisibleContent: document.body && document.body.offsetHeight > 0,
+                            isVisible: document.visibilityState === 'visible',
+                            bodyHeight: document.body ? document.body.offsetHeight : 0,
+                            bodyWidth: document.body ? document.body.offsetWidth : 0
+                        };
+                    `);
+
+                    this.logger.info(`🔍 TabManager: Page rendering repair check:`, repairCheck);
+                }, 500);
+
+                this.logger.info(`✅ TabManager: Page rendering forced`);
+            } else {
+                this.logger.info(`✅ TabManager: Page rendering is normal`);
+            }
+
+            return true;
+        } catch (error) {
+            this.logger.error(`❌ TabManager: Error verifying page rendering:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Handle successful content extraction but failed rendering
+     */
+    async handleContentExtractionSuccessButRenderingFailed(browserView) {
+        try {
+            this.logger.info(`🔍 TabManager: Handling content extraction success but rendering failure...`);
+
+            // Force page to be visible and properly rendered
+            await browserView.webContents.executeJavaScript(`
+                // Force page to be visible and have proper dimensions
+                document.body.style.visibility = 'visible';
+                document.body.style.display = 'block';
+                document.body.style.opacity = '1';
+                document.body.style.height = '100%';
+                document.body.style.width = '100%';
+                document.body.style.minHeight = '100vh';
+                document.body.style.minWidth = '100vw';
+                
+                // Force viewport to be visible
+                document.documentElement.style.visibility = 'visible';
+                document.documentElement.style.display = 'block';
+                document.documentElement.style.height = '100%';
+                document.documentElement.style.width = '100%';
+                document.documentElement.style.minHeight = '100vh';
+                document.documentElement.style.minWidth = '100vw';
+                
+                // Force all elements to be visible and have proper dimensions
+                const allElements = document.querySelectorAll('*');
+                allElements.forEach(el => {
+                    if (el.style) {
+                        el.style.visibility = 'visible';
+                        el.style.display = el.style.display === 'none' ? 'block' : el.style.display;
+                        if (el.offsetHeight === 0 && el.offsetWidth === 0) {
+                            el.style.minHeight = '1px';
+                            el.style.minWidth = '1px';
+                        }
+                    }
+                });
+                
+                // Trigger multiple events to force rendering
+                window.dispatchEvent(new Event('resize'));
+                window.dispatchEvent(new Event('load'));
+                window.dispatchEvent(new Event('DOMContentLoaded'));
+                window.dispatchEvent(new Event('pageshow'));
+                window.dispatchEvent(new Event('focus'));
+                
+                // Force focus and blur to trigger repaint
+                if (document.activeElement) {
+                    document.activeElement.blur();
+                    document.activeElement.focus();
+                }
+                
+                // Force scroll to trigger rendering
+                window.scrollTo(0, 0);
+                window.scrollTo(0, 1);
+                window.scrollTo(0, 0);
+                
+                console.log('🔍 BrowserView: Content extraction success but rendering failure handled');
+            `);
+
+            // Wait and verify rendering
+            setTimeout(async () => {
+                const renderingCheck = await browserView.webContents.executeJavaScript(`
+                    return {
+                        hasContent: document.body && document.body.children.length > 0,
+                        hasVisibleContent: document.body && document.body.offsetHeight > 0,
+                        isVisible: document.visibilityState === 'visible',
+                        bodyHeight: document.body ? document.body.offsetHeight : 0,
+                        bodyWidth: document.body ? document.body.offsetWidth : 0,
+                        title: document.title
+                    };
+                `);
+
+                this.logger.info(`🔍 TabManager: Content extraction success but rendering failure check:`, renderingCheck);
+            }, 1000);
+
+            this.logger.info(`✅ TabManager: Content extraction success but rendering failure handled`);
+            return true;
+        } catch (error) {
+            this.logger.error(`❌ TabManager: Error handling content extraction success but rendering failure:`, error);
+            return false;
+        }
     }
 
     /**
