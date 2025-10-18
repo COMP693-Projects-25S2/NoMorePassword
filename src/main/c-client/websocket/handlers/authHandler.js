@@ -141,17 +141,34 @@ class AuthHandler {
     }
 
     /**
-     * Check if sync_data table has any data
+     * Check if sync_data table has data for current user
      */
     async checkSyncDataExists() {
         try {
+            // Get current user info first
+            const currentUser = this.getCurrentUserInfo();
+            if (!currentUser || !currentUser.user_id) {
+                this.logger.info('🔍 [WebSocket Client] No current user found, skipping sync data check');
+                return false;
+            }
+
             const DatabaseManager = require('../../sqlite/databaseManager');
-            const syncData = DatabaseManager.getSyncData();
-            const hasData = syncData && syncData.length > 0;
-            this.logger.info(`🔍 [WebSocket Client] Sync data check: ${hasData ? 'Found' : 'No data'} (${syncData ? syncData.length : 0} records)`);
+
+            // Query sync_data table for current user's data
+            const db = require('../../sqlite/database');
+            const stmt = db.prepare(`
+                SELECT COUNT(*) as count
+                FROM sync_data 
+                WHERE user_id = ?
+            `);
+
+            const result = stmt.get(currentUser.user_id);
+            const hasData = result && result.count > 0;
+
+            this.logger.info(`🔍 [WebSocket Client] Sync data check for user ${currentUser.user_id}: ${hasData ? 'Found' : 'No data'} (${result ? result.count : 0} records)`);
             return hasData;
         } catch (error) {
-            this.logger.error('❌ [WebSocket Client] Error checking sync data:', error);
+            this.logger.error('❌ [WebSocket Client] Error checking sync data for current user:', error);
             return false;
         }
     }

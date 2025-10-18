@@ -1564,7 +1564,7 @@ class IpcHandlers {
                     }
                 }
 
-                // Re-register with WebSocket service to ensure accurate counting (instead of disconnecting)
+                // Disconnect WebSocket connection when switching users
                 try {
                     if (this.webSocketClient) {
                         console.log(`🔄 C-Client IPC: Handling WebSocket connection during user switch...`);
@@ -1575,14 +1575,10 @@ class IpcHandlers {
                         console.log(`   Client ID: ${this.webSocketClient.clientId}`);
 
                         if (this.webSocketClient.isConnected) {
-                            console.log(`🔄 C-Client IPC: Re-registering user with updated info after user switch...`);
-                            // Re-register instead of disconnecting to maintain session continuity
-                            const reRegisterResult = await this.webSocketClient.reRegisterUser();
-                            if (reRegisterResult) {
-                                console.log(`✅ C-Client IPC: Successfully re-registered after user switch`);
-                            } else {
-                                console.warn(`⚠️ C-Client IPC: Failed to re-register after user switch`);
-                            }
+                            console.log(`🔄 C-Client IPC: Disconnecting WebSocket connection for user switch...`);
+                            // Disconnect WebSocket connection when switching users
+                            this.webSocketClient.disconnect();
+                            console.log(`✅ C-Client IPC: WebSocket connection disconnected for user switch`);
                         } else {
                             console.log(`ℹ️ C-Client IPC: No active WebSocket connection during user switch`);
                             console.log(`🔌 C-Client IPC: WebSocket will connect when user accesses NSN page`);
