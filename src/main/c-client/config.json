@@ -1,24 +1,22 @@
 {
   "b_client_websocket": {
     "enabled": true,
-    "host": "localhost",
-    "port": 8766,
     "auto_reconnect": false,
     "reconnect_interval": 60
   },
   "b_client_environment": {
-    "current": "local",
+    "current": "dynamic",
     "local": {
       "name": "Local B-Client",
-      "host": "localhost",
-      "port": 8766,
       "description": "Connect to local B-Client for development"
     },
     "production": {
-      "name": "Custom Production B-Client",
-      "host": "custom-b-client.example.com",
-      "port": 9000,
-      "description": "Custom production server"
+      "name": "Production B-Client",
+      "description": "Production B-Client server (URL provided by NSN)"
+    },
+    "dynamic": {
+      "name": "Dynamic B-Client",
+      "description": "B-Client URL provided dynamically by NSN"
     }
   },
   "nmp_cooperative_website": {
