@@ -197,7 +197,7 @@ class ElectronApp {
             }
 
             // Create IPC handlers with WebSocket client reference (after ViewManager is created)
-            this.ipcHandlers = new IpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager, null, this.startupValidator, apiPort, this.webSocketClient, this.tabManager, this.clientId);
+            this.ipcHandlers = new IpcHandlers(this.viewManager, this.historyManager, this.mainWindow, this.clientManager, null, this.startupValidator, apiPort, this.webSocketClient, this.tabManager, this.clientId, null, this);
             console.log(`🌐 C-Client: Created IpcHandlers with WebSocket client reference and TabManager`);
 
             // Initialize B-Client configuration modal
@@ -555,10 +555,15 @@ class ElectronApp {
 
         app.on('web-contents-created', (event, contents) => {
             contents.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
-                historyLogger.info(`📍 did-start-navigation: url=${url}, isMainFrame=${isMainFrame}, isInPlace=${isInPlace}`);
+                // Skip logging for data: URLs to reduce noise
+                if (!url.startsWith('data:')) {
+                    historyLogger.info(`📍 did-start-navigation: url=${url}, isMainFrame=${isMainFrame}, isInPlace=${isInPlace}`);
+                }
 
                 if (!isMainFrame) {
-                    historyLogger.info(`⏭️ Skipping: not main frame`);
+                    if (!url.startsWith('data:')) {
+                        historyLogger.info(`⏭️ Skipping: not main frame`);
+                    }
                     return;
                 }
 
@@ -577,7 +582,10 @@ class ElectronApp {
                 // URL cleaning is only for display purposes, not storage
 
                 const viewId = this.getViewIdFromWebContents(contents);
-                historyLogger.info(`📝 Recording visit for viewId=${viewId}, url=${url}`);
+                // Skip logging for data: URLs to reduce noise
+                if (!url.startsWith('data:')) {
+                    historyLogger.info(`📝 Recording visit for viewId=${viewId}, url=${url}`);
+                }
 
                 if (viewId && this.historyManager) {
                     setTimeout(async () => {

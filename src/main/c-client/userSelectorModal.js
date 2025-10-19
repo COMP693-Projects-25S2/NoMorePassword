@@ -173,6 +173,20 @@ class UserSelectorModal {
             justify-content: space-between;
             align-items: center;
             flex-shrink: 0;
+            -webkit-app-region: drag;
+            cursor: move;
+            position: relative;
+        }
+
+        .modal-header::before {
+            content: '⋮⋮';
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #999;
+            font-size: 12px;
+            opacity: 0.6;
         }
 
         .modal-title {
@@ -180,6 +194,8 @@ class UserSelectorModal {
             font-weight: 600;
             margin: 0;
             color: #333;
+            user-select: none;
+            margin-left: 20px;
         }
 
         .close-btn {
@@ -197,6 +213,7 @@ class UserSelectorModal {
             display: flex;
             align-items: center;
             justify-content: center;
+            -webkit-app-region: no-drag;
         }
 
         .close-btn:hover {

@@ -9,6 +9,7 @@ class WindowManager {
         this.clientManager = clientManager;
         this.resizeCallback = null;
         this.moveCallback = null;
+        this.hasShownInitialPath = false; // Track if we've shown the initial path
     }
 
     /**
@@ -35,6 +36,64 @@ class WindowManager {
         }
         return null;
     }
+
+    /**
+     * Update window title with current page title and project path
+     * @param {string} pageTitle Current page title
+     */
+    updateWindowTitle(pageTitle = '') {
+        console.log(`🪟 WindowManager: updateWindowTitle called with pageTitle="${pageTitle}"`);
+        if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+            console.log(`🪟 WindowManager: Main window not available`);
+            return;
+        }
+
+        try {
+            const projectPath = process.cwd();
+            const baseTitle = this.clientManager ? this.clientManager.getClientWindowTitle() : 'NoMorePassword Browser';
+
+            console.log(`🪟 WindowManager: updateWindowTitle called with pageTitle="${pageTitle}", hasShownInitialPath=${this.hasShownInitialPath}`);
+
+            let newTitle;
+
+            // Show full path only on first display, and only if we haven't shown it yet
+            if (!this.hasShownInitialPath) {
+                // First time: Show full path
+                if (pageTitle && pageTitle.trim() && pageTitle !== 'Loading...' && pageTitle !== 'Untitled Page') {
+                    newTitle = `${pageTitle} - ${baseTitle} - ${projectPath}`;
+                } else {
+                    newTitle = `${baseTitle} - ${projectPath}`;
+                }
+                console.log(`🪟 WindowManager: Setting initial title with path: ${newTitle}`);
+                this.mainWindow.setTitle(newTitle);
+
+                // Set timer to switch to simple title after 10 seconds, but don't mark as shown yet
+                setTimeout(() => {
+                    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                        const simpleTitle = pageTitle && pageTitle.trim() && pageTitle !== 'Loading...' && pageTitle !== 'Untitled Page'
+                            ? pageTitle
+                            : baseTitle;
+                        this.mainWindow.setTitle(simpleTitle);
+                        console.log(`🪟 WindowManager: Switched to simple title after delay: ${simpleTitle}`);
+                        // Only mark as shown after the timer completes
+                        this.hasShownInitialPath = true;
+                    }
+                }, 10000); // 10 second delay
+            } else {
+                // After first display: Only show page title
+                if (pageTitle && pageTitle.trim() && pageTitle !== 'Loading...' && pageTitle !== 'Untitled Page') {
+                    newTitle = pageTitle;
+                } else {
+                    newTitle = baseTitle;
+                }
+                console.log(`🪟 WindowManager: Setting simple title: ${newTitle}`);
+                this.mainWindow.setTitle(newTitle);
+            }
+        } catch (error) {
+            console.error('❌ WindowManager: Error updating window title:', error);
+        }
+    }
+
 
     /**
      * Save window state to database
@@ -86,9 +145,13 @@ class WindowManager {
 
         console.log('🪟 WindowManager: Creating window with config:', finalConfig);
 
+        // Get project absolute path for window title
+        const projectPath = process.cwd();
+        const baseTitle = this.clientManager ? this.clientManager.getClientWindowTitle() : 'NoMorePassword Browser';
+
         this.mainWindow = new BrowserWindow({
             ...finalConfig,
-            title: this.clientManager ? this.clientManager.getClientWindowTitle() : 'NoMorePassword Browser',
+            title: `${baseTitle} - ${projectPath}`,
             webPreferences: {
                 contextIsolation: true,
                 nodeIntegration: false,

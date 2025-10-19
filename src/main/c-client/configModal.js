@@ -409,6 +409,7 @@ class ConfigModal {
                 window.close();
             });
 
+
             // Handle node test
             nodeTestBtn.addEventListener('click', async () => {
                 try {

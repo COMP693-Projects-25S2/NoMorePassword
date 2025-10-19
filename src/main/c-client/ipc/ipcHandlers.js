@@ -7,7 +7,7 @@ const { getCClientLogger, getSyncLogger } = require('../utils/logger');
 
 // IPC handlers
 class IpcHandlers {
-    constructor(viewManager, historyManager, mainWindow = null, clientManager = null, nodeManager = null, startupValidator = null, apiPort = null, webSocketClient = null, tabManager = null, clientId = null, syncManager = null) {
+    constructor(viewManager, historyManager, mainWindow = null, clientManager = null, nodeManager = null, startupValidator = null, apiPort = null, webSocketClient = null, tabManager = null, clientId = null, syncManager = null, electronApp = null) {
         // Initialize logging system
         this.logger = getCClientLogger('ipc');
         this.syncLogger = getSyncLogger('ipc'); // For sync-related logs
@@ -23,6 +23,7 @@ class IpcHandlers {
         this.webSocketClient = webSocketClient; // Store reference to WebSocket client
         this.tabManager = tabManager; // Store reference to unified TabManager
         this.syncManager = syncManager; // Store reference to SyncManager
+        this.electronApp = electronApp; // Store reference to ElectronApp instance
         this.networkConfigManager = new NetworkConfigManager(); // Network configuration manager
         this.registerHandlers();
     }
@@ -928,6 +929,7 @@ class IpcHandlers {
                 return { success: false, error: error.message };
             }
         });
+
 
         // Clear current user activities
         this.safeRegisterHandler('clear-current-user-activities', () => {

@@ -27,18 +27,25 @@ class SyncDataViewer {
             const primaryDisplay = displays.find(d => d.id === screen.getPrimaryDisplay().id) || displays[0];
             const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
 
-            // Calculate modal position (center of screen)
+            // Calculate modal position (center of main window)
+            const mainBounds = mainWindow.getBounds();
             const modalWidth = 800;
             const modalHeight = 600;
-            const x = Math.round((screenWidth - modalWidth) / 2);
-            const y = Math.round((screenHeight - modalHeight) / 2);
+
+            // Position modal at center of main window
+            const x = mainBounds.x + (mainBounds.width - modalWidth) / 2;
+            const y = mainBounds.y + (mainBounds.height - modalHeight) / 2;
+
+            // Ensure modal is within screen bounds
+            const finalX = Math.max(0, Math.min(x, screenWidth - modalWidth - 20));
+            const finalY = Math.max(0, Math.min(y, screenHeight - modalHeight - 20));
 
             // Create modal window
             this.modalWindow = new BrowserWindow({
                 width: modalWidth,
                 height: modalHeight,
-                x: x,
-                y: y,
+                x: finalX,
+                y: finalY,
                 resizable: true,
                 minimizable: true,
                 maximizable: true,
@@ -117,6 +124,20 @@ class SyncDataViewer {
             justify-content: space-between;
             align-items: center;
             flex-shrink: 0;
+            -webkit-app-region: drag;
+            cursor: move;
+            position: relative;
+        }
+
+        .modal-header::before {
+            content: '⋮⋮';
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #999;
+            font-size: 12px;
+            opacity: 0.6;
         }
 
         .modal-title {
@@ -124,6 +145,8 @@ class SyncDataViewer {
             font-weight: 600;
             margin: 0;
             color: #333;
+            margin-left: 20px;
+            user-select: none;
         }
 
 
@@ -225,6 +248,7 @@ class SyncDataViewer {
             cursor: pointer;
             font-size: 14px;
             margin-left: 10px;
+            -webkit-app-region: no-drag;
         }
 
         .sync-btn:hover {
@@ -245,6 +269,7 @@ class SyncDataViewer {
             cursor: pointer;
             font-size: 14px;
             margin-left: 10px;
+            -webkit-app-region: no-drag;
         }
 
         .refresh-btn:hover {

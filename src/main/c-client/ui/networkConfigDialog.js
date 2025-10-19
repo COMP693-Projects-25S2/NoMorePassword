@@ -34,18 +34,25 @@ class NetworkConfigDialog {
             const primaryDisplay = displays.find(d => d.id === screen.getPrimaryDisplay().id) || displays[0];
             const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
 
-            // Calculate dialog position (center of screen)
+            // Calculate dialog position (center of main window)
+            const mainBounds = mainWindow.getBounds();
             const dialogWidth = 450;
             const dialogHeight = 320;
-            const x = Math.max(0, (screenWidth - dialogWidth) / 2);
-            const y = Math.max(0, (screenHeight - dialogHeight) / 2);
+
+            // Position dialog at center of main window
+            const x = mainBounds.x + (mainBounds.width - dialogWidth) / 2;
+            const y = mainBounds.y + (mainBounds.height - dialogHeight) / 2;
+
+            // Ensure dialog is within screen bounds
+            const finalX = Math.max(0, Math.min(x, screenWidth - dialogWidth - 20));
+            const finalY = Math.max(0, Math.min(y, screenHeight - dialogHeight - 20));
 
             // Create dialog window
             this.dialogWindow = new BrowserWindow({
                 width: dialogWidth,
                 height: dialogHeight,
-                x: x,
-                y: y,
+                x: finalX,
+                y: finalY,
                 resizable: true,
                 minimizable: true,
                 maximizable: false,
@@ -121,6 +128,20 @@ class NetworkConfigDialog {
             justify-content: space-between;
             align-items: center;
             flex-shrink: 0;
+            -webkit-app-region: drag;
+            cursor: move;
+            position: relative;
+        }
+
+        .dialog-header::before {
+            content: '⋮⋮';
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #999;
+            font-size: 12px;
+            opacity: 0.6;
         }
 
         .dialog-title {
@@ -128,6 +149,8 @@ class NetworkConfigDialog {
             font-weight: 600;
             margin: 0;
             color: #333;
+            margin-left: 20px;
+            user-select: none;
         }
 
         .close-btn {
@@ -145,6 +168,7 @@ class NetworkConfigDialog {
             display: flex;
             align-items: center;
             justify-content: center;
+            -webkit-app-region: no-drag;
         }
 
         .close-btn:hover {

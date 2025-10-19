@@ -205,6 +205,25 @@ class TabManager {
             // 4. Notify switch
             this.notifyTabSwitched(id, tab);
 
+            // 5. Update main window title with current tab title
+            if (this.electronApp && this.electronApp.windowManager) {
+                // Get the latest title from webContents if available
+                let currentTitle = tab.title;
+                try {
+                    if (tab.browserView && tab.browserView.webContents && !tab.browserView.webContents.isDestroyed()) {
+                        const webContentsTitle = tab.browserView.webContents.getTitle();
+                        if (webContentsTitle && webContentsTitle.trim() && webContentsTitle !== 'Loading...' && webContentsTitle !== 'Untitled Page') {
+                            currentTitle = webContentsTitle;
+                            this.logger.info(`🔄 TabManager: Using webContents title for tab ${id}: "${currentTitle}"`);
+                        }
+                    }
+                } catch (error) {
+                    this.logger.warn(`⚠️ TabManager: Could not get webContents title for tab ${id}:`, error);
+                }
+
+                this.electronApp.windowManager.updateWindowTitle(currentTitle);
+            }
+
             this.logger.info(`✅ TabManager: Switched to tab ${id}`);
             return true;
 
@@ -588,10 +607,15 @@ class TabManager {
         const contents = browserView.webContents;
 
         contents.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
-            historyLogger.info(`📍 [Tab ${id}] did-start-navigation: url=${url}, isMainFrame=${isMainFrame}, isInPlace=${isInPlace}`);
+            // Skip logging for data: URLs to reduce noise
+            if (!url.startsWith('data:')) {
+                historyLogger.info(`📍 [Tab ${id}] did-start-navigation: url=${url}, isMainFrame=${isMainFrame}, isInPlace=${isInPlace}`);
+            }
 
             if (!isMainFrame) {
-                historyLogger.info(`⏭️ [Tab ${id}] Skipping: not main frame`);
+                if (!url.startsWith('data:')) {
+                    historyLogger.info(`⏭️ [Tab ${id}] Skipping: not main frame`);
+                }
                 return;
             }
 
@@ -607,7 +631,10 @@ class TabManager {
             }
 
             // Use original URL for history storage (do NOT normalize)
-            historyLogger.info(`📝 [Tab ${id}] Recording visit for viewId=${id}, url=${url}`);
+            // Skip logging for data: URLs to reduce noise
+            if (!url.startsWith('data:')) {
+                historyLogger.info(`📝 [Tab ${id}] Recording visit for viewId=${id}, url=${url}`);
+            }
 
             if (this.electronApp && this.electronApp.historyManager) {
                 setTimeout(async () => {
@@ -758,8 +785,8 @@ class TabManager {
                     this.logger.warn(`⚠️ TabManager: Error forcing focus: ${focusError.message}`);
                 }
 
-                // Force refresh and focus for BrowserView
-                this.forceRefreshAndFocus(browserView);
+                // Force refresh and focus for BrowserView (no reload for normal tab switching)
+                this.forceRefreshAndFocus(browserView, false);
 
                 this.logger.info(`✅ TabManager: BrowserView added to main window`);
                 return true;
@@ -867,6 +894,11 @@ class TabManager {
         if (tab) {
             tab.title = title;
             this.notifyTabTitleUpdated(id, title);
+
+            // Update main window title if this is the current tab
+            if (id === this.currentTabId && this.electronApp && this.electronApp.windowManager) {
+                this.electronApp.windowManager.updateWindowTitle(title);
+            }
         }
     }
 
@@ -1158,7 +1190,7 @@ class TabManager {
 
                     // Force refresh and focus for each tab (with reload)
                     this.logger.info(`🔄 TabManager: Force refreshing tab ${tab.id}...`);
-                    this.forceRefreshAndFocus(tab.browserView);
+                    this.forceRefreshAndFocus(tab.browserView, true);
 
                     // Analyze and repair page rendering issues for each tab
                     setTimeout(async () => {
@@ -1195,7 +1227,7 @@ class TabManager {
                     electronMainWindow.setBrowserView(currentTab.browserView);
 
                     // Force refresh and focus for current tab (with reload)
-                    this.forceRefreshAndFocus(currentTab.browserView);
+                    this.forceRefreshAndFocus(currentTab.browserView, true);
 
                     // Analyze and repair page rendering issues
                     setTimeout(async () => {
@@ -1565,9 +1597,9 @@ class TabManager {
     }
 
     /**
-     * Force refresh and focus for BrowserView (with reload for proper rendering)
+     * Force refresh and focus for BrowserView (with optional reload for proper rendering)
      */
-    forceRefreshAndFocus(browserView) {
+    forceRefreshAndFocus(browserView, forceReload = false) {
         try {
             if (!browserView || browserView.webContents.isDestroyed()) {
                 this.logger.warn(`⚠️ TabManager: Cannot force refresh - BrowserView is invalid`);
@@ -1588,9 +1620,13 @@ class TabManager {
             browserView.webContents.focus();
             this.logger.info(`🔍 TabManager: Forced focus to BrowserView`);
 
-            // Force refresh the page (reload is necessary for proper rendering)
-            browserView.webContents.reload();
-            this.logger.info(`🔄 TabManager: Force refreshed BrowserView`);
+            // Force refresh the page (reload only when necessary for proper rendering)
+            if (forceReload) {
+                browserView.webContents.reload();
+                this.logger.info(`🔄 TabManager: Force reloaded BrowserView`);
+            } else {
+                this.logger.info(`🔄 TabManager: Skipped reload for normal tab switching`);
+            }
 
             // Execute JavaScript to ensure proper rendering after refresh
             setTimeout(() => {
@@ -1912,7 +1948,7 @@ class TabManager {
             this.logger.info(`🔄 TabManager: Force refreshing current tab ${this.currentTabId}`);
 
             // Force refresh and focus for current tab
-            const result = this.forceRefreshAndFocus(currentTab.browserView);
+            const result = this.forceRefreshAndFocus(currentTab.browserView, true);
 
             if (result) {
                 this.logger.info(`✅ TabManager: Force refreshed current tab ${this.currentTabId}`);

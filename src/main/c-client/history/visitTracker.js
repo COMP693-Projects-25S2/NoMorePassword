@@ -241,7 +241,15 @@ class VisitTracker {
      * Main visit record method - all using database
      */
     async recordVisit(url, viewId, userId = null) {
-        historyLogger.info(`🎯 VisitTracker.recordVisit called: url=${url}, viewId=${viewId}, userId=${userId}`);
+        // Skip logging for data: URLs to reduce noise
+        if (!url.startsWith('data:')) {
+            historyLogger.info(`🎯 VisitTracker.recordVisit called: url=${url}, viewId=${viewId}, userId=${userId}`);
+        }
+
+        // Skip data: URLs
+        if (url.startsWith('data:')) {
+            return null;
+        }
 
         // Skip special URLs
         if (!UrlUtils.isValidUrl(url)) {
