@@ -152,11 +152,8 @@ The system consists of three main components:
    import os
    
    class ProductionConfig:
-       # Database configuration
-       MYSQL_HOST = os.environ.get('MYSQL_HOST')
-       MYSQL_USER = os.environ.get('MYSQL_USER')
-       MYSQL_PASSWORD = os.environ.get('MYSQL_PASSWORD')
-       MYSQL_DATABASE = os.environ.get('MYSQL_DATABASE')
+       # Database configuration (SQLite)
+       DATABASE_URI = 'sqlite:///b_client_secure.db'
        
        # WebSocket configuration
        WEBSOCKET_HOST = '0.0.0.0'
