@@ -209,14 +209,22 @@ The system consists of three main components:
 
 1. **Download the installer**:
    - Visit the [Releases page](https://github.com/COMP693-Projects-25S2/NoMorePassword/releases)
-   - Download `No More Password Setup 1.0.0.exe` for Windows
-   - Or download the appropriate installer for your platform
+   - Download `No More Password Setup 1.0.0.exe` from the latest release
+   - Or download the portable version `No More Password.exe` for direct execution
 
-2. **Run the installer**:
-   - Double-click the downloaded file
+2. **Installation Options**:
+
+   **Option A: Full Installation (Recommended)**:
+   - Run `No More Password Setup 1.0.0.exe`
    - Follow the installation wizard
    - Choose installation directory
+   - Create desktop and start menu shortcuts
    - Complete the installation
+
+   **Option B: Portable Version**:
+   - Download `No More Password.exe` from the release
+   - Place it in your desired folder
+   - Run directly without installation
 
 3. **Configure the client**:
    - Open the C-Client application
@@ -346,10 +354,19 @@ The system consists of three main components:
 
 ### For End Users
 
-1. **Install C-Client** using the provided installer
-2. **Configure the application** with your B-Client and NSN URLs
-3. **Register a new account** or login with existing credentials
-4. **Start browsing** - your activities will be automatically synchronized across devices
+1. **Download C-Client** from the [Releases page](https://github.com/COMP693-Projects-25S2/NoMorePassword/releases)
+   - Choose between full installer or portable version
+   - Full installer: `No More Password Setup 1.0.0.exe` (recommended)
+   - Portable version: `No More Password.exe` (no installation required)
+
+2. **Install and configure** the application:
+   - Run the installer or portable executable
+   - Configure B-Client and NSN URLs in settings
+   - Register a new account or login with existing credentials
+
+3. **Start using** the application:
+   - Your browsing activities will be automatically synchronized across devices
+   - Enjoy passwordless authentication through cluster verification
 
 ### For Administrators
 
