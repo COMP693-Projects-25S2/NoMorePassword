@@ -2,7 +2,7 @@
 
 A comprehensive distributed authentication system that eliminates the need for traditional passwords through cluster-based verification and secure data synchronization.
 
-## 🌟 Features
+##  Features
 
 - **Passwordless Authentication**: No more remembering complex passwords
 - **Distributed Architecture**: Multi-node cluster verification system
@@ -12,7 +12,7 @@ A comprehensive distributed authentication system that eliminates the need for t
 - **Secure Data Storage**: Encrypted local database with SQLite
 - **Cluster Verification**: Multi-device authentication verification
 
-## 🏗️ System Architecture
+##  System Architecture
 
 The system consists of three main components:
 
@@ -20,14 +20,14 @@ The system consists of three main components:
 2. **B-Client**: Backend service for cluster management and data synchronization
 3. **C-Client**: Desktop client application for end users
 
-## 📋 Prerequisites
+##  Prerequisites
 
 - Python 3.8+
 - Node.js 18.19+ (for C-Client)
 - MySQL 8.0+ (for B-Client)
 - WebSocket support (for B-Client deployment)
 
-## 🚀 Deployment Guide
+##  Deployment Guide
 
 ### 1. NSN Deployment on PythonAnywhere
 
@@ -350,7 +350,7 @@ The system consists of three main components:
    npm start
    ```
 
-## 📱 Usage
+##  Usage
 
 ### For End Users
 
@@ -375,7 +375,7 @@ The system consists of three main components:
 3. **Configure database connections** and environment variables
 4. **Monitor system health** through the B-Client dashboard
 
-## 🔒 Security Features
+##  Security Features
 
 - **Encrypted Data Storage**: All local data is encrypted using SQLite encryption
 - **Secure Communication**: WebSocket connections use TLS encryption
@@ -383,7 +383,7 @@ The system consists of three main components:
 - **Data Integrity**: Cryptographic verification of data consistency
 - **Session Management**: Secure session handling with automatic timeout
 
-## 🐛 Troubleshooting
+##  Troubleshooting
 
 ### Common Issues
 
@@ -412,7 +412,7 @@ The system consists of three main components:
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🤝 Contributing
+##  Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
@@ -420,14 +420,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## 📞 Support
+##  Support
 
 For support and questions:
 - Create an issue on GitHub
 - Contact the development team
 - Check the documentation wiki
 
-## 🎯 Roadmap
+##  Roadmap
 
 - [ ] Mobile app support (iOS/Android)
 - [ ] Browser extension
