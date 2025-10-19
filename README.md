@@ -208,7 +208,7 @@ The system consists of three main components:
 #### Download and Install
 
 1. **Download the installer**:
-   - Visit the [Releases page](https://github.com/COMP693-Projects-25S2/NoMorePassword/releases)
+   - Visit the Releases File
    - Download `No More Password Setup 1.0.0.exe` from the latest release
    - Or download the portable version `No More Password.exe` for direct execution
 
@@ -236,7 +236,7 @@ The system consists of three main components:
      Environment: Production
      ```
 
-## ⚙️ Configuration Management
+##  Configuration Management
 
 ### Environment Switching
 
@@ -318,7 +318,7 @@ The system consists of three main components:
    ConfigManager.switch_to_production()
    ```
 
-## 🔧 Development Setup
+##  Development Setup
 
 ### Local Development
 
@@ -354,7 +354,7 @@ The system consists of three main components:
 
 ### For End Users
 
-1. **Download C-Client** from the [Releases page](https://github.com/COMP693-Projects-25S2/NoMorePassword/releases)
+1. **Download C-Client** from the Releases File
    - Choose between full installer or portable version
    - Full installer: `No More Password Setup 1.0.0.exe` (recommended)
    - Portable version: `No More Password.exe` (no installation required)
@@ -408,7 +408,7 @@ The system consists of three main components:
 - **B-Client logs**: Check your deployment platform logs
 - **NSN logs**: Check PythonAnywhere logs in the dashboard
 
-## 📄 License
+##  License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
