@@ -3,10 +3,13 @@
  * Feedback sending and response management
  */
 
+const { getDataSyncLogger } = require('../../utils/logger');
+
 class FeedbackManager {
     constructor(client) {
         this.client = client;
         this.logger = client.logger;
+        this.dataSyncLogger = getDataSyncLogger('feedback_manager');
     }
 
     /**
@@ -17,6 +20,10 @@ class FeedbackManager {
             this.logger.info('📤 [WebSocket Client] Sending session feedback to B-Client');
             this.logger.info(`   Success: ${success}`);
             this.logger.info(`   Message: ${message}`);
+            this.dataSyncLogger.info('📤 [Data Sync] Sending session feedback to B-Client');
+            this.dataSyncLogger.info(`   Success: ${success}`);
+            this.dataSyncLogger.info(`   Message: ${message}`);
+            this.dataSyncLogger.info(`   User ID: ${originalMessage.user_id}`);
 
             const feedbackMessage = {
                 type: 'session_feedback',
@@ -44,6 +51,10 @@ class FeedbackManager {
             this.logger.info(`   Success: ${success}`);
             this.logger.info(`   Message: ${message}`);
             this.logger.info(`   User ID: ${originalMessage.user_id}`);
+            this.dataSyncLogger.info('📤 [Data Sync] Sending IMMEDIATE logout feedback to B-Client');
+            this.dataSyncLogger.info(`   Success: ${success}`);
+            this.dataSyncLogger.info(`   Message: ${message}`);
+            this.dataSyncLogger.info(`   User ID: ${originalMessage.user_id}`);
 
             const feedbackMessage = {
                 type: 'logout_feedback',

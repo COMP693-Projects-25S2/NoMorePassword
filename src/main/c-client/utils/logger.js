@@ -33,16 +33,18 @@ class CClientLogger {
             main: path.join(this.logDir, `cclient_main_${startTime}.log`),
             websocket: path.join(this.logDir, `cclient_websocket_${startTime}.log`),
             websocket_client: path.join(this.logDir, `cclient_websocket_client_${startTime}.log`), // Separate WebSocket Client log
-            nodemanager: path.join(this.logDir, `cclient_nodemanager_${startTime}.log`),
-            sync: path.join(this.logDir, `cclient_sync_${startTime}.log`), // Unified sync log file
-            syncmanager: path.join(this.logDir, `cclient_sync_${startTime}.log`), // Redirect to sync file
+            nodemanager: path.join(this.logDir, `cclient_node_allocation_${startTime}.log`), // Node allocation log file
+            sync: path.join(this.logDir, `cclient_data_sync_${startTime}.log`), // Dedicated data sync log file
+            syncmanager: path.join(this.logDir, `cclient_data_sync_${startTime}.log`), // Redirect to data sync file
             tabmanager: path.join(this.logDir, `cclient_tabmanager_${startTime}.log`),
             viewmanager: path.join(this.logDir, `cclient_viewmanager_${startTime}.log`),
             history: path.join(this.logDir, `cclient_history_${startTime}.log`),
             ipc: path.join(this.logDir, `cclient_ipc_${startTime}.log`),
             app: path.join(this.logDir, `cclient_app_${startTime}.log`),
             security_code: path.join(this.logDir, `cclient_security_code_${startTime}.log`),
-            cluster_verification: path.join(this.logDir, `cclient_cluster_verification_${startTime}.log`) // Cluster verification log file
+            cluster_verification: path.join(this.logDir, `cclient_cluster_verification_${startTime}.log`), // Cluster verification log file
+            node_allocation: path.join(this.logDir, `cclient_node_allocation_${startTime}.log`), // Dedicated node allocation log file
+            data_sync: path.join(this.logDir, `cclient_data_sync_${startTime}.log`) // Dedicated data sync log file
         };
 
         // Log levels
@@ -82,6 +84,8 @@ Log files created:
   WebSocket: ${this.logFiles.websocket}
   WebSocket Client: ${this.logFiles.websocket_client}
   NodeManager: ${this.logFiles.nodemanager}
+  Node Allocation: ${this.logFiles.node_allocation}
+  Data Sync: ${this.logFiles.data_sync}
   SyncManager: ${this.logFiles.syncmanager}
   TabManager: ${this.logFiles.tabmanager}
   ViewManager: ${this.logFiles.viewmanager}
@@ -89,6 +93,7 @@ Log files created:
   IPC: ${this.logFiles.ipc}
   App: ${this.logFiles.app}
   Security Code: ${this.logFiles.security_code}
+  Cluster Verification: ${this.logFiles.cluster_verification}
 ================================================================================`;
         this.writeToLog('main', 'INFO', startupMsg);
     }
@@ -202,6 +207,16 @@ function getSyncLogger(moduleName) {
     return cclientLogger.getLogger('sync');
 }
 
+function getNodeAllocationLogger(moduleName) {
+    // For node allocation-related modules, use node_allocation log file
+    return cclientLogger.getLogger('node_allocation');
+}
+
+function getDataSyncLogger(moduleName) {
+    // For data sync-related modules, use data_sync log file
+    return cclientLogger.getLogger('data_sync');
+}
+
 function setupConsoleRedirect(moduleName) {
     return cclientLogger.overrideConsole(moduleName);
 }
@@ -210,6 +225,8 @@ module.exports = {
     CClientLogger,
     getCClientLogger,
     getSyncLogger,
+    getNodeAllocationLogger,
+    getDataSyncLogger,
     setupConsoleRedirect,
     cclientLogger
 };

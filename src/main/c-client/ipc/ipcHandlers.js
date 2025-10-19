@@ -3,7 +3,7 @@ const NetworkConfigManager = require('../config/networkConfigManager');
 const apiConfig = require('../config/apiConfig');
 
 // Import logging system
-const { getCClientLogger, getSyncLogger } = require('../utils/logger');
+const { getCClientLogger, getSyncLogger, getDataSyncLogger } = require('../utils/logger');
 
 // IPC handlers
 class IpcHandlers {
@@ -11,6 +11,7 @@ class IpcHandlers {
         // Initialize logging system
         this.logger = getCClientLogger('ipc');
         this.syncLogger = getSyncLogger('ipc'); // For sync-related logs
+        this.dataSyncLogger = getDataSyncLogger('ipc'); // For data sync-related logs
 
         this.clientId = clientId; // Store client ID for user-specific operations
         this.viewManager = viewManager;

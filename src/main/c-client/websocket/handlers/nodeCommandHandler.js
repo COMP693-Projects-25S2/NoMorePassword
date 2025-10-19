@@ -3,21 +3,32 @@
  * NodeManager command processing
  */
 
+const { getNodeAllocationLogger } = require('../../utils/logger');
+
 class NodeCommandHandler {
     constructor(client) {
         this.client = client;
         this.logger = client.logger;
+        this.nodeAllocationLogger = getNodeAllocationLogger('node_command_handler');
     }
 
     /**
      * Handle NodeManager commands from B-Client
      */
     async handleNodeManagerCommand(message) {
+        // Log to both regular logger and node allocation logger
         this.logger.info('='.repeat(80));
         this.logger.info(`🔧 [WebSocket Client] handleNodeManagerCommand() CALLED`);
         this.logger.info(`📋 Command type: ${message.type}`);
         this.logger.info(`📋 Command data:`, message.data);
         this.logger.info(`📋 Request ID: ${message.request_id}`);
+
+        // Also log to dedicated node allocation logger
+        this.nodeAllocationLogger.info('='.repeat(80));
+        this.nodeAllocationLogger.info(`🔧 [Node Allocation] handleNodeManagerCommand() CALLED`);
+        this.nodeAllocationLogger.info(`📋 Command type: ${message.type}`);
+        this.nodeAllocationLogger.info(`📋 Command data:`, message.data);
+        this.nodeAllocationLogger.info(`📋 Request ID: ${message.request_id}`);
 
         try {
             // Get NodeManager instance
@@ -45,20 +56,28 @@ class NodeCommandHandler {
             switch (message.type) {
                 case 'new_domain_node':
                     this.logger.info('🏗️ [WebSocket Client] Calling nodeManager.newDomainNode()...');
+                    this.nodeAllocationLogger.info('🏗️ [Node Allocation] Creating new domain node...');
                     result = await nodeManager.newDomainNode();
+                    this.nodeAllocationLogger.info('✅ [Node Allocation] Domain node created successfully:', result);
                     break;
 
                 case 'new_cluster_node':
                     this.logger.info('🏗️ [WebSocket Client] Calling nodeManager.newClusterNode()...');
+                    this.nodeAllocationLogger.info('🏗️ [Node Allocation] Creating new cluster node...');
+                    this.nodeAllocationLogger.info(`📋 Domain ID: ${message.data.domain_id}`);
                     result = await nodeManager.newClusterNode(message.data.domain_id);
+                    this.nodeAllocationLogger.info('✅ [Node Allocation] Cluster node created successfully:', result);
                     break;
 
                 case 'new_channel_node':
                     this.logger.info('🏗️ [WebSocket Client] Calling nodeManager.newChannelNode()...');
+                    this.nodeAllocationLogger.info('🏗️ [Node Allocation] Creating new channel node...');
+                    this.nodeAllocationLogger.info(`📋 Domain ID: ${message.data.domain_id}, Cluster ID: ${message.data.cluster_id}`);
                     result = await nodeManager.newChannelNode(
                         message.data.domain_id,
                         message.data.cluster_id
                     );
+                    this.nodeAllocationLogger.info('✅ [Node Allocation] Channel node created successfully:', result);
                     break;
 
                 case 'assign_to_domain':
@@ -90,12 +109,15 @@ class NodeCommandHandler {
 
                 case 'add_new_node_to_peers':
                     this.logger.info('👥 [WebSocket Client] Calling nodeManager.addNewNodeToPeers()...');
+                    this.nodeAllocationLogger.info('👥 [Node Allocation] Adding new node to peers...');
+                    this.nodeAllocationLogger.info(`📋 Domain ID: ${message.data.domain_id}, Cluster ID: ${message.data.cluster_id}, Channel ID: ${message.data.channel_id}, Node ID: ${message.data.node_id}`);
                     result = await nodeManager.addNewNodeToPeers(
                         message.data.domain_id,
                         message.data.cluster_id,
                         message.data.channel_id,
                         message.data.node_id
                     );
+                    this.nodeAllocationLogger.info('✅ [Node Allocation] Node added to peers successfully:', result);
                     break;
 
                 case 'add_new_channel_to_peers':
@@ -127,11 +149,14 @@ class NodeCommandHandler {
 
                 case 'count_peers_amount':
                     this.logger.info('📊 [WebSocket Client] Calling nodeManager.countPeersAmount()...');
+                    this.nodeAllocationLogger.info('📊 [Node Allocation] Counting peers amount...');
+                    this.nodeAllocationLogger.info(`📋 Domain ID: ${message.data.domain_id}, Cluster ID: ${message.data.cluster_id}, Channel ID: ${message.data.channel_id}`);
                     result = await nodeManager.countPeersAmount(
                         message.data.domain_id,
                         message.data.cluster_id,
                         message.data.channel_id
                     );
+                    this.nodeAllocationLogger.info('✅ [Node Allocation] Peers count result:', result);
                     break;
 
                 default:
@@ -143,6 +168,7 @@ class NodeCommandHandler {
             }
 
             this.logger.info(`[WebSocket Client] NodeManager command completed:`, result);
+            this.nodeAllocationLogger.info(`✅ [Node Allocation] NodeManager command completed:`, result);
 
             // Send response back to B-Client
             const response = {
@@ -153,12 +179,16 @@ class NodeCommandHandler {
             };
 
             this.logger.info(`📤 [WebSocket Client] Sending response to B-Client:`, response);
+            this.nodeAllocationLogger.info(`📤 [Node Allocation] Sending response to B-Client:`, response);
             this.client.sendMessage(response);
             this.logger.info('='.repeat(80));
+            this.nodeAllocationLogger.info('='.repeat(80));
 
         } catch (error) {
             this.logger.error('❌ [WebSocket Client] Error handling NodeManager command:', error);
             this.logger.error(error.stack);
+            this.nodeAllocationLogger.error('❌ [Node Allocation] Error handling NodeManager command:', error);
+            this.nodeAllocationLogger.error(error.stack);
 
             // Send error response
             this.client.sendMessage({
@@ -167,6 +197,7 @@ class NodeCommandHandler {
                 request_id: message.request_id
             });
             this.logger.info('='.repeat(80));
+            this.nodeAllocationLogger.info('='.repeat(80));
         }
     }
 
