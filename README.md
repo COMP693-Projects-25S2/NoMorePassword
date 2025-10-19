@@ -1,111 +1,426 @@
-# B-Client Flask Application
+# No More Password - Distributed Authentication System
 
-Enterprise-level client for NoMorePassword Backend Service, rebuilt using Flask + Python.
+A comprehensive distributed authentication system that eliminates the need for traditional passwords through cluster-based verification and secure data synchronization.
 
-## Features
+## 🌟 Features
 
-- **Cookie Management**: Store and manage user cookies with auto-refresh capability
-- **Account Management**: Store user account credentials with full details
-- **Dashboard Statistics**: Real-time statistics and monitoring
-- **Enterprise Security**: Complete data isolation and enhanced security features
+- **Passwordless Authentication**: No more remembering complex passwords
+- **Distributed Architecture**: Multi-node cluster verification system
+- **Real-time Synchronization**: Secure data sync across devices
+- **WebSocket Communication**: Real-time communication between components
+- **Cross-platform Support**: Windows, macOS, and Linux compatibility
+- **Secure Data Storage**: Encrypted local database with SQLite
+- **Cluster Verification**: Multi-device authentication verification
 
-## Installation
+## 🏗️ System Architecture
 
-1. **Install Python dependencies**:
+The system consists of three main components:
+
+1. **NSN (No More Password Server)**: Web application server
+2. **B-Client**: Backend service for cluster management and data synchronization
+3. **C-Client**: Desktop client application for end users
+
+## 📋 Prerequisites
+
+- Python 3.8+
+- Node.js 18.19+ (for C-Client)
+- MySQL 8.0+ (for B-Client)
+- WebSocket support (for B-Client deployment)
+
+## 🚀 Deployment Guide
+
+### 1. NSN Deployment on PythonAnywhere
+
+#### Step 1: Prepare the NSN Application
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/COMP693-Projects-25S2/NoMorePassword.git
+   cd NoMorePassword/src/main/NSN
+   ```
+
+2. **Install dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
 
-2. **Run the application**:
-   ```bash
-   python run.py
+3. **Configure the application**:
+   ```python
+   # config.py
+   import os
+   
+   class Config:
+       SECRET_KEY = os.environ.get('SECRET_KEY') or 'your-secret-key-here'
+       MYSQL_HOST = os.environ.get('MYSQL_HOST') or 'your-mysql-host'
+       MYSQL_USER = os.environ.get('MYSQL_USER') or 'your-mysql-username'
+       MYSQL_PASSWORD = os.environ.get('MYSQL_PASSWORD') or 'your-mysql-password'
+       MYSQL_DATABASE = os.environ.get('MYSQL_DATABASE') or 'your-database-name'
+       
+       # Production settings
+       DEBUG = False
+       TESTING = False
    ```
 
-3. **Access the application**:
-   - Main page: http://localhost:3000
-   - Dashboard: http://localhost:3000/dashboard
-   - History: http://localhost:3000/history
-   - API Health: http://localhost:3000/api/health
+#### Step 2: Deploy to PythonAnywhere
 
-## API Endpoints
+1. **Upload your code** to PythonAnywhere using Git or file upload
+2. **Set up a virtual environment**:
+   ```bash
+   mkvirtualenv --python=/usr/bin/python3.8 nmp-env
+   workon nmp-env
+   pip install -r requirements.txt
+   ```
 
-### Health Check
-- `GET /api/health` - Service health status
+3. **Configure environment variables** in PythonAnywhere dashboard:
+   ```
+   SECRET_KEY=your-secret-key-here
+   MYSQL_HOST=your-mysql-host
+   MYSQL_USER=your-mysql-username
+   MYSQL_PASSWORD=your-mysql-password
+   MYSQL_DATABASE=your-database-name
+   ```
 
-### Statistics
-- `GET /api/stats` - Dashboard statistics
+4. **Set up the web app**:
+   - Source code: `/home/yourusername/NoMorePassword/src/main/NSN`
+   - WSGI file: `/home/yourusername/NoMorePassword/src/main/NSN/wsgi.py`
+   - Working directory: `/home/yourusername/NoMorePassword/src/main/NSN`
 
-### Configuration
-- `GET /api/config` - Application configuration
+5. **Create the WSGI file**:
+   ```python
+   # wsgi.py
+   import sys
+   import os
+   
+   # Add your project directory to the Python path
+   sys.path.append('/home/yourusername/NoMorePassword/src/main/NSN')
+   
+   from webapp import app as application
+   
+   if __name__ == "__main__":
+       application.run()
+   ```
 
-### Cookie Management
-- `GET /api/cookies?user_id=<user_id>` - Get cookies for user
-- `POST /api/cookies` - Add or update cookie
+6. **Initialize the database**:
+   ```bash
+   python init_db.py
+   ```
 
-### Account Management
-- `GET /api/accounts?user_id=<user_id>` - Get accounts for user
-- `POST /api/accounts` - Add or update account
-- `DELETE /api/accounts/<user_id>/<username>/<website>/<account>` - Delete account
+#### Step 3: Configure for Production
 
-## Database Schema
+1. **Update database configuration** in `webapp/__init__.py`:
+   ```python
+   app.config['MYSQL_HOST'] = 'your-mysql-host'
+   app.config['MYSQL_USER'] = 'your-mysql-username'
+   app.config['MYSQL_PASSWORD'] = 'your-mysql-password'
+   app.config['MYSQL_DATABASE'] = 'your-database-name'
+   ```
 
-### user_cookies
-- `user_id` (VARCHAR(50), Primary Key)
-- `username` (TEXT, Primary Key)
-- `node_id` (VARCHAR(50))
-- `cookie` (TEXT)
-- `auto_refresh` (BOOLEAN)
-- `refresh_time` (TIMESTAMP)
-- `create_time` (TIMESTAMP)
+2. **Set production environment**:
+   ```python
+   # In your main application file
+   import os
+   
+   if os.environ.get('FLASK_ENV') == 'production':
+       app.config['DEBUG'] = False
+       app.config['TESTING'] = False
+   ```
 
-### user_accounts
-- `user_id` (VARCHAR(50), Primary Key)
-- `username` (TEXT, Primary Key)
-- `website` (TEXT, Primary Key)
-- `account` (VARCHAR(50), Primary Key)
-- `password` (TEXT)
-- `email` (TEXT)
-- `first_name` (TEXT)
-- `last_name` (TEXT)
-- `location` (TEXT)
-- `registration_method` (VARCHAR(20))
-- `auto_generated` (BOOLEAN)
-- `create_time` (TIMESTAMP)
+### 2. B-Client Deployment on WebSocket-Supported Platform
 
-### domain_nodes
-**Note: This table has been removed. Domain information is now managed by NodeManager connection pools in memory.**
+#### Recommended Platforms:
+- **Heroku** (with WebSocket add-ons)
+- **Railway**
+- **DigitalOcean App Platform**
+- **AWS Elastic Beanstalk**
+- **Google Cloud Run**
 
-## Configuration
+#### Step 1: Prepare B-Client for Deployment
 
-The application uses `config.json` for configuration. Key settings:
+1. **Navigate to B-Client directory**:
+   ```bash
+   cd src/main/b-client-new
+   ```
 
-- **Network**: IP address settings for local/public deployment
-- **API**: Port configurations for NSN and C-Client services
-- **Target Websites**: Website configurations for different environments
-- **Auto-refresh**: Default interval for cookie refresh
+2. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-## Environment Variables
+3. **Configure for production**:
+   ```python
+   # config.py
+   import os
+   
+   class ProductionConfig:
+       # Database configuration
+       MYSQL_HOST = os.environ.get('MYSQL_HOST')
+       MYSQL_USER = os.environ.get('MYSQL_USER')
+       MYSQL_PASSWORD = os.environ.get('MYSQL_PASSWORD')
+       MYSQL_DATABASE = os.environ.get('MYSQL_DATABASE')
+       
+       # WebSocket configuration
+       WEBSOCKET_HOST = '0.0.0.0'
+       WEBSOCKET_PORT = int(os.environ.get('PORT', 3000))
+       
+       # NSN API configuration
+       NSN_API_URL = os.environ.get('NSN_API_URL', 'https://comp693nsnproject.pythonanywhere.com')
+       
+       # Logging
+       LOG_LEVEL = 'INFO'
+   ```
 
-- `HOST`: Server host (default: 0.0.0.0)
-- `PORT`: Server port (default: 3000)
-- `DEBUG`: Debug mode (default: True)
+#### Step 2: Deploy to Heroku (Example)
 
-## Development
+1. **Create Heroku app**:
+   ```bash
+   heroku create your-bclient-app
+   ```
 
-The application is built with:
-- **Flask**: Web framework
-- **SQLAlchemy**: Database ORM
-- **SQLite**: Database (b_client_secure.db)
-- **HTML/CSS/JavaScript**: Frontend
+2. **Set environment variables**:
+   ```bash
+   heroku config:set MYSQL_HOST=your-mysql-host
+   heroku config:set MYSQL_USER=your-mysql-username
+   heroku config:set MYSQL_PASSWORD=your-mysql-password
+   heroku config:set MYSQL_DATABASE=your-database-name
+   heroku config:set NSN_API_URL=https://comp693nsnproject.pythonanywhere.com
+   ```
 
-## Security Features
+3. **Create Procfile**:
+   ```
+   web: python app.py
+   ```
 
-- Complete data isolation
-- Enterprise-level security
-- Encrypted database storage
-- Secure cookie management
-- Auto-refresh capabilities
+4. **Deploy**:
+   ```bash
+   git add .
+   git commit -m "Deploy B-Client"
+   git push heroku main
+   ```
 
-## License
+#### Step 3: Configure WebSocket Support
 
-Enterprise-level client for NoMorePassword Backend Service.
+1. **Enable WebSocket** in your platform settings
+2. **Update C-Client configuration** to point to your B-Client URL
+3. **Test WebSocket connection**:
+   ```bash
+   curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==" https://nomorepassword.herokuapp.com/ws
+   ```
+
+### 3. C-Client Installation
+
+#### Download and Install
+
+1. **Download the installer**:
+   - Visit the [Releases page](https://github.com/COMP693-Projects-25S2/NoMorePassword/releases)
+   - Download `No More Password Setup 1.0.0.exe` for Windows
+   - Or download the appropriate installer for your platform
+
+2. **Run the installer**:
+   - Double-click the downloaded file
+   - Follow the installation wizard
+   - Choose installation directory
+   - Complete the installation
+
+3. **Configure the client**:
+   - Open the C-Client application
+   - Go to Settings/Configuration
+   - Update the following settings:
+     ```
+     B-Client URL: https://nomorepassword.herokuapp.com
+     NSN URL: https://comp693nsnproject.pythonanywhere.com/
+     Environment: Production
+     ```
+
+## ⚙️ Configuration Management
+
+### Environment Switching
+
+#### Method 1: Configuration File
+
+1. **Create environment-specific config files**:
+   ```python
+   # config/development.py
+   class DevelopmentConfig:
+       DEBUG = True
+       MYSQL_HOST = 'localhost'
+       MYSQL_USER = 'root'
+       MYSQL_PASSWORD = 'password'
+       MYSQL_DATABASE = 'nmp_dev'
+   
+   # config/production.py
+   class ProductionConfig:
+       DEBUG = False
+       MYSQL_HOST = os.environ.get('MYSQL_HOST')
+       MYSQL_USER = os.environ.get('MYSQL_USER')
+       MYSQL_PASSWORD = os.environ.get('MYSQL_PASSWORD')
+       MYSQL_DATABASE = os.environ.get('MYSQL_DATABASE')
+   ```
+
+2. **Switch environments**:
+   ```python
+   # In your main application
+   import os
+   
+   if os.environ.get('FLASK_ENV') == 'production':
+       from config.production import ProductionConfig
+       app.config.from_object(ProductionConfig)
+   else:
+       from config.development import DevelopmentConfig
+       app.config.from_object(DevelopmentConfig)
+   ```
+
+#### Method 2: Environment Variables
+
+1. **Set environment variables**:
+   ```bash
+   # Development
+   export FLASK_ENV=development
+   export MYSQL_HOST=localhost
+   export MYSQL_USER=root
+   export MYSQL_PASSWORD=password
+   
+   # Production
+   export FLASK_ENV=production
+   export MYSQL_HOST=your-production-host
+   export MYSQL_USER=your-production-user
+   export MYSQL_PASSWORD=your-production-password
+   ```
+
+2. **Restart the application** to apply changes
+
+#### Method 3: Runtime Configuration
+
+1. **Use configuration management**:
+   ```python
+   # config_manager.py
+   class ConfigManager:
+       @staticmethod
+       def switch_to_production():
+           app.config.update({
+               'DEBUG': False,
+               'MYSQL_HOST': os.environ.get('MYSQL_HOST'),
+               'MYSQL_USER': os.environ.get('MYSQL_USER'),
+               'MYSQL_PASSWORD': os.environ.get('MYSQL_PASSWORD'),
+               'MYSQL_DATABASE': os.environ.get('MYSQL_DATABASE')
+           })
+   ```
+
+2. **Call from application**:
+   ```python
+   from config_manager import ConfigManager
+   
+   # Switch to production
+   ConfigManager.switch_to_production()
+   ```
+
+## 🔧 Development Setup
+
+### Local Development
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/COMP693-Projects-25S2/NoMorePassword.git
+   cd NoMorePassword
+   ```
+
+2. **Set up NSN**:
+   ```bash
+   cd src/main/NSN
+   pip install -r requirements.txt
+   python init_db.py
+   python app.py
+   ```
+
+3. **Set up B-Client**:
+   ```bash
+   cd src/main/b-client-new
+   pip install -r requirements.txt
+   python app.py
+   ```
+
+4. **Set up C-Client**:
+   ```bash
+   cd src/main/c-client
+   npm install
+   npm start
+   ```
+
+## 📱 Usage
+
+### For End Users
+
+1. **Install C-Client** using the provided installer
+2. **Configure the application** with your B-Client and NSN URLs
+3. **Register a new account** or login with existing credentials
+4. **Start browsing** - your activities will be automatically synchronized across devices
+
+### For Administrators
+
+1. **Deploy NSN** to PythonAnywhere
+2. **Deploy B-Client** to a WebSocket-supported platform
+3. **Configure database connections** and environment variables
+4. **Monitor system health** through the B-Client dashboard
+
+## 🔒 Security Features
+
+- **Encrypted Data Storage**: All local data is encrypted using SQLite encryption
+- **Secure Communication**: WebSocket connections use TLS encryption
+- **Cluster Verification**: Multi-device authentication prevents unauthorized access
+- **Data Integrity**: Cryptographic verification of data consistency
+- **Session Management**: Secure session handling with automatic timeout
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **WebSocket Connection Failed**:
+   - Check if your B-Client platform supports WebSockets
+   - Verify the B-Client URL in C-Client configuration
+   - Check firewall settings
+
+2. **Database Connection Error**:
+   - Verify MySQL credentials
+   - Check database server accessibility
+   - Ensure database exists and is properly configured
+
+3. **NSN API Connection Failed**:
+   - Verify NSN URL in C-Client configuration
+   - Check if NSN is properly deployed and accessible
+   - Verify SSL certificates
+
+### Log Files
+
+- **C-Client logs**: Located in `%APPDATA%/NoMorePassword/logs/` (Windows)
+- **B-Client logs**: Check your deployment platform logs
+- **NSN logs**: Check PythonAnywhere logs in the dashboard
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## 📞 Support
+
+For support and questions:
+- Create an issue on GitHub
+- Contact the development team
+- Check the documentation wiki
+
+## 🎯 Roadmap
+
+- [ ] Mobile app support (iOS/Android)
+- [ ] Browser extension
+- [ ] Advanced security features
+- [ ] Multi-language support
+- [ ] Enterprise features
+
+---
+
+**No More Password** - Making authentication secure and simple.
